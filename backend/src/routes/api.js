@@ -1,5 +1,6 @@
 import express from 'express';
 import { searchStops, getDepartures } from '../services/departureService.js';
+import { scrapeLunchMenu } from '../services/lunchScraper.js';
 import config from '../config/trafiklab.js';
 
 const router = express.Router();
@@ -59,6 +60,19 @@ router.get('/departures/:areaId', async (req, res, next) => {
  */
 router.get('/default-stop', (req, res) => {
   res.json(config.defaultStop);
+});
+
+/**
+ * GET /api/lunch
+ * Get lunch menu from Restaurang Tegel
+ */
+router.get('/lunch', async (req, res, next) => {
+  try {
+    const menu = await scrapeLunchMenu();
+    res.json(menu);
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;
