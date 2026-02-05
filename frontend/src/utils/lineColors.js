@@ -10,8 +10,8 @@ export const TRAM_LINE_COLORS = {
   '3': { bg: '#0089CA', text: '#FFFFFF', name: 'Blå' },      // Blue
   '4': { bg: '#009B3A', text: '#FFFFFF', name: 'Grön' },     // Green
   '5': { bg: '#E30613', text: '#FFFFFF', name: 'Röd' },      // Red
-  '6': { bg: '#8B4513', text: '#FFFFFF', name: 'Brun' },     // Brown
-  '7': { bg: '#808080', text: '#FFFFFF', name: 'Grå' },      // Gray
+  '6': { bg: '#FF8C00', text: '#000000', name: 'Orange' },   // Orange
+  '7': { bg: '#8B4513', text: '#FFFFFF', name: 'Brun' },     // Brown
   '8': { bg: '#800080', text: '#FFFFFF', name: 'Lila' },     // Purple
   '9': { bg: '#90EE90', text: '#000000', name: 'Lime' },     // Lime
   '10': { bg: '#003366', text: '#FFFFFF', name: 'Mörkblå' }, // Dark Blue
