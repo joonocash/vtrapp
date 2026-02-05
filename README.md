@@ -112,6 +112,27 @@ npm run dev:frontend
 5. Lägg till "Trafiklab Realtime APIs" till ditt projekt
 6. Kopiera API-nyckeln och lägg till i `backend/.env`
 
+## Deployment till Ubuntu Server
+
+Vill du köra appen på en egen server med Tailscale för fjärråtkomst?
+
+👉 **[Se fullständig deployment-guide här](DEPLOYMENT.md)**
+
+Guiden täcker:
+- Installation på Ubuntu Server (perfekt för TrueNAS Scale VMs)
+- Automatisk uppstart med PM2 och systemd
+- Nginx för produktion
+- Tailscale-setup för säker fjärråtkomst
+- Dela appen med vänner över Tailscale
+
+### Snabbstart deployment:
+```bash
+git clone https://github.com/joonocash/vtrapp.git
+cd vtrapp
+chmod +x deploy.sh
+./deploy.sh
+```
+
 ## Framtida förbättringar
 
 - [ ] Favoritmarkerade hållplatser (sparas i localStorage)
