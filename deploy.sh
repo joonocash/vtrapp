@@ -94,7 +94,7 @@ pm2 stop vtrapp-backend 2>/dev/null || true
 pm2 delete vtrapp-backend 2>/dev/null || true
 
 # Start backend with PM2
-pm2 start src/server.js --name vtrapp-backend --time
+pm2 start src/index.js --name vtrapp-backend --time
 pm2 save
 
 # Setup PM2 to start on system boot
