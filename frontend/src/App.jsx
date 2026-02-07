@@ -17,9 +17,9 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       {/* Header with Tabs */}
       <header className="bg-gradient-to-r from-blue-600 to-blue-700 shadow-2xl">
-        <div className="container mx-auto px-6 py-8 max-w-5xl">
-          <h1 className="text-5xl font-bold text-white tracking-tight">Västtrafik</h1>
-          <p className="text-blue-100 mt-2 text-lg">Realtidsavgångar • Göteborg</p>
+        <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 max-w-5xl">
+          <h1 className="text-3xl sm:text-5xl font-bold text-white tracking-tight">Västtrafik</h1>
+          <p className="text-blue-100 mt-1 sm:mt-2 text-sm sm:text-lg">Realtidsavgångar • Göteborg</p>
 
           {/* Tab Navigation */}
           <div className="flex gap-4 mt-6">
@@ -47,11 +47,11 @@ function App() {
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-10 max-w-5xl">
+      <main className="container mx-auto px-3 sm:px-6 py-6 sm:py-10 max-w-5xl">
         {activeTab === 'departures' ? (
           <>
             {/* Stop Selector */}
-            <div className="bg-gray-800 rounded-xl shadow-2xl p-8 mb-8 border border-gray-700">
+            <div className="bg-gray-800 rounded-xl shadow-2xl p-4 sm:p-8 mb-6 sm:mb-8 border border-gray-700">
               <StopSelector
                 currentStop={selectedStop}
                 onStopChange={setSelectedStop}
@@ -59,7 +59,7 @@ function App() {
             </div>
 
             {/* Departure Board */}
-            <div className="bg-gray-800 rounded-xl shadow-2xl p-8 border border-gray-700">
+            <div className="bg-gray-800 rounded-xl shadow-2xl p-3 sm:p-8 border border-gray-700">
               <DepartureBoard
                 departures={departures}
                 loading={loading}
