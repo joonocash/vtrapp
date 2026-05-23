@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { DepartureBoard } from './components/DepartureBoard';
 import { StopSelector } from './components/StopSelector';
 import { LunchMenu } from './components/LunchMenu';
+import ImpostorGame from './components/ImpostorGame';
 import { useDepartures } from './hooks/useDepartures';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('departures'); // 'departures' or 'lunch'
+  const [activeTab, setActiveTab] = useState('departures'); // 'departures', 'lunch', or 'imposter'
   const [selectedStop, setSelectedStop] = useState({
     areaId: '740025695',
     name: 'Göteborg Ullevi Norra'
@@ -43,6 +44,16 @@ function App() {
             >
               Lunch
             </button>
+            <button
+              onClick={() => setActiveTab('imposter')}
+              className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+                activeTab === 'imposter'
+                  ? 'bg-white text-blue-700 shadow-lg'
+                  : 'bg-blue-500 text-white hover:bg-blue-400'
+              }`}
+            >
+              Imposter
+            </button>
           </div>
         </div>
       </header>
@@ -70,9 +81,12 @@ function App() {
               />
             </div>
           </>
-        ) : (
+        ) : activeTab === 'lunch' ? (
           /* Lunch Menu */
           <LunchMenu />
+        ) : (
+          /* Imposter Game */
+          <ImpostorGame />
         )}
       </main>
     </div>
