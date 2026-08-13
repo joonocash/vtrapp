@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { DepartureBoard } from './components/DepartureBoard';
 import { StopSelector } from './components/StopSelector';
-import { LunchMenu } from './components/LunchMenu';
+import AgentsGame from './components/AgentsGame';
 import ImpostorGame from './components/ImpostorGame';
 import { useDepartures } from './hooks/useDepartures';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('departures'); // 'departures', 'lunch', or 'imposter'
+  const [activeTab, setActiveTab] = useState('departures'); // 'departures', 'agents', or 'imposter'
   const [selectedStop, setSelectedStop] = useState({
     areaId: '740025695',
     name: 'Göteborg Ullevi Norra'
@@ -35,14 +35,14 @@ function App() {
               Avgångar
             </button>
             <button
-              onClick={() => setActiveTab('lunch')}
+              onClick={() => setActiveTab('agents')}
               className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-                activeTab === 'lunch'
+                activeTab === 'agents'
                   ? 'bg-white text-blue-700 shadow-lg'
                   : 'bg-blue-500 text-white hover:bg-blue-400'
               }`}
             >
-              Lunch
+              Agenter
             </button>
             <button
               onClick={() => setActiveTab('imposter')}
@@ -81,9 +81,9 @@ function App() {
               />
             </div>
           </>
-        ) : activeTab === 'lunch' ? (
-          /* Lunch Menu */
-          <LunchMenu />
+        ) : activeTab === 'agents' ? (
+          /* Agents Game */
+          <AgentsGame />
         ) : (
           /* Imposter Game */
           <ImpostorGame />

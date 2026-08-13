@@ -288,7 +288,7 @@ Om något går fel:
 
 3. Testa API:et direkt:
    ```bash
-   curl http://localhost:3001/api/lunch
+   curl http://localhost:3001/api/default-stop
    ```
 
 ## Avinstallation
