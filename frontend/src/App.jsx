@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { DepartureBoard } from './components/DepartureBoard';
 import { StopSelector } from './components/StopSelector';
-import AgentsGame from './components/AgentsGame';
+import AgentsGame from './components/agents/AgentsGame.jsx';
 import ImpostorGame from './components/ImpostorGame';
 import { useDepartures } from './hooks/useDepartures';
 
