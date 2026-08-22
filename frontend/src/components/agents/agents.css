@@ -16,6 +16,7 @@
                 "Helvetica Neue Condensed",system-ui,sans-serif;
   --ag-mono: ui-monospace,"SF Mono","JetBrains Mono","Roboto Mono",Menlo,monospace;
 
+  width: 100%;
   max-width: 880px;
   margin: 0 auto;
   padding: 18px;
@@ -131,15 +132,20 @@
 
 /* ── Brädet ────────────────────────────────────────────────── */
 #agenter .ag-board{
-  display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:12px;
+  display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-bottom:12px;
+  container-type:inline-size;
+  max-width:100%;
 }
 #agenter .ag-card{
   position:relative; aspect-ratio:1/.66;
-  display:flex; align-items:center; justify-content:center; padding:6px 4px;
+  display:flex; align-items:center; justify-content:center; padding:6px 3px;
+  min-width:0; max-width:100%;
   background:var(--ag-panel); border:1px solid var(--ag-line); border-radius:10px;
-  font-family:var(--ag-display); font-weight:700; letter-spacing:.04em;
-  font-size:clamp(9px,2.1vw,17px); line-height:1.05; text-transform:uppercase;
-  text-align:center; word-break:break-word; hyphens:auto;
+  font-family:var(--ag-display); font-weight:700; letter-spacing:.02em;
+  font-size:clamp(9px,2.1vw,17px);
+  font-size:clamp(9px,4.1cqw,17px);   /* följer brädets bredd där webbläsaren stödjer det */
+  line-height:1.06; text-transform:uppercase;
+  text-align:center; overflow-wrap:anywhere; hyphens:auto;
   transition:transform .12s,background .2s,border-color .2s,color .2s;
 }
 #agenter .ag-card:hover:not(.done){ transform:translateY(-2px); border-color:#425576; }
@@ -234,12 +240,27 @@
 #agenter .ag-win.blue .who{ color:var(--ag-blue); }
 
 @media (max-width:560px){
-  #agenter{ padding:12px; border-radius:12px; }
-  #agenter .ag-board{ gap:5px; }
-  #agenter .ag-card{ border-radius:7px; aspect-ratio:1/.78; }
-  #agenter .ag-brand{ font-size:20px; }
-  #agenter .ag-team .num{ font-size:26px; }
-  #agenter .ag-turn{ min-width:84px; }
+  #agenter{ padding:10px; border-radius:12px; }
+  #agenter .ag-board{ gap:4px; }
+  #agenter .ag-card{ border-radius:7px; aspect-ratio:1/1; padding:4px 2px; }
+  #agenter .ag-card .idx{ top:3px; left:4px; font-size:8px; }
+  #agenter .ag-brand{ font-size:19px; letter-spacing:.12em; }
+  #agenter .ag-brand small{ font-size:9px; }
+  #agenter .ag-score{ gap:6px; }
+  #agenter .ag-team{ padding:8px 10px; }
+  #agenter .ag-team .num{ font-size:25px; }
+  #agenter .ag-turn{ min-width:76px; padding:8px 6px; }
+  #agenter .ag-btn{ padding:8px 10px; font-size:10px; }
+  #agenter .ag-clue{ padding:8px 10px; }
+  #agenter .ag-clue-word{ font-size:21px; }
+  #agenter .ag-foot{ gap:8px; }
+  #agenter .ag-log{ min-width:100%; }
+}
+
+/* Liggande mobil: låg skärm — platta till korten så hela brädet ryms på höjden */
+@media (max-height:520px) and (orientation:landscape){
+  #agenter .ag-card{ aspect-ratio:1/.5; }
+  #agenter .ag-side{ max-height:150px; }
 }
 @media (prefers-reduced-motion:reduce){
   #agenter *{ animation:none !important; transition:none !important; }
@@ -255,7 +276,8 @@
 }
 #agenter.ag-fs{
   position:fixed; inset:0; z-index:80; max-width:none;
-  border-radius:0; border:none; overflow-y:auto;
+  height:100dvh; padding:12px;
+  border-radius:0; border:none; overflow-y:auto; overflow-x:hidden;
 }
 
 /* ── Lägesval ──────────────────────────────────────────────── */

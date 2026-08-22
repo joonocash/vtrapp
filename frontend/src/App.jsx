@@ -15,7 +15,7 @@ function App() {
   const { departures, loading, error, lastUpdated, refresh } = useDepartures(selectedStop.areaId);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       {/* Header with Tabs */}
       <header className="bg-gradient-to-r from-blue-600 to-blue-700 shadow-2xl">
         <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 max-w-5xl">
