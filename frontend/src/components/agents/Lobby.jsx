@@ -3,7 +3,7 @@
  * Bara en spelledare per lag — servern flyttar automatiskt undan den
  * förra om någon annan tar rollen.
  */
-export default function Lobby({ state, busy, onPick, onShuffle, onStart, onLeave }) {
+export default function Lobby({ state, busy, colors, onPick, onColor, onShuffle, onStart, onLeave }) {
   const me = state.you;
   const bench = state.players.filter(p => !p.team);
 
@@ -52,6 +52,31 @@ export default function Lobby({ state, busy, onPick, onShuffle, onStart, onLeave
           ser färgerna på brädet, resten ser bara orden.
         </div>
       </div>
+
+      {!!colors?.length && (
+        <div className="ag-panel">
+          <h4>Din färg</h4>
+          <div className="ag-note" style={{ marginBottom: 8 }}>
+            Syns som en prick på orden ni markerar tillsammans under diskussionen.
+          </div>
+          <div className="ag-colors">
+            {colors.map(c => {
+              const owner = state.players.find(p => p.color === c && p.id !== me?.id);
+              const mine = me?.color === c;
+              return (
+                <button
+                  key={c}
+                  className={'ag-swatch' + (mine ? ' is-on' : '')}
+                  style={{ '--sw': c }}
+                  disabled={!!owner || busy}
+                  title={owner ? `${owner.name} har den här färgen` : 'Välj den här färgen'}
+                  onClick={() => onColor(c)}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="ag-lobby">
         {column('red')}
@@ -102,6 +127,7 @@ function PlayerList({ players, me, empty }) {
     <ul className="ag-plist">
       {players.map(p => (
         <li key={p.id} className={p.online ? '' : 'off'}>
+          <span className="ag-color-dot" style={{ background: p.color }} />
           <span className="ag-dot-on" />
           {p.name}
           {p.id === me?.id && <span className="me">du</span>}

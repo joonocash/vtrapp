@@ -15,10 +15,19 @@ export default function OnlineGame({ onExit }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [connLost, setConnLost] = useState(false);
+  const [colors, setColors] = useState([]);
+  const [lockArmed, setLockArmed] = useState(false);
 
   // Ref så att pollningen alltid ser aktuell session utan att startas om.
   const sessionRef = useRef(session);
   useEffect(() => { sessionRef.current = session; }, [session]);
+
+  useEffect(() => { api.getColors().then(setColors).catch(() => {}); }, []);
+
+  // "Lås in" gäller bara ett klick — armas om igen så fort läget ändras.
+  useEffect(() => {
+    setLockArmed(false);
+  }, [state?.clue?.word, state?.clue?.count, state?.turn, state?.phase]);
 
   /* ── Pollning ────────────────────────────────────────────── */
   useEffect(() => {
@@ -102,7 +111,9 @@ export default function OnlineGame({ onExit }) {
   const me = state.you;
   const myTurn = me?.team === state.turn && state.phase === 'playing';
   const isSpymaster = me?.role === 'spymaster' && !!me?.team;
-  const canGuess = myTurn && !isSpymaster && !!state.clue;
+  // Kan markera ord och avsluta draget. Att faktiskt gissa kräver att man
+  // först "låser in" — se ag-lockbar nedan.
+  const canAct = myTurn && !isSpymaster && !!state.clue;
   const turnSpymaster = state.players.find(p => p.team === state.turn && p.role === 'spymaster');
 
   return (
@@ -114,7 +125,9 @@ export default function OnlineGame({ onExit }) {
         <Lobby
           state={state}
           busy={busy}
+          colors={colors}
           onPick={(team, role) => act(() => api.setTeam(session.code, session.playerId, team, role))}
+          onColor={color => act(() => api.setColor(session.code, session.playerId, color))}
           onShuffle={() => act(() => api.shuffleTeams(session.code, session.playerId))}
           onStart={() => act(() => api.start(session.code, session.playerId))}
           onLeave={leave}
@@ -153,20 +166,40 @@ export default function OnlineGame({ onExit }) {
             )}
           </div>
 
+          {canAct && (
+            <div className="ag-lockbar">
+              {lockArmed ? (
+                <>
+                  <span className="ag-hint">Klicka på ordet ni är överens om.</span>
+                  <button className="ag-btn" disabled={busy} onClick={() => setLockArmed(false)}>Avbryt</button>
+                </>
+              ) : (
+                <>
+                  <span className="ag-hint">Klicka ord för att markera dem — alla ser markeringarna.</span>
+                  <button className="ag-btn" disabled={busy} onClick={() => setLockArmed(true)}>Lås in ett ord</button>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="ag-main">
             <Board
               words={state.words}
               revealed={state.revealed}
               solution={state.key}
-              canPick={canGuess}
-              onPick={i => act(() => api.guess(session.code, session.playerId, i))}
+              canPick={canAct}
+              markMode={!lockArmed}
+              onPick={i => { setLockArmed(false); act(() => api.guess(session.code, session.playerId, i)); }}
+              onMark={i => act(() => api.mark(session.code, session.playerId, i))}
+              marks={state.marks}
+              players={state.players}
             />
             <History history={state.history} />
           </div>
 
           <div className="ag-foot">
             <div className="ag-log">{state.log}</div>
-            {canGuess && (
+            {canAct && (
               <button
                 className="ag-end"
                 disabled={busy}

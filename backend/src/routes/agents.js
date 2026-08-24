@@ -1,10 +1,10 @@
 import express from 'express';
 import { WORDS } from '../services/agentsWords.js';
 import {
-  createRoom, joinRoom, leaveRoom, setTeam, shuffleTeams,
+  createRoom, joinRoom, leaveRoom, setTeam, setColor, shuffleTeams,
   startGame, newRound, backToLobby,
-  giveClue, guess, endTurn,
-  buildState, stateOf, roomCount
+  giveClue, guess, toggleMark, endTurn,
+  buildState, stateOf, roomCount, PLAYER_COLORS
 } from '../services/agentsRooms.js';
 
 const router = express.Router();
@@ -34,6 +34,11 @@ router.get('/status', (req, res) => {
   res.json({ rooms: roomCount() });
 });
 
+/* Personliga spelarfärger — valbara i lobbyn. */
+router.get('/colors', (req, res) => {
+  res.json({ colors: PLAYER_COLORS });
+});
+
 /* Skapa rum */
 router.post('/rooms', handle((req, res) => {
   const { room, playerId } = createRoom(req.body?.name);
@@ -55,6 +60,12 @@ router.get('/rooms/:code', handle((req, res) => {
 router.post('/rooms/:code/team', handle((req, res) => {
   const { playerId, team, role } = req.body || {};
   const room = setTeam(req.params.code, playerId, team ?? null, role || 'operative');
+  sendState(res, room, playerId);
+}));
+
+router.post('/rooms/:code/color', handle((req, res) => {
+  const { playerId, color } = req.body || {};
+  const room = setColor(req.params.code, playerId, color);
   sendState(res, room, playerId);
 }));
 
@@ -92,6 +103,12 @@ router.post('/rooms/:code/clue', handle((req, res) => {
 router.post('/rooms/:code/guess', handle((req, res) => {
   const { playerId, index } = req.body || {};
   const room = guess(req.params.code, playerId, index);
+  sendState(res, room, playerId);
+}));
+
+router.post('/rooms/:code/mark', handle((req, res) => {
+  const { playerId, index } = req.body || {};
+  const room = toggleMark(req.params.code, playerId, index);
   sendState(res, room, playerId);
 }));
 

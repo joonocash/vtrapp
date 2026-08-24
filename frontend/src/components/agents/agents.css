@@ -422,6 +422,36 @@
 #agenter .ag-card.blocked{ cursor:not-allowed; }
 #agenter .ag-card.blocked:hover:not(.done){ transform:none; border-color:var(--ag-line); }
 
+/* ── Markeringar under diskussion ─────────────────────────────
+   Flera spelare kan markera samma eller olika ord innan någon
+   låser in en riktig gissning. Prickarna är bara till för att
+   visa vem som pekat på vad — helt synliga för båda lagen. ── */
+#agenter .ag-marks{
+  position:absolute; top:5px; right:6px; display:flex; gap:3px;
+  flex-wrap:wrap-reverse; justify-content:flex-end; max-width:60%;
+}
+#agenter .ag-mark-dot{
+  width:9px; height:9px; border-radius:50%; flex:none;
+  border:1.5px solid rgba(0,0,0,.35); box-shadow:0 0 0 1px rgba(255,255,255,.15);
+}
+
+/* ── Lås in-läge ───────────────────────────────────────────── */
+#agenter .ag-lockbar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+
+/* ── Färgväljare (lobby) ───────────────────────────────────── */
+#agenter .ag-colors{ display:flex; gap:8px; flex-wrap:wrap; }
+#agenter .ag-swatch{
+  width:30px; height:30px; border-radius:9px; background:var(--sw);
+  border:2px solid rgba(255,255,255,.15); padding:0;
+  transition:transform .1s,border-color .15s,box-shadow .15s;
+}
+#agenter .ag-swatch:hover:not(:disabled){ transform:translateY(-2px); }
+#agenter .ag-swatch.is-on{ border-color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.25); }
+#agenter .ag-swatch:disabled{ opacity:.25; cursor:not-allowed; }
+
+/* Färgprick bredvid spelarnamn i lobbyn */
+#agenter .ag-color-dot{ width:8px; height:8px; border-radius:50%; flex:none; border:1px solid rgba(0,0,0,.3); }
+
 @media (max-width:820px){
   #agenter .ag-main{ grid-template-columns:1fr; }
   #agenter .ag-side{ max-height:220px; }

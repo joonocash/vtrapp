@@ -28,8 +28,15 @@ export function useFlips(revealed) {
   return flips;
 }
 
-/** 5×5-brädet. `solution` är nyckeln — skickas bara in när den får visas. */
-export function Board({ words, revealed, solution, canPick, onPick }) {
+/**
+ * 5×5-brädet. `solution` är nyckeln — skickas bara in när den får visas.
+ *
+ * `marks` (index → lista av playerId) visas alltid, för alla — det är bara
+ * diskussion, ingen hemlighet. Vem som får klicka avgörs av `canPick`, och
+ * `markMode` styr om ett klick markerar ordet (true) eller gissar direkt
+ * genom `onPick` (false) — se "Lås in" i OnlineGame.
+ */
+export function Board({ words, revealed, solution, canPick, onPick, marks = {}, players = [], markMode = false, onMark }) {
   const flips = useFlips(revealed);
 
   return (
@@ -37,21 +44,36 @@ export function Board({ words, revealed, solution, canPick, onPick }) {
       {words.map((word, i) => {
         const done = revealed[i];
         const role = solution ? solution[i] : null;
+        const marked = !done ? marks[i] : null;
         const classes = ['ag-card'];
         if (done) classes.push('done', 'r-' + role);
         else if (role) classes.push('key', 'key-' + role);
         if (!done && !canPick) classes.push('blocked');
         if (flips.has(i)) classes.push('flip');
 
+        function click() {
+          if (done || !canPick) return;
+          if (markMode) onMark(i);
+          else onPick(i);
+        }
+
         return (
           <button
             key={i}
             className={classes.join(' ')}
-            onClick={() => !done && canPick && onPick(i)}
+            onClick={click}
             disabled={done || !canPick}
           >
             {!done && <span className="idx">{String(i + 1).padStart(2, '0')}</span>}
             {word}
+            {!!marked?.length && (
+              <span className="ag-marks">
+                {marked.map(pid => {
+                  const p = players.find(pp => pp.id === pid);
+                  return <span key={pid} className="ag-mark-dot" style={{ background: p?.color || '#7d8ba6' }} title={p?.name || ''} />;
+                })}
+              </span>
+            )}
           </button>
         );
       })}

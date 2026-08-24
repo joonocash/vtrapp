@@ -36,13 +36,16 @@ export const api = {
   joinRoom: (code, name, playerId) => post(`/rooms/${code}/join`, { name, playerId }),
   getState: (code, playerId) =>
     request(`/rooms/${code}?playerId=${encodeURIComponent(playerId)}`).then(d => d.state),
+  getColors: () => request('/colors').then(d => d.colors),
   setTeam: (code, playerId, team, role) => post(`/rooms/${code}/team`, { playerId, team, role }),
+  setColor: (code, playerId, color) => post(`/rooms/${code}/color`, { playerId, color }),
   shuffleTeams: (code, playerId) => post(`/rooms/${code}/shuffle`, { playerId }),
   start: (code, playerId) => post(`/rooms/${code}/start`, { playerId }),
   newRound: (code, playerId) => post(`/rooms/${code}/round`, { playerId }),
   toLobby: (code, playerId) => post(`/rooms/${code}/lobby`, { playerId }),
   clue: (code, playerId, word, count) => post(`/rooms/${code}/clue`, { playerId, word, count }),
   guess: (code, playerId, index) => post(`/rooms/${code}/guess`, { playerId, index }),
+  mark: (code, playerId, index) => post(`/rooms/${code}/mark`, { playerId, index }),
   endTurn: (code, playerId) => post(`/rooms/${code}/endturn`, { playerId }),
   leave: (code, playerId) => post(`/rooms/${code}/leave`, { playerId })
 };

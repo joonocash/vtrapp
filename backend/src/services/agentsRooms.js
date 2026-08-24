@@ -16,6 +16,14 @@ const ROOM_TTL_MS = 6 * 60 * 60 * 1000;   // rum städas bort efter 6h utan akti
 const ONLINE_MS = 20 * 1000;              // spelare räknas som online i 20s efter senaste anrop
 const MAX_ROOMS = 200;
 
+// Personliga spelarfärger — separata från lagfärgerna, används för att visa
+// vem som markerat vilket ord under diskussion. Håller sig borta från
+// rött/blått så de inte kan förväxlas med lagtillhörighet.
+export const PLAYER_COLORS = [
+  '#fbbf24', '#34d399', '#a78bfa', '#f472b6',
+  '#22d3ee', '#fb923c', '#a3e635', '#e879f9'
+];
+
 const rooms = new Map();
 
 /* ── Småfunktioner ────────────────────────────────────────────── */
@@ -66,6 +74,14 @@ function cleanName(name) {
   return trimmed || 'Spelare';
 }
 
+// Första lediga färgen i rummet. Om alla är tagna (fler än 8 spelare)
+// får någon dela färg — det är ett hyfsat sällsynt läge för ett partyspel.
+function pickColor(room) {
+  const used = new Set([...room.players.values()].map(p => p.color));
+  const free = PLAYER_COLORS.find(c => !used.has(c));
+  return free || PLAYER_COLORS[room.players.size % PLAYER_COLORS.length];
+}
+
 /* ── Hämta rum / spelare ──────────────────────────────────────── */
 
 function getRoom(code) {
@@ -108,6 +124,7 @@ export function createRoom(name) {
     words: [],
     key: [],
     revealed: [],
+    marks: {},
     remaining: { red: 0, blue: 0 },
     turn: 'red',
     clue: null,
@@ -122,6 +139,7 @@ export function createRoom(name) {
     name: cleanName(name),
     team: null,
     role: 'operative',
+    color: pickColor(room),
     lastSeen: Date.now()
   });
   rooms.set(code, room);
@@ -147,6 +165,7 @@ export function joinRoom(code, name, existingId) {
     name: cleanName(name),
     team: null,
     role: 'operative',
+    color: pickColor(room),
     lastSeen: Date.now()
   });
   room.log = `${cleanName(name)} kom in i rummet.`;
@@ -160,6 +179,10 @@ export function leaveRoom(code, playerId) {
   if (!player) return { room };
 
   room.players.delete(playerId);
+  for (const i of Object.keys(room.marks)) {
+    room.marks[i] = room.marks[i].filter(id => id !== playerId);
+    if (!room.marks[i].length) delete room.marks[i];
+  }
   if (room.players.size === 0) {
     rooms.delete(room.code);
     return { room: null };
@@ -219,6 +242,19 @@ export function shuffleTeams(code, playerId) {
   return room;
 }
 
+export function setColor(code, playerId, color) {
+  const room = getRoom(code);
+  const player = getPlayer(room, playerId);
+
+  if (!PLAYER_COLORS.includes(color)) throw fail(400, 'Ogiltig färg');
+  const taken = [...room.players.values()].some(p => p.id !== playerId && p.color === color);
+  if (taken) throw fail(409, 'Färgen är redan tagen');
+
+  player.color = color;
+  touch(room);
+  return room;
+}
+
 function spymasterOf(room, team) {
   for (const p of room.players.values()) {
     if (p.team === team && p.role === 'spymaster') return p;
@@ -253,6 +289,7 @@ function deal(room) {
   room.words = words;
   room.key = shuffle(key);
   room.revealed = new Array(25).fill(false);
+  room.marks = {};
   room.remaining = { red: first === 'red' ? 9 : 8, blue: first === 'blue' ? 9 : 8 };
   room.turn = first;
   room.clue = null;
@@ -286,6 +323,7 @@ export function backToLobby(code, playerId) {
   room.words = [];
   room.key = [];
   room.revealed = [];
+  room.marks = {};
   room.history = [];
   room.clue = null;
   room.winner = null;
@@ -336,8 +374,32 @@ export function giveClue(code, playerId, word, count) {
 
   room.clue = { word: upper, count: n, team: player.team, by: player.name };
   room.guessesLeft = n === 0 ? 99 : n + 1;
+  room.marks = {};
   room.history.push({ team: player.team, word: upper, count: n, by: player.name, picks: [] });
   room.log = `${teamName(player.team)} fick ledtråden ${upper} ${n}.`;
+  touch(room);
+  return room;
+}
+
+/** Markera/avmarkera ett ord under diskussion — påverkar inte gissningar. */
+export function toggleMark(code, playerId, index) {
+  const room = getRoom(code);
+  const player = getPlayer(room, playerId);
+
+  if (room.phase !== 'playing') throw fail(409, 'Spelet är inte igång');
+  if (player.team !== room.turn) throw fail(403, 'Det är inte ditt lags tur');
+  if (player.role === 'spymaster') throw fail(403, 'Spelledaren markerar inte ord');
+  if (!room.clue) throw fail(409, 'Vänta på ledtråden');
+
+  const i = Number(index);
+  if (!Number.isInteger(i) || i < 0 || i > 24) throw fail(400, 'Ogiltigt kort');
+  if (room.revealed[i]) throw fail(409, 'Kortet är redan vänt');
+
+  const marked = room.marks[i] || [];
+  const next = marked.includes(playerId) ? marked.filter(id => id !== playerId) : [...marked, playerId];
+  if (next.length) room.marks[i] = next;
+  else delete room.marks[i];
+
   touch(room);
   return room;
 }
@@ -346,6 +408,7 @@ function endTurnInternal(room) {
   room.turn = other(room.turn);
   room.clue = null;
   room.guessesLeft = 0;
+  room.marks = {};
 }
 
 function finish(room, winner, reason) {
@@ -371,6 +434,7 @@ export function guess(code, playerId, index) {
   if (room.revealed[i]) throw fail(409, 'Kortet är redan vänt');
 
   room.revealed[i] = true;
+  delete room.marks[i];
   const role = room.key[i];
   const team = player.team;
   const word = room.words[i];
@@ -462,19 +526,22 @@ export function buildState(room, playerId) {
     phase: room.phase,
     log: room.log,
     you: me
-      ? { id: me.id, name: me.name, team: me.team, role: me.role, isHost: me.id === room.hostId }
+      ? { id: me.id, name: me.name, team: me.team, role: me.role, color: me.color, isHost: me.id === room.hostId }
       : null,
     players: [...room.players.values()].map(p => ({
       id: p.id,
       name: p.name,
       team: p.team,
       role: p.role,
+      color: p.color,
       isHost: p.id === room.hostId,
       online: now - p.lastSeen < ONLINE_MS
     })),
     problems: room.phase === 'lobby' ? lobbyProblems(room) : [],
     words: room.words,
     revealed: room.revealed,
+    // Markeringar är inte hemliga — båda lagen ser vem som pekat på vad.
+    marks: room.marks,
     // Nyckeln skickas bara till spelledare, eller när spelet är slut.
     key: revealKey ? room.key : null,
     remaining: room.remaining,
