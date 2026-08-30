@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import apiRoutes from './routes/api.js';
 import agentsRoutes from './routes/agents.js';
+import scoresRoutes from '../scores.js';
 import errorHandler from './middleware/errorHandler.js';
 
 dotenv.config();
@@ -21,6 +22,7 @@ app.use(express.json());
 // Routes
 app.use('/api', apiRoutes);
 app.use('/api/agents', agentsRoutes);
+app.use('/api/scores', scoresRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

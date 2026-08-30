@@ -3,10 +3,11 @@ import { DepartureBoard } from './components/DepartureBoard';
 import { StopSelector } from './components/StopSelector';
 import AgentsGame from './components/agents/AgentsGame.jsx';
 import ImpostorGame from './components/ImpostorGame';
+import RotspelPage from './rotspel/RotspelPage.jsx';
 import { useDepartures } from './hooks/useDepartures';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('departures'); // 'departures', 'agents', or 'imposter'
+  const [activeTab, setActiveTab] = useState('departures'); // 'departures', 'agents', 'imposter', or 'rotspel'
   const [selectedStop, setSelectedStop] = useState({
     areaId: '740025695',
     name: 'Göteborg Ullevi Norra'
@@ -54,6 +55,16 @@ function App() {
             >
               Imposter
             </button>
+            <button
+              onClick={() => setActiveTab('rotspel')}
+              className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+                activeTab === 'rotspel'
+                  ? 'bg-white text-blue-700 shadow-lg'
+                  : 'bg-blue-500 text-white hover:bg-blue-400'
+              }`}
+            >
+              Rötspel
+            </button>
           </div>
         </div>
       </header>
@@ -84,9 +95,12 @@ function App() {
         ) : activeTab === 'agents' ? (
           /* Agents Game */
           <AgentsGame />
-        ) : (
+        ) : activeTab === 'imposter' ? (
           /* Imposter Game */
           <ImpostorGame />
+        ) : (
+          /* Rötspel */
+          <RotspelPage />
         )}
       </main>
     </div>

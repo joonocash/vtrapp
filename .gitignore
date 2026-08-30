@@ -33,3 +33,5 @@ yarn-error.log*
 # Misc
 .cache/
 .idx/
+# Highscores (rötspel)
+backend/data/
