@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  /* Sidscrollbar flikrad utan synlig scrollbar. Knapparna far plats i sidled
+     pa mobil i stallet for att klippas av rotelementets overflow-x-hidden. */
+  .flikrad {
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .flikrad::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

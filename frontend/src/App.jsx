@@ -24,10 +24,10 @@ function App() {
           <p className="text-blue-100 mt-1 sm:mt-2 text-sm sm:text-lg">Realtidsavgångar • Göteborg</p>
 
           {/* Tab Navigation */}
-          <div className="flex gap-4 mt-6">
+          <div className="flikrad flex flex-nowrap gap-3 sm:gap-4 mt-6 overflow-x-auto -mx-4 px-4 py-1 -my-1 sm:mx-0 sm:px-0">
             <button
               onClick={() => setActiveTab('departures')}
-              className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              className={`shrink-0 whitespace-nowrap px-5 sm:px-6 py-3 rounded-lg font-semibold transition-all ${
                 activeTab === 'departures'
                   ? 'bg-white text-blue-700 shadow-lg'
                   : 'bg-blue-500 text-white hover:bg-blue-400'
@@ -37,7 +37,7 @@ function App() {
             </button>
             <button
               onClick={() => setActiveTab('agents')}
-              className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              className={`shrink-0 whitespace-nowrap px-5 sm:px-6 py-3 rounded-lg font-semibold transition-all ${
                 activeTab === 'agents'
                   ? 'bg-white text-blue-700 shadow-lg'
                   : 'bg-blue-500 text-white hover:bg-blue-400'
@@ -47,7 +47,7 @@ function App() {
             </button>
             <button
               onClick={() => setActiveTab('imposter')}
-              className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              className={`shrink-0 whitespace-nowrap px-5 sm:px-6 py-3 rounded-lg font-semibold transition-all ${
                 activeTab === 'imposter'
                   ? 'bg-white text-blue-700 shadow-lg'
                   : 'bg-blue-500 text-white hover:bg-blue-400'
@@ -57,7 +57,7 @@ function App() {
             </button>
             <button
               onClick={() => setActiveTab('rotspel')}
-              className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              className={`shrink-0 whitespace-nowrap px-5 sm:px-6 py-3 rounded-lg font-semibold transition-all ${
                 activeTab === 'rotspel'
                   ? 'bg-white text-blue-700 shadow-lg'
                   : 'bg-blue-500 text-white hover:bg-blue-400'
