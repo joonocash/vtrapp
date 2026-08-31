@@ -523,3 +523,89 @@ export function poangFor(antal, kaskad) {
   // gånger så mycket som den första — det är där känslan sitter.
   return Math.round(antal * 60 * kaskad)
 }
+
+// Alla specialbrickor på brädet, sorterade uppifrån och ner.
+// Finalen behöver veta vad som ligger kvar när dragen tar slut.
+export function listSpecials(board) {
+  const ut = []
+  board.forEach((t, i) => {
+    if (t && t.special) ut.push({ index: i, special: t.special, color: t.color })
+  })
+  return ut
+}
+
+// Samma sökning som hasValidMove, men returnerar VILKET drag den hittade
+// i stället för bara true. Används till tips-animationen efter en stunds
+// stillhet.
+//
+// Returnerar { a, b, celler } eller null. celler är rutorna som skulle
+// matcha, så tipset kan vagga rätt brickor.
+export function findHint(board) {
+  const idx = (r, c) => r * SIZE + c
+  const inside = (r, c) => r >= 0 && r < SIZE && c >= 0 && c < SIZE
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const i = idx(r, c)
+
+      for (const [dr, dc] of [
+        [0, 1],
+        [1, 0],
+      ]) {
+        if (!inside(r + dr, c + dc)) continue
+        const j = idx(r + dr, c + dc)
+
+        // två specialbrickor bredvid varandra är alltid ett giltigt drag
+        if (board[i]?.special && board[j]?.special) {
+          return { a: i, b: j, celler: [i, j] }
+        }
+
+        const test = cloneBoard(board)
+        const tmp = test[i]
+        test[i] = test[j]
+        test[j] = tmp
+
+        if (hasMatch(test)) {
+          // hitta vilka rutor som faktiskt skulle matcha, så tipset vaggar rätt
+          const res = resolveMatches(test, j)
+          const celler = res ? [...res.traffade].slice(0, 5) : [i, j]
+          return { a: i, b: j, celler }
+        }
+      }
+    }
+  }
+  return null
+}
+
+// Som applyGravity, men returnerar också en flyttlista som animationslagret
+// kan använda. Varje post säger var brickan hamnade och vilken rad den kom
+// ifrån — negativ rad betyder att den är ny och kom in ovanför brädet.
+export function planGravity(board) {
+  const nytt = cloneBoard(board)
+  const moves = []
+
+  for (let c = 0; c < SIZE; c++) {
+    let skrivRad = SIZE - 1
+
+    for (let r = SIZE - 1; r >= 0; r--) {
+      const tile = nytt[r * SIZE + c]
+      if (tile) {
+        if (skrivRad !== r) {
+          nytt[skrivRad * SIZE + c] = tile
+          nytt[r * SIZE + c] = null
+        }
+        moves.push({ till: skrivRad * SIZE + c, franRad: r })
+        skrivRad--
+      }
+    }
+
+    let ovanfor = -1
+    for (let r = skrivRad; r >= 0; r--) {
+      // makeTile ligger i samma fil och ger unika id via modulens räknare
+      nytt[r * SIZE + c] = makeTile(Math.floor(Math.random() * COLORS))
+      moves.push({ till: r * SIZE + c, franRad: ovanfor-- })
+    }
+  }
+
+  return { board: nytt, moves }
+}

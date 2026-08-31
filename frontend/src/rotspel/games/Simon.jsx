@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useLjud } from '../useLjud.js'
 
 // Färgminne. Sekvensen växer med ett steg per runda, du upprepar den.
 // Ren tap-styrning, så den är identisk på mobil och desktop.
@@ -27,44 +28,16 @@ export default function Simon({ onGameOver }) {
   const [phase, setPhase] = useState('idle') // idle | visar | dinTur | slut
   const [round, setRound] = useState(0)
 
+  const ton = useLjud()
   const inputIndex = useRef(0)
   const timers = useRef([])
-  const audioCtx = useRef(null)
   const reported = useRef(false)
 
   useEffect(() => {
     return () => {
       timers.current.forEach(clearTimeout)
-      if (audioCtx.current) audioCtx.current.close().catch(() => {})
     }
   }, [])
-
-  function tone(freq, ms = 300) {
-    try {
-      if (!audioCtx.current) {
-        const Ctx = window.AudioContext || window.webkitAudioContext
-        if (!Ctx) return
-        audioCtx.current = new Ctx()
-      }
-      const ctx = audioCtx.current
-      // iOS kräver att kontexten återupptas efter en användargest
-      if (ctx.state === 'suspended') ctx.resume()
-
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'sine'
-      osc.frequency.value = freq
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01)
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + ms / 1000)
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start()
-      osc.stop(ctx.currentTime + ms / 1000)
-    } catch {
-      // ljud är valfritt, spelet funkar utan
-    }
-  }
 
   const playSequence = useCallback((seq) => {
     setPhase('visar')
@@ -76,7 +49,7 @@ export default function Simon({ onGameOver }) {
       timers.current.push(
         setTimeout(() => {
           setLit(padId)
-          tone(PADS[padId].freq, SHOW_MS)
+          ton(PADS[padId].freq, SHOW_MS, 'sine', 0.2)
         }, at)
       )
       timers.current.push(setTimeout(() => setLit(null), at + SHOW_MS))
@@ -88,7 +61,7 @@ export default function Simon({ onGameOver }) {
         setPhase('dinTur')
       }, seq.length * (SHOW_MS + GAP_MS))
     )
-  }, [])
+  }, [ton])
 
   function start() {
     reported.current = false
@@ -102,7 +75,7 @@ export default function Simon({ onGameOver }) {
     if (phase !== 'dinTur') return
 
     setLit(padId)
-    tone(PADS[padId].freq, 220)
+    ton(PADS[padId].freq, 220, 'sine', 0.2)
     // måste spåras som alla andra, annars överlever den unmount
     timers.current.push(setTimeout(() => setLit(null), 180))
 
@@ -113,7 +86,7 @@ export default function Simon({ onGameOver }) {
         // poängen är hur många rundor du klarade, alltså sekvensen minus den du sket i
         overRef.current(sequence.length - 1)
       }
-      tone(80, 500)
+      ton(80, 500, 'sine', 0.2)
       return
     }
 

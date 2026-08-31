@@ -7,6 +7,13 @@ import {
   submitScore,
   formatScore,
 } from './useHighscore.js'
+import { useSettings } from './useSettings.js'
+
+const REGLAGE = [
+  { id: 'ljud', namn: 'Ljud' },
+  { id: 'skak', namn: 'Skärmskak' },
+  { id: 'hitstop', namn: 'Hit-stop' },
+]
 
 export default function RotspelPage() {
   const { player, setPlayer, logout } = usePlayer()
@@ -149,6 +156,7 @@ function GameShell({ gameId, player, onExit }) {
   const lowerIsBetter = game && game.higherIsBetter === false
   // Spel utan poäng (scoreFormat 'none') har ingen topplista att hämta — skicka
   // null så hooken hoppar över anropet i stället för att fråga efter en tom lista.
+  const { settings, toggle } = useSettings()
   const tracksScore = Boolean(game && game.scoreFormat && game.scoreFormat !== 'none')
   const { entries, refresh: refreshBoard } = useLeaderboard(
     tracksScore ? gameId : null,
@@ -221,6 +229,27 @@ function GameShell({ gameId, player, onExit }) {
           </Suspense>
         )}
       </div>
+
+      {/* Bara de reglage spelet faktiskt använder. Ett spel utan reglage-fält
+          i registret visar ingenting alls här. */}
+      {Array.isArray(game.reglage) && game.reglage.length > 0 && (
+        <div className="flex flex-wrap gap-x-5 gap-y-2 mt-3 px-1">
+          {REGLAGE.filter((r) => game.reglage.includes(r.id)).map((r) => (
+            <label
+              key={r.id}
+              className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none"
+            >
+              <input
+                type="checkbox"
+                checked={settings[r.id]}
+                onChange={() => toggle(r.id)}
+                className="accent-blue-500 w-3.5 h-3.5"
+              />
+              {r.namn}
+            </label>
+          ))}
+        </div>
+      )}
 
       {/* Idle-spel rapporterar löpande, så resultatrutan med "Igen" vore fel där.
           Poängen skickas ändå in och topplistan visas som vanligt. */}

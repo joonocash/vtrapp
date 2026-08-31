@@ -11,6 +11,9 @@
 //   scoreLabel    vad poängen heter, t.ex. 'poäng', 'meter', 'tid'
 //   scoreFormat   'number' | 'time' | 'none'  ('none' = spelet sparar ingen poäng)
 //   higherIsBetter  false för tidsspel (minröj m.m.)
+//   reglage       vilka inställningar spelet faktiskt använder, t.ex.
+//                 ['ljud', 'skak', 'hitstop']. GameShell visar bara dessa.
+//                 Utan fältet visas inga reglage alls.
 //   idle          true för spel som aldrig tar slut — GameShell hoppar över
 //                 resultatrutan med "Igen" men skickar poängen som vanligt
 //   load          () => import(...) för React-spel
@@ -61,6 +64,7 @@ export const GAMES = [
     scoreLabel: 'rundor',
     scoreFormat: 'number',
     higherIsBetter: true,
+    reglage: ['ljud'],
     load: () => import('./Simon.jsx'),
   },
   {
@@ -83,6 +87,7 @@ export const GAMES = [
     scoreLabel: 'poäng',
     scoreFormat: 'number',
     higherIsBetter: true,
+    reglage: ['ljud', 'skak', 'hitstop'],
     load: () => import('./Krossen.jsx'),
   },
   {
