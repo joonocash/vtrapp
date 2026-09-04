@@ -1,4 +1,4 @@
-// Flyttad hit fran spelmappen sa den inte hamnar i src/. Enda andringen mot
+// Ligger utanfor src/ sa den inte hamnar i bundlen. Enda andringen mot
 // originalet ar de tva sokvagarna nedan.
 import { makeRng, createBoard, generateTray, place, findFullLines, resolveClears, hasAnyMove, scoreClear, SIZE, traySolvable, tickBombs } from '../src/rotspel/games/blast/engine.js';
 import { buildLevel, boardFromLevel, TOTAL_LEVELS } from '../src/rotspel/games/blast/levels.js';
@@ -43,15 +43,19 @@ for (let i = 1; i <= TOTAL_LEVELS; i++) {
   const filled = b.filter(Boolean).length;
   const lines = findFullLines(b);
   if (lines.rows.length || lines.cols.length) bad.push([i, 'full linje från start']);
-  if (filled > 40) bad.push([i, 'för fullt: ' + filled]);
+  if (filled > 34) bad.push([i, 'för fullt: ' + filled]);
   if (!lv.goals.length) bad.push([i, 'inga mål']);
   // går det att lägga en bricka på startbrädet?
-  const tray = generateTray(b, makeRng(lv.seed));
+  const tray = generateTray(b, makeRng(lv.seed), { tokens: lv.tokens });
   if (!hasAnyMove(b, tray)) bad.push([i, 'ingen möjlig start']);
+  if (!lv.par || lv.par[1] >= lv.par[0]) bad.push([i, 'par baklänges']);
+  const need = lv.goals.find(g => g.type === 'collect')?.count ?? 0;
+  if (need && lv.par[1] < need / lv.tokens.chance) bad.push([i, 'tre stjärnor omöjligt']);
 }
 console.log('banor:', TOTAL_LEVELS, 'problem:', bad.length, bad.slice(0,5));
 
 // 3. determinism
 console.log('deterministisk:', JSON.stringify(buildLevel(77)) === JSON.stringify(buildLevel(77)));
 console.log('poäng 4 linjer streak 5:', scoreClear({lines:4, streak:5}));
-console.log('exempelbana 130:', JSON.stringify(buildLevel(130).goals), 'drag', buildLevel(130).moves, 'hinder', buildLevel(130).preset.length);
+const ex = buildLevel(130);
+console.log('exempelbana 130:', JSON.stringify(ex.goals), '| figurchans', ex.tokens.chance.toFixed(2), '| hinder', ex.preset.length, '| par', ex.par.join('/'));

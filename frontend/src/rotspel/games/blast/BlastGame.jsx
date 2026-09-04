@@ -6,7 +6,7 @@ import {
   generateTray,
 } from './engine.js';
 import {
-  PACKS, LEVELS_PER_PACK, TOTAL_LEVELS, GOAL_LABELS, buildLevel, boardFromLevel,
+  PACKS, LEVELS_PER_PACK, TOTAL_LEVELS, goalLabel, starsFor, buildLevel, boardFromLevel,
 } from './levels.js';
 import { ParticleField } from './particles.js';
 import { sfx, buzz, unlockAudio, setSoundEnabled } from './audio.js';
@@ -45,7 +45,9 @@ function PieceMini({ piece, cell = 14, dim }) {
             left: c * cell, top: r * cell, width: cell - 2, height: cell - 2,
             '--bc': COLORS[piece.color ?? 0],
           }}
-        />
+        >
+          {piece.tokens?.[i] && <span className="bb-token">{piece.tokens[i]}</span>}
+        </span>
       ))}
     </div>
   );
@@ -211,19 +213,23 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
   const rngRef = useRef(makeRng(level ? level.seed : (Date.now() & 0x7fffffff)));
 
   const [board, setBoard] = useState(() => (level ? boardFromLevel(level) : createBoard()));
+  const trayOpts = useMemo(() => (level ? { tokens: level.tokens } : undefined), [level]);
   const [tray, setTray] = useState(() =>
-    generateTray(level ? boardFromLevel(level) : createBoard(), rngRef.current)
+    generateTray(level ? boardFromLevel(level) : createBoard(), rngRef.current, trayOpts)
   );
   const [score, setScore] = useState(0);
   const [shown, setShown] = useState(0);
   const [streak, setStreak] = useState(0);
-  const [stats, setStats] = useState({ lines: 0, gems: 0, moves: 0, bestCombo: 0 });
+  const [stats, setStats] = useState({ lines: 0, gems: 0, moves: 0, bestCombo: 0, tokens: 0 });
   const [status, setStatus] = useState('playing'); // playing | won | lost
   const [clearing, setClearing] = useState(null);  // { delays: Map, cracked: Set }
   const [pops, setPops] = useState([]);
   const [banner, setBanner] = useState(null);
   const [shake, setShake] = useState(0);
   const [drag, setDrag] = useState(null);
+  const [flights, setFlights] = useState([]);
+  const [chipHit, setChipHit] = useState(0);
+  const chipRef = useRef(null);
 
   const [cs, setCs] = useState(40);
   const boardRef = useRef(null);
@@ -231,6 +237,7 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
   const fieldRef = useRef(null);
   const busy = useRef(false);
   const wrapRef = useRef(null);
+  const movesRef = useRef(0); // antal utlagda bitar, används för stjärnorna
 
   /* mät rutstorleken så att bitar och partiklar hamnar rätt */
   useLayoutEffect(() => {
@@ -279,9 +286,9 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
     return level.goals.map((g) => {
       let have = 0;
       let need = g.count ?? 1;
-      if (g.type === 'score') have = score;
+      if (g.type === 'collect') have = stats.tokens;
+      else if (g.type === 'score') have = score;
       else if (g.type === 'lines') have = stats.lines;
-      else if (g.type === 'gems') have = stats.gems;
       else if (g.type === 'combo') have = stats.bestCombo;
       else if (g.type === 'ice') { need = 1; have = countType(board, 'ice') === 0 ? 1 : 0; }
       else if (g.type === 'clean') {
@@ -291,8 +298,6 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
       return { ...g, have, need, done: have >= need };
     });
   }, [level, board, score, stats]);
-
-  const movesLeft = level ? level.moves - stats.moves : null;
 
   /* ---------- placering ---------- */
 
@@ -328,7 +333,7 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
       sfx.levelWin();
       buzz([12, 40, 12, 40, 30]);
       if (level) {
-        const earned = level.stars.filter((t) => finalScore >= t).length || 1;
+        const earned = starsFor(level, movesRef.current);
         updateSave((s) => ({
           ...s,
           stars: { ...s.stars, [level.id]: Math.max(s.stars[level.id] ?? 0, earned) },
@@ -371,7 +376,8 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
       const bonus = scoreClear({ lines: lineCount, streak: nextStreak });
       gained += bonus;
 
-      const { board: resolved, removed, cracked, gems } = resolveClears(placed, lines);
+      const { board: resolved, removed, cracked, gems, tokens } = resolveClears(placed, lines);
+      const tokenCount = Object.values(tokens).reduce((a, b) => a + b, 0);
 
       // Ordna rensningen så att den sprider sig utåt från där biten släpptes.
       const origin = { r: r + piece.h / 2 - 0.5, c: c + piece.w / 2 - 0.5 };
@@ -402,7 +408,31 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
         fieldRef.current?.shockwave((c + piece.w / 2) * cs, (r + piece.h / 2) * cs, '#ffc94d');
       }
       if (cracked.length) setTimeout(() => sfx.crack(), 60);
-      if (gems) for (let i = 0; i < Math.min(gems, 5); i++) sfx.gem(i);
+
+      // figurerna flyger upp till målrutan
+      if (tokenCount) {
+        const gridRect = boardRef.current.getBoundingClientRect();
+        const chip = chipRef.current?.getBoundingClientRect();
+        let n = 0;
+        removed.forEach(([rr, cc, cell]) => {
+          if (!cell.token) return;
+          const d = delays.get(idx(rr, cc)) ?? 0;
+          const x0 = gridRect.left + (cc + 0.5) * cs;
+          const y0 = gridRect.top + (rr + 0.5) * cs;
+          const x1 = chip ? chip.left + chip.width / 2 : gridRect.left + gridRect.width / 2;
+          const y1 = chip ? chip.top + chip.height / 2 : gridRect.top - 30;
+          const id = `${rr}-${cc}-${Math.random()}`;
+          const i = n++;
+          setTimeout(() => {
+            sfx.gem(Math.min(i, 4));
+            setFlights((f) => [...f, { id, token: cell.token, x0, y0, x1, y1 }]);
+            setTimeout(() => {
+              setFlights((f) => f.filter((q) => q.id !== id));
+              setChipHit((v) => v + 1);
+            }, 620);
+          }, d + 90);
+        });
+      }
       sfx.clear({ lines: lineCount, streak: nextStreak });
 
       setShake(Math.min(lineCount, 4));
@@ -436,7 +466,7 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
         }
         setBoard(after);
         setClearing(null);
-        afterMove({ after, gained, nextStreak, lineCount, gems, nextTrayRaw, exploded });
+        afterMove({ after, gained, nextStreak, lineCount, gems, tokens: tokenCount, nextTrayRaw, exploded });
         busy.current = false;
       }, maxDelay + CLEAR_DUR);
       setScore((s) => s + gained);
@@ -456,34 +486,36 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
     }
     setBoard(after);
     setScore((s) => s + gained);
-    afterMove({ after, gained, nextStreak, lineCount: 0, gems: 0, nextTrayRaw, exploded });
+    afterMove({ after, gained, nextStreak, lineCount: 0, gems: 0, tokens: 0, nextTrayRaw, exploded });
     busy.current = false;
     return true;
   }, [board, tray, streak, status, level]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Allt som ska hända efter att brädet lagt sig: ny bricka, mål, förlust.
-  const afterMove = useCallback(({ after, gained, nextStreak, lineCount, gems, nextTrayRaw, exploded }) => {
+  const afterMove = useCallback(({ after, gained, nextStreak, lineCount, gems, tokens, nextTrayRaw, exploded }) => {
     setStreak(nextStreak);
 
     const nextStats = {
       lines: stats.lines + lineCount,
       gems: stats.gems + gems,
+      tokens: stats.tokens + (tokens || 0),
       moves: stats.moves + 1,
       bestCombo: Math.max(stats.bestCombo, lineCount),
     };
     setStats(nextStats);
+    movesRef.current = nextStats.moves;
 
     const empty = nextTrayRaw.every((p) => !p);
-    const nextTray = empty ? generateTray(after, rngRef.current) : nextTrayRaw;
+    const nextTray = empty ? generateTray(after, rngRef.current, trayOpts) : nextTrayRaw;
     setTray(nextTray);
 
     const total = score + gained;
 
     if (level) {
       const done = level.goals.every((g) => {
+        if (g.type === 'collect') return nextStats.tokens >= g.count;
         if (g.type === 'score') return total >= g.count;
         if (g.type === 'lines') return nextStats.lines >= g.count;
-        if (g.type === 'gems') return nextStats.gems >= g.count;
         if (g.type === 'combo') return nextStats.bestCombo >= g.count;
         if (g.type === 'ice') return countType(after, 'ice') === 0;
         if (g.type === 'clean') return !after.some((c) => c && c.preset && c.t === 'block');
@@ -491,11 +523,11 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
       });
       if (done) { finish(true, total); return; }
       if (exploded) { finish(false, total); return; }
-      if (nextStats.moves >= level.moves) { finish(false, total); return; }
     }
 
+    // Enda sättet en bana tar slut i förtid: brädet är fullt. Precis som klassiskt.
     if (!hasAnyMove(after, nextTray.filter(Boolean))) finish(false, total);
-  }, [stats, score, level, finish]);
+  }, [stats, score, level, finish, trayOpts]);
 
   /* ---------- pekhantering ---------- */
 
@@ -571,8 +603,8 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
             : <span className="bb-score-sub">Rekord {(save.best ?? 0).toLocaleString('sv-SE')}</span>}
         </div>
         {level
-          ? <div className={`bb-moves${movesLeft <= 3 ? ' bb-moves-low' : ''}`}>
-              <b>{Math.max(movesLeft, 0)}</b><span>drag</span>
+          ? <div className="bb-moves" title={`Två stjärnor på ${level.par[0]} bitar, tre på ${level.par[1]}`}>
+              <b>{stats.moves}</b><span>bitar</span>
             </div>
           : <div className={`bb-streak${streak >= 2 ? ' bb-streak-on' : ''}`}>
               <b>{streak}</b><span>i rad</span>
@@ -582,8 +614,15 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
       {goalState && (
         <div className="bb-goals">
           {goalState.map((g, i) => (
-            <div key={i} className={`bb-goal${g.done ? ' bb-goal-done' : ''}`}>
-              <span>{GOAL_LABELS[g.type](g.count)}</span>
+            <div
+              key={i}
+              ref={g.type === 'collect' ? chipRef : undefined}
+              className={`bb-goal${g.done ? ' bb-goal-done' : ''}${g.type === 'collect' ? ' bb-goal-collect' : ''}`}
+            >
+              {g.type === 'collect' && (
+                <span key={chipHit} className="bb-goal-token">{level.tokens.types.join('')}</span>
+              )}
+              <span>{goalLabel(g)}</span>
               {g.need > 1 && <b>{Math.min(g.have, g.need)}/{g.need}</b>}
             </div>
           ))}
@@ -614,6 +653,7 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
                   animationDelay: delay != null ? `${delay}ms` : undefined,
                 }}
               >
+                {cell?.token && <span className="bb-token">{cell.token}</span>}
                 {cell?.t === 'gem' && <span className="bb-gem" />}
                 {cell?.t === 'bomb' && <span className="bb-bomb">{cell.n}</span>}
                 {cell?.t === 'stone' && <span className="bb-stone" />}
@@ -666,10 +706,22 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
                 left: c * cs, top: r * cs, width: cs - 3, height: cs - 3,
                 '--bc': COLORS[drag.piece.color],
               }}
-            />
+            >
+              {drag.piece.tokens?.[i] && <span className="bb-token">{drag.piece.tokens[i]}</span>}
+            </span>
           ))}
         </div>
       )}
+
+      {flights.map((f) => (
+        <span
+          key={f.id}
+          className="bb-flight"
+          style={{ left: f.x0, top: f.y0, '--dx': `${f.x1 - f.x0}px`, '--dy': `${f.y1 - f.y0}px` }}
+        >
+          {f.token}
+        </span>
+      ))}
 
       {status !== 'playing' && (
         <div className="bb-overlay">
@@ -677,8 +729,14 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
             {status === 'won' ? (
               <>
                 <h3>Klart!</h3>
-                {level && <Stars n={level.stars.filter((t) => score >= t).length || 1} size={30} />}
+                {level && <Stars n={starsFor(level, stats.moves)} size={30} />}
                 <p className="bb-card-score">{score.toLocaleString('sv-SE')}</p>
+                {level && (
+                  <p className="bb-card-note">
+                    {stats.moves} bitar utlagda
+                    {starsFor(level, stats.moves) < 3 && ` · klara den på ${level.par[starsFor(level, stats.moves) === 2 ? 1 : 0]} för en stjärna till`}
+                  </p>
+                )}
                 <div className="bb-card-actions">
                   <button className="bb-btn" onClick={onExit}>Kartan</button>
                   <button className="bb-btn bb-btn-primary" onClick={onNext}>Nästa bana</button>
@@ -686,7 +744,12 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
               </>
             ) : (
               <>
-                <h3>{level ? 'Inte den här gången' : 'Slut på plats'}</h3>
+                <h3>Slut på plats</h3>
+                {level && goalState && (
+                  <p className="bb-card-note">
+                    {goalState.filter((g) => !g.done).map((g) => `${goalLabel(g)} — ${Math.min(g.have, g.need)}/${g.need}`).join(' · ')}
+                  </p>
+                )}
                 <p className="bb-card-score">{score.toLocaleString('sv-SE')}</p>
                 {!level && score >= (save.best ?? 0) && score > 0 && <p className="bb-card-best">Nytt rekord</p>}
                 <div className="bb-card-actions">

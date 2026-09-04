@@ -67,15 +67,18 @@ export function hasPlacement(board, piece) {
 }
 
 // Lägger biten och returnerar nytt bräde + vilka celler som fylldes.
+// Bär biten en figur (piece.tokens) följer den med ner på brädet och sitter
+// kvar tills raden den hamnade i rensas.
 export function place(board, piece, r0, c0, color) {
   const next = cloneBoard(board);
   const filled = [];
-  for (const [dr, dc] of piece.cells) {
+  piece.cells.forEach(([dr, dc], i) => {
     const r = r0 + dr;
     const c = c0 + dc;
-    next[idx(r, c)] = { c: color, t: 'block' };
+    const token = piece.tokens ? piece.tokens[i] : undefined;
+    next[idx(r, c)] = token ? { c: color, t: 'block', token } : { c: color, t: 'block' };
     filled.push([r, c]);
-  }
+  });
   return { board: next, filled };
 }
 
@@ -107,6 +110,7 @@ export function resolveClears(board, lines) {
 
   const removed = [];
   const cracked = [];
+  const tokens = {};
   let gems = 0;
 
   for (const i of marked) {
@@ -119,11 +123,12 @@ export function resolveClears(board, lines) {
       continue;
     }
     if (cell.t === 'gem') gems++;
+    if (cell.token) tokens[cell.token] = (tokens[cell.token] || 0) + 1;
     removed.push([Math.floor(i / SIZE), i % SIZE, cell]);
     next[i] = null;
   }
 
-  return { board: next, removed, cracked, gems };
+  return { board: next, removed, cracked, gems, tokens };
 }
 
 /* ---------- poäng ---------- */
@@ -201,7 +206,7 @@ function weightedPiece(rng, fullness, allowed) {
 
 // Genererar tre bitar som går att spela ut. Faller tillbaka stegvis
 // istället för att ge upp: hellre en svår bricka än en död.
-export function generateTray(board, rng, { allowed = null, tries = 60 } = {}) {
+export function generateTray(board, rng, { allowed = null, tries = 60, tokens = null } = {}) {
   const fullness = countFilled(board) / (SIZE * SIZE);
   let fallback = null;
 
@@ -210,34 +215,46 @@ export function generateTray(board, rng, { allowed = null, tries = 60 } = {}) {
     const eachFits = pieces.every((p) => hasPlacement(board, p));
     if (!eachFits) continue;
     if (!fallback) fallback = pieces;
-    if (traySolvable(board, pieces)) return pieces.map(withColor(rng));
+    if (traySolvable(board, pieces)) return pieces.map(withColor(rng, tokens));
   }
 
-  if (fallback) return fallback.map(withColor(rng));
+  if (fallback) return fallback.map(withColor(rng, tokens));
 
   // Sista utvägen: minsta möjliga bitar.
   const tiny = [PIECE_BY_ID.dot, PIECE_BY_ID.h2, PIECE_BY_ID.v2].filter((p) =>
     hasPlacement(board, p)
   );
   const pieces = [0, 1, 2].map((i) => tiny[i % Math.max(tiny.length, 1)] || PIECE_BY_ID.dot);
-  return pieces.map(withColor(rng));
+  return pieces.map(withColor(rng, tokens));
 }
 
-const withColor = (rng) => (piece) => ({
-  ...piece,
-  key: `${piece.id}-${Math.floor(rng() * 1e9)}`,
-  color: Math.floor(rng() * COLORS.length),
-});
+// tokens: { types: ['🍁'], chance: 0.55 } — chans per bit att den bär en figur.
+const withColor = (rng, tokenOpts) => (piece) => {
+  const out = {
+    ...piece,
+    key: `${piece.id}-${Math.floor(rng() * 1e9)}`,
+    color: Math.floor(rng() * COLORS.length),
+  };
+  if (tokenOpts && tokenOpts.types?.length && rng() < (tokenOpts.chance ?? 0.55)) {
+    const type = tokenOpts.types[Math.floor(rng() * tokenOpts.types.length)];
+    const slot = Math.floor(rng() * piece.cells.length);
+    out.tokens = { [slot]: type };
+  }
+  return out;
+};
 
 /* ---------- bomber ---------- */
 
 // Räknar ner alla bomber ett steg. Returnerar nytt bräde och om någon small.
+// När nedräkningen når noll förstenas rutan i stället för att banan tar slut.
+// Utan dragbudget är direktförlust för hårt — men ett permanent hål i brädet
+// gör resten av partiet mätbart svårare, vilket är press nog.
 export function tickBombs(board) {
   let exploded = false;
   const next = board.map((cell) => {
     if (!cell || cell.t !== 'bomb') return cell;
     const n = (cell.n ?? 5) - 1;
-    if (n <= 0) exploded = true;
+    if (n <= 0) { exploded = true; return { c: cell.c ?? 0, t: 'stone', preset: true }; }
     return { ...cell, n };
   });
   return { board: next, exploded };

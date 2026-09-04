@@ -1,53 +1,91 @@
-// levels.js — 160 banor i 8 paket. De första är handbyggda för att lära ut
-// mekanikerna, resten genereras deterministiskt från bannumret.
-// Samma bannummer ger alltid exakt samma bana, på alla enheter.
+// levels.js — 160 banor i 8 paket.
+//
+// Så funkar en bana: det finns ingen dragbudget och ingen klocka. Bitarna du får
+// bär ibland en figur. Lägger du en sådan bit hamnar figuren på brädet, och du
+// samlar in den först när raden eller kolumnen den sitter i rensas. Banan är klar
+// när du samlat allt, och slut när ingen av dina tre bitar får plats — precis som
+// i klassiskt läge. Pressen kommer från att överleva, inte från en nedräkning.
+//
+// Stjärnorna belönar effektivitet i stället: klara banan alls ger en stjärna,
+// klara den på få utlagda bitar ger två eller tre.
 
 import { makeRng, SIZE, idx } from './engine.js';
 
 export const PACKS = [
-  { id: 0, name: 'Grunderna', hint: 'Rensa rader och kolumner.', tint: '#6ee06a' },
-  { id: 1, name: 'Stenriket', hint: 'Sten försvinner aldrig. Bygg runt den.', tint: '#9aa3b8' },
-  { id: 2, name: 'Isvidderna', hint: 'Is spricker först, försvinner andra gången.', tint: '#34d3e0' },
-  { id: 3, name: 'Gruvan', hint: 'Ädelstenar samlas när linjen de sitter i rensas.', tint: '#ffd93d' },
-  { id: 4, name: 'Krutdurken', hint: 'Bomber tickar varje drag. Rensa dem i tid.', tint: '#ff5d73' },
-  { id: 5, name: 'Trängseln', hint: 'Fullt bräde, få drag.', tint: '#ff9f43' },
-  { id: 6, name: 'Kaoslabbet', hint: 'Allt på en gång.', tint: '#ff6bd6' },
-  { id: 7, name: 'Rötdjupet', hint: 'Ingen nåd.', tint: '#7b6cff' },
+  { id: 0, name: 'Lövskogen',    token: '🍁', hint: 'Samla löven som följer med bitarna ner.',    tint: '#ff9f43' },
+  { id: 1, name: 'Stenriket',    token: '🌰', hint: 'Sten försvinner aldrig. Bygg runt den.',      tint: '#9aa3b8' },
+  { id: 2, name: 'Isvidderna',   token: '❄️', hint: 'Is spricker först, försvinner andra gången.', tint: '#34d3e0' },
+  { id: 3, name: 'Svampgrottan', token: '🍄', hint: 'Trängre bräde, samma uppdrag.',               tint: '#ff5d73' },
+  { id: 4, name: 'Myren',        token: '🐸', hint: 'Bomber tickar för varje bit du lägger.',      tint: '#6ee06a' },
+  { id: 5, name: 'Bärlandet',    token: '🫐', hint: 'Halva brädet är redan upptaget.',             tint: '#7b6cff' },
+  { id: 6, name: 'Fjärilsdalen', token: '🦋', hint: 'Två sorters figurer samtidigt.',              tint: '#ff6bd6' },
+  { id: 7, name: 'Rötdjupet',    token: '💎', hint: 'Allt på en gång. Ingen nåd.',                 tint: '#ffd93d' },
 ];
 
 export const LEVELS_PER_PACK = 20;
 export const TOTAL_LEVELS = PACKS.length * LEVELS_PER_PACK;
 
-export const GOAL_LABELS = {
-  score: (n) => `Nå ${n.toLocaleString('sv-SE')} poäng`,
-  lines: (n) => `Rensa ${n} linjer`,
-  gems: (n) => `Samla ${n} ädelstenar`,
-  ice: () => 'Krossa all is',
-  clean: () => 'Rensa bort allt som låg på brädet',
-  combo: (n) => `Rensa ${n} linjer i ett enda drag`,
-};
+export function goalLabel(g) {
+  switch (g.type) {
+    case 'collect': return `Samla ${g.count}`;
+    case 'score': return `Nå ${g.count.toLocaleString('sv-SE')} poäng`;
+    case 'lines': return `Rensa ${g.count} linjer`;
+    case 'ice': return 'Krossa all is';
+    case 'clean': return 'Rensa bort allt som låg där från början';
+    case 'combo': return `${g.count} linjer i ett drag`;
+    default: return '';
+  }
+}
 
 /* ---------- hjälpare för att strö ut hinder ---------- */
 
-// Lägger celler slumpvis men vägrar fylla en hel rad eller kolumn från start.
+// Hinder läggs i små klumpar nära kanterna, aldrig som lösa prickar mitt på
+// brädet. Enstaka utspridda rutor fragmenterar ytan så illa att stora bitar
+// inte får plats någonstans, och då dör banan efter ett par drag.
 function scatter(preset, rng, count, make) {
+  if (count <= 0) return preset;
   const rowCount = new Array(SIZE).fill(0);
   const colCount = new Array(SIZE).fill(0);
-  for (const [r, c] of preset) {
-    rowCount[r]++;
-    colCount[c]++;
-  }
-  let guard = 0;
-  let placed = 0;
-  while (placed < count && guard++ < count * 40) {
-    const r = Math.floor(rng() * SIZE);
-    const c = Math.floor(rng() * SIZE);
-    if (preset.some(([pr, pc]) => pr === r && pc === c)) continue;
-    if (rowCount[r] >= SIZE - 2 || colCount[c] >= SIZE - 2) continue;
+  for (const [r, c] of preset) { rowCount[r]++; colCount[c]++; }
+  const taken = new Set(preset.map(([r, c]) => r * SIZE + c));
+
+  const free = (r, c) =>
+    r >= 0 && c >= 0 && r < SIZE && c < SIZE &&
+    !taken.has(r * SIZE + c) &&
+    rowCount[r] < SIZE - 3 && colCount[c] < SIZE - 3;
+
+  // hur långt från mitten en ruta ligger — kantnära är bättre
+  const edginess = (r, c) => Math.max(Math.abs(r - 3.5), Math.abs(c - 3.5));
+
+  const put = (r, c) => {
     preset.push(make(r, c, rng));
-    rowCount[r]++;
-    colCount[c]++;
-    placed++;
+    taken.add(r * SIZE + c);
+    rowCount[r]++; colCount[c]++;
+  };
+
+  let placed = 0;
+  let guard = 0;
+  while (placed < count && guard++ < count * 30) {
+    // välj startruta: fyra kandidater, ta den som ligger mest åt kanten
+    let seed = null;
+    for (let i = 0; i < 4; i++) {
+      const r = Math.floor(rng() * SIZE);
+      const c = Math.floor(rng() * SIZE);
+      if (!free(r, c)) continue;
+      if (!seed || edginess(r, c) > edginess(seed[0], seed[1])) seed = [r, c];
+    }
+    if (!seed) continue;
+
+    const blob = Math.min(count - placed, 2 + Math.floor(rng() * 2)); // 2-3 rutor
+    let [r, c] = seed;
+    put(r, c); placed++;
+    for (let k = 1; k < blob; k++) {
+      const dirs = [[0, 1], [1, 0], [0, -1], [-1, 0]].sort(() => rng() - 0.5);
+      const step = dirs.find(([dr, dc]) => free(r + dr, c + dc));
+      if (!step) break;
+      r += step[0]; c += step[1];
+      put(r, c); placed++;
+    }
   }
   return preset;
 }
@@ -55,38 +93,22 @@ function scatter(preset, rng, count, make) {
 const block = (r, c, rng) => [r, c, 'block', { c: Math.floor(rng() * 7) }];
 const stone = (r, c) => [r, c, 'stone', {}];
 const ice = (r, c) => [r, c, 'ice', { hp: 2 }];
-const gem = (r, c) => [r, c, 'gem', {}];
 
 /* ---------- handbyggda introbanor ---------- */
 
 const HANDMADE = {
-  1: { moves: 18, goals: [{ type: 'lines', count: 3 }], preset: [] },
-  2: { moves: 20, goals: [{ type: 'lines', count: 5 }], preset: [] },
-  3: { moves: 18, goals: [{ type: 'score', count: 800 }], preset: [] },
+  1: { goals: [{ type: 'collect', count: 3 }], preset: [], par: [8, 6] },
+  2: { goals: [{ type: 'collect', count: 5 }], preset: [], par: [13, 9] },
+  3: { goals: [{ type: 'collect', count: 6 }, { type: 'lines', count: 6 }], preset: [], par: [16, 12] },
   4: {
-    moves: 18,
-    goals: [{ type: 'clean' }],
+    goals: [{ type: 'collect', count: 5 }, { type: 'clean' }],
     preset: [
       [7, 0, 'block', { c: 0 }], [7, 1, 'block', { c: 0 }], [7, 2, 'block', { c: 0 }],
       [7, 3, 'block', { c: 0 }], [7, 4, 'block', { c: 0 }],
     ],
+    par: [14, 10],
   },
-  5: { moves: 20, goals: [{ type: 'combo', count: 2 }], preset: [] },
-  6: {
-    moves: 20,
-    goals: [{ type: 'lines', count: 6 }],
-    preset: [[3, 3, 'stone', {}], [3, 4, 'stone', {}], [4, 3, 'stone', {}], [4, 4, 'stone', {}]],
-  },
-  7: {
-    moves: 22,
-    goals: [{ type: 'ice' }],
-    preset: [[2, 2, 'ice', { hp: 2 }], [2, 5, 'ice', { hp: 2 }], [5, 2, 'ice', { hp: 2 }], [5, 5, 'ice', { hp: 2 }]],
-  },
-  8: {
-    moves: 22,
-    goals: [{ type: 'gems', count: 5 }],
-    preset: [[0, 1, 'gem', {}], [1, 6, 'gem', {}], [4, 2, 'gem', {}], [6, 5, 'gem', {}], [7, 3, 'gem', {}]],
-  },
+  5: { goals: [{ type: 'collect', count: 8 }, { type: 'combo', count: 2 }], preset: [], par: [20, 15] },
 };
 
 /* ---------- generator ---------- */
@@ -100,119 +122,100 @@ export function buildLevel(id) {
   const rng = makeRng(id * 7919 + 104729);
 
   const hand = HANDMADE[id];
-  let moves;
   let goals;
   let preset = [];
+  let par;
+  let tokenTypes = [pack.token];
+  let tokenChance = 0.6;
+  // Senare paket har fulare bräden, så figurerna kommer lite tätare där.
+  let need = 0;
 
   if (hand) {
-    moves = hand.moves;
     goals = hand.goals;
     preset = hand.preset.map((p) => [...p]);
+    par = hand.par;
   } else {
-    const hard = packIndex / (PACKS.length - 1); // 0 → 1 över hela spelet
-    moves = Math.round(28 - t * 7 + (1 - hard) * 4);
+    tokenChance = 0.6 + packIndex * 0.022;
+    need = 4 + Math.round(t * 5) + Math.round(packIndex * 0.7); // 4 → 14 figurer
+    goals = [{ type: 'collect', count: need }];
 
     switch (packIndex) {
       case 0:
-        goals = rng() < 0.5
-          ? [{ type: 'lines', count: 4 + Math.round(t * 10) }]
-          : [{ type: 'score', count: 800 + Math.round(t * 5200) }];
-        scatter(preset, rng, Math.round(t * 8), block);
+        scatter(preset, rng, Math.round(t * 4), block);
         break;
 
       case 1:
-        scatter(preset, rng, 2 + Math.round(t * 7), stone);
-        goals = [{ type: 'lines', count: 5 + Math.round(t * 9) }];
+        scatter(preset, rng, 2 + Math.round(t * 4), stone);
         break;
 
-      case 2: {
-        const n = 3 + Math.round(t * 8);
-        scatter(preset, rng, n, ice);
-        scatter(preset, rng, Math.round(t * 5), block);
-        goals = [{ type: 'ice' }];
+      case 2:
+        scatter(preset, rng, 2 + Math.round(t * 5), ice);
+        scatter(preset, rng, Math.round(t * 3), block);
         break;
-      }
 
-      case 3: {
-        const n = 4 + Math.round(t * 10);
-        scatter(preset, rng, n, gem);
-        scatter(preset, rng, 2 + Math.round(t * 8), stone);
-        goals = [{ type: 'gems', count: n }];
+      case 3:
+        scatter(preset, rng, 4 + Math.round(t * 6), block);
+        scatter(preset, rng, 1 + Math.round(t * 3), stone);
         break;
-      }
 
       case 4: {
-        const bombs = 1 + Math.round(t * 2);
+        const bombs = 1 + Math.round(t);
         for (let i = 0; i < bombs; i++) {
-          scatter(preset, rng, 1, (r, c) => [r, c, 'bomb', { n: 12 - Math.round(t * 5) }]);
+          scatter(preset, rng, 1, (r, c) => [r, c, 'bomb', { n: 26 - Math.round(t * 8) }]);
         }
-        scatter(preset, rng, 4 + Math.round(t * 10), block);
-        goals = [{ type: 'lines', count: 6 + Math.round(t * 8) }];
+        scatter(preset, rng, 2 + Math.round(t * 4), block);
         break;
       }
 
       case 5:
-        scatter(preset, rng, 12 + Math.round(t * 16), block);
-        scatter(preset, rng, Math.round(t * 4), stone);
-        goals = rng() < 0.5
-          ? [{ type: 'clean' }]
-          : [{ type: 'lines', count: 8 + Math.round(t * 8) }];
-        moves = Math.round(24 - t * 6);
+        scatter(preset, rng, 8 + Math.round(t * 8), block);
+        scatter(preset, rng, 1 + Math.round(t * 3), stone);
         break;
 
-      case 6: {
-        const gems = 4 + Math.round(t * 8);
-        scatter(preset, rng, gems, gem);
-        scatter(preset, rng, 3 + Math.round(t * 6), ice);
-        scatter(preset, rng, 2 + Math.round(t * 5), stone);
-        goals = [
-          { type: 'gems', count: gems },
-          { type: 'combo', count: 2 + Math.round(t) },
-        ];
+      case 6:
+        tokenTypes = [pack.token, PACKS[3].token];
+        scatter(preset, rng, 2 + Math.round(t * 4), ice);
+        scatter(preset, rng, 2 + Math.round(t * 3), stone);
+        scatter(preset, rng, 3 + Math.round(t * 4), block);
         break;
-      }
 
-      default: {
-        const gems = 6 + Math.round(t * 10);
-        scatter(preset, rng, gems, gem);
-        scatter(preset, rng, 4 + Math.round(t * 8), ice);
-        scatter(preset, rng, 3 + Math.round(t * 7), stone);
-        scatter(preset, rng, 1, (r, c) => [r, c, 'bomb', { n: 14 - Math.round(t * 6) }]);
-        goals = [
-          { type: 'gems', count: gems },
-          { type: 'score', count: 4000 + Math.round(t * 9000) },
-        ];
-        moves = Math.round(30 - t * 8);
-      }
+      default:
+        tokenTypes = [pack.token, PACKS[6].token];
+        scatter(preset, rng, 2 + Math.round(t * 4), ice);
+        scatter(preset, rng, 2 + Math.round(t * 3), stone);
+        scatter(preset, rng, 3 + Math.round(t * 5), block);
+        scatter(preset, rng, 1, (r, c) => [r, c, 'bomb', { n: 26 - Math.round(t * 8) }]);
+        break;
     }
-  }
 
-  // Uppskattad poäng för att precis klara banan. Första stjärnan får man
-  // alltid för att klara den, de två andra kräver att man spelar bra.
-  const estimate = Math.max(
-    ...goals.map((g) => {
-      if (g.type === 'score') return g.count;
-      if (g.type === 'lines') return 170 * g.count;
-      if (g.type === 'gems') return 190 * g.count;
-      if (g.type === 'combo') return 900;
-      return 1100; // ice, clean
-    })
-  );
+    // Golvet är hur många bitar man måste lägga för att över huvud taget få
+    // så många figurer. Under det går inte, hur bra man än spelar.
+    const floor = need / tokenChance;
+    par = [Math.round(floor * 1.5 + preset.length * 0.1), Math.round(floor * 1.12)];
+  }
 
   return {
     id,
     pack: packIndex,
     packName: pack.name,
+    token: pack.token,
     step: step + 1,
-    moves,
     goals,
     preset,
-    stars: [0, Math.round(estimate * 1.35), Math.round(estimate * 2.2)],
+    par,                    // [två stjärnor, tre stjärnor] mätt i antal utlagda bitar
+    tokens: { types: tokenTypes, chance: tokenChance },
     seed: id * 2654435761,
   };
 }
 
-// Bygger startbrädet för en bana.
+// Antal stjärnor för ett klarat försök. Att klara banan ger alltid minst en.
+export function starsFor(level, movesUsed) {
+  if (!level?.par) return 1;
+  if (movesUsed <= level.par[1]) return 3;
+  if (movesUsed <= level.par[0]) return 2;
+  return 1;
+}
+
 export function boardFromLevel(level) {
   const board = new Array(SIZE * SIZE).fill(null);
   for (const [r, c, type, extra] of level.preset) {

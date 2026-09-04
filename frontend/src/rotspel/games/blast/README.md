@@ -1,36 +1,46 @@
 # Rötblast
 
 Block Blast-liknande pusselspel för rötspel-sidan. 8×8, tre bitar åt gången, ingen rotation.
-Klassiskt läge med rekord och äventyrsläge med 160 banor.
+
+**Klassiskt** — lägg bitar tills ingen får plats. Då räknas poängen.
+
+**Äventyr** — 160 banor. Ingen dragbudget och ingen klocka: bitarna du får bär ibland en
+figur, figuren följer med ner på brädet, och du samlar in den först när raden eller kolumnen
+den ligger i rensas. Banan är klar när du samlat allt, och slut när brädet är fullt — samma
+förlustvillkor som klassiskt. Pressen kommer från att överleva, inte från en nedräkning.
+
+Stjärnorna belönar effektivitet i stället för poäng: klara banan alls ger en stjärna, klara
+den på få utlagda bitar ger två eller tre.
 
 ## Filer
 
 | Fil | Vad |
 |---|---|
-| `engine.js` | All spellogik. Ingen React, inget DOM — går att testa i node. |
+| `engine.js` | All spellogik. Ingen React, inget DOM. |
 | `pieces.js` | 37 bitformer och färgpaletten. |
-| `levels.js` | 8 paket × 20 banor. De första handbyggda, resten genereras från bannumret. |
+| `levels.js` | 8 paket × 20 banor. De fem första handbyggda, resten genereras från bannumret. |
 | `audio.js` | Web Audio. Alla ljud genereras, inga ljudfiler. |
 | `particles.js` | Canvaslager för partiklar. |
 | `BlastGame.jsx` | Meny, bankarta, spelplan, drag & drop, animationer. |
 | `blast.css` | Allt utseende. Alla klasser är prefixade `bb-`. |
 | `engine.test.mjs` | Röktest: 60 partier + alla 160 banor. `node engine.test.mjs` |
+| `levels.sim.mjs` | Spelar igenom alla banor med en bot och rapporterar svårighetsgrad. |
 
-Inga nya beroenden. React 18 och en bundler som klarar `import './blast.css'` räcker, vilket Vite gör.
+Inga nya beroenden. React 18 och en bundler som klarar `import './blast.css'` räcker.
 
 ## Lägg in det
 
 ```bash
 cd ~/vtrapp/frontend/src/rotspel/games
 mkdir blast && cp /din/nedladdning/blast/* blast/
+rm blast/engine.test.mjs blast/levels.sim.mjs   # eller flytta till en test-mapp
 ```
 
-Sen en rad i din registry i `games/`:
+Sen en post i din registry:
 
 ```js
 import BlastGame from './blast/BlastGame.jsx';
 
-// ...i listan över spel
 {
   id: 'blast',
   name: 'Rötblast',
@@ -39,24 +49,20 @@ import BlastGame from './blast/BlastGame.jsx';
 }
 ```
 
-Fältnamnen ovan är gissade från hur Snake ligger — kolla din befintliga post och matcha den.
+Fältnamnen ovan är gissade utifrån hur Snake ligger — kolla din befintliga post och matcha den.
 
 ### Highscore
 
-Komponenten tar en valfri prop `onScore`, som anropas med slutpoängen när ett klassiskt parti
-tar slut. Äventyrsbanor rapporterar inte in, de sparar stjärnor lokalt.
+`BlastGame` tar en valfri prop `onScore(poäng)` som anropas när ett klassiskt parti tar slut.
+Äventyrsbanor rapporterar inte in — stjärnorna sparas i `localStorage` under
+`rotspel-blast-v1`.
 
 ```jsx
 const { submit } = useHighscore('blast');
 <BlastGame onScore={submit} />
 ```
 
-Matcha mot vad din `useHighscore` faktiskt returnerar. Rekord och stjärnor sparas dessutom
-alltid i `localStorage` under nyckeln `rotspel-blast-v1`.
-
 ### Deploy
-
-Vanliga vägen:
 
 ```bash
 git pull
@@ -66,30 +72,54 @@ pm2 restart vtrapp-backend
 sudo systemctl restart nginx
 ```
 
-## Skruva på det
+## Balansen, och hur du ändrar den
 
-**Svårighetsgrad.** `generateTray()` i `engine.js` väljer tre bitar som garanterat går att
-spela ut i någon ordning. `bias` i `weightedPiece()` styr hur mycket mindre bitarna blir när
-brädet fylls — höj till `0.2` för snällare spel, sänk till `0.05` för brutalt.
+`node levels.sim.mjs` spelar igenom alla 160 banor tre gånger med en medelmåttig bot och
+skriver ut hur ofta den klarar dem. Kör den efter varje ändring i `levels.js`. Så här ser det
+ut nu:
 
-**Poäng.** `COMBO_MULT` och `streakMult` i `engine.js`. Just nu ger fyra linjer i ett drag
-med fem rensningar i rad 4 160 poäng.
+```
+Lövskogen      klarade  90%  bitar 17   Myren          klarade  77%  bitar 19
+Stenriket      klarade  92%  bitar 17   Bärlandet      klarade  78%  bitar 21
+Isvidderna     klarade  88%  bitar 17   Fjärilsdalen   klarade  77%  bitar 20
+Svampgrottan   klarade  85%  bitar 19   Rötdjupet      klarade  58%  bitar 21
+```
 
-**Banor.** `buildLevel(id)` i `levels.js`. Lägg till en post i `HANDMADE` för att bygga en bana
-för hand, annars genereras den. Vill du ha fler banor: höj `LEVELS_PER_PACK` eller lägg till
-ett paket i `PACKS` och en `case` i switchen.
+Boten har ingen framförhållning, så en människa ligger klart över de siffrorna. Snittet
+landar på knappt två stjärnor, vilket betyder att tre stjärnor är en riktig utmaning.
 
-**Nya hindertyper.** Lägg till typen i `resolveClears()` i `engine.js`, en `.bb-t-dintyp`-regel
-i `blast.css`, och strö ut den från `buildLevel`.
+**Fler eller färre figurer per bana:** `need` i `buildLevel`. **Hur ofta en bit bär en figur:**
+`tokenChance`. De två tillsammans avgör hur många bitar man minst måste lägga, och `par`
+räknas ut från just det — sänk inte `par[1]` under `need / tokenChance`, då blir tre stjärnor
+matematiskt omöjligt. `engine.test.mjs` kollar det åt dig.
 
-**Ljud.** `audio.js`. Den viktiga effekten är `sfx.clear()` — varje rensning i rad ligger ett
-halvtonssteg högre. Ändra `base` där om du vill ha en annan tonart.
+**Hinder** läggs av `scatter()` i klumpar om två eller tre rutor, med dragning mot kanterna.
+Det är avsiktligt: lösa enstaka rutor mitt på brädet fragmenterar ytan så illa att stora bitar
+inte får plats någonstans, och då dör banan efter ett par drag. Om du lägger till egna hinder,
+gör det i klumpar.
 
-**Färger.** `COLORS` i `pieces.js` för blocken, CSS-variablerna högst upp i `blast.css` för resten.
+**Svårighetsgraden i bitutdelningen:** `bias` i `weightedPiece()` i `engine.js` styr hur mycket
+mindre bitarna blir när brädet fylls. Höj till `0.2` för snällare spel, sänk till `0.05` för
+brutalt.
+
+**Poäng:** `COMBO_MULT` och `streakMult` i `engine.js`.
+
+**Ljud:** `audio.js`. Den viktiga effekten är `sfx.clear()` — varje rensning i rad ligger ett
+halvtonssteg högre.
+
+## Två mål jag tog bort efter att ha testat dem
+
+"Krossa all is" och "rensa bort allt som låg där från början" ser rimliga ut men kräver att du
+fyller exakt den rad en enstaka kvarvarande ruta ligger i. Boten klarade under 20% av de
+banorna. De finns kvar som måltyper i koden och används i handbyggda bana 4, där det
+förplacerade ligger som en sammanhängande rad och därför går att rensa.
+
+Samma sak med combo som obligatoriskt mål: eftersom banan inte kan ta slut på tid kan man
+fastna hur länge som helst utan att råka få en dubbelrensning. Det används bara i bana 5 som
+introduktion.
 
 ## Saker jag medvetet lät bli
 
-- Powerups (bomb, hammare, blanda om). Passar dåligt ihop med highscore om de är gratis.
-- Onlinerankning per bana. Stjärnorna ligger i `localStorage` — flytta till `scores.js` om du
-  vill kunna tävla mot andra.
+- Powerups. Passar dåligt ihop med highscore om de är gratis.
+- Onlinerankning per bana. Flytta stjärnorna till `scores.js` om du vill kunna tävla.
 - Rotation av bitar. Originalet har det inte, och det är därför spelet är svårt.
