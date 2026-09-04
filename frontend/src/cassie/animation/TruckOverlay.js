@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { groundMetersPerPixel } from './routeMath.js';
 
 // Ren three.js — ingen google.maps-referens här. Lyder samma duck-typade
 // protokoll som ett riktigt google.maps.WebGLOverlayView förväntar sig
@@ -13,11 +14,18 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 // till det systemet pekar norrut vid heading 0.
 
 const MODEL_URL = '/models/truck.glb';
-const MODEL_SCALE = 1;
 // Meter över vägbanan — litet lyft undviker z-fighting mot markplattan.
 const MODEL_ALTITUDE = 0.5;
-// Om lastbilsmodellen inte är byggd med "framåt" längs -Z, justera i grader.
-const MODEL_YAW_TRIM_DEG = 0;
+// Modellens "framåt" pekade bakåt längs rutten med 0 — glTF-tillgången är
+// alltså byggd vänd åt andra hållet. 180° vänder den rätt.
+const MODEL_YAW_TRIM_DEG = 180;
+// Ungefärlig egen storlek (meter) hos modellen vid scale=1. Det här är
+// kalibreringskonstanten mellan "pixlar på skärmen" (regeln användaren styr)
+// och glTF-filens egna, okända enheter — justera om storleksreglaget känns
+// fel skalat (t.ex. om hela intervallet blir för stort/litet).
+const MODEL_UNIT_SIZE_METERS = 8;
+// Standardvärde innan CassiePage hunnit sätta ett från URL-state.
+const DEFAULT_PIXEL_SIZE = 90;
 
 export class TruckOverlay {
   constructor() {
@@ -28,6 +36,7 @@ export class TruckOverlay {
     this.bankGroup = null;
     this.modelGroup = null;
     this.pose = { lat: 0, lng: 0, headingDeg: 0, bankDeg: 0 };
+    this.pixelSize = DEFAULT_PIXEL_SIZE;
     this.visible = true;
     this.loaded = false;
     // Sätts av GoogleMapProvider.attachOverlay — enda kopplingen ut mot
@@ -60,9 +69,9 @@ export class TruckOverlay {
       MODEL_URL,
       (gltf) => {
         const model = gltf.scene;
-        model.scale.setScalar(MODEL_SCALE);
         // Rätar upp modellen från glTF:s Y-upp till den lokala Z-upp som
-        // transformern använder.
+        // transformern använder. Den faktiska skärmstorleken sätts per
+        // bildruta i onDraw, på modelGroup — inte här.
         model.rotation.x = Math.PI / 2;
         model.rotation.z = THREE.MathUtils.degToRad(MODEL_YAW_TRIM_DEG);
         this.modelGroup.add(model);
@@ -104,9 +113,28 @@ export class TruckOverlay {
     this.visible = visible;
   }
 
+  /**
+   * Önskad skärmstorlek i ungefärliga pixlar. Räknas om till en faktisk
+   * meter-skala varje bildruta (se onDraw) utifrån aktuell zoomnivå, så att
+   * lastbilen ser lika stor ut oavsett hur inzoomad kartan är just nu.
+   */
+  setPixelSize(px) {
+    const value = Number(px);
+    this.pixelSize = Number.isFinite(value) && value > 0 ? value : DEFAULT_PIXEL_SIZE;
+    this.requestRedraw();
+  }
+
   onDraw({ gl, transformer }) {
     if (!this.renderer || !this.scene || !this.camera) return;
     if (!this.visible || !this.loaded) return;
+
+    // Skalan räknas om varje bildruta utifrån den faktiska kamerans zoom
+    // just nu (inte en cachad "pace zoom") — annars blir den fel så fort
+    // kameran rör sig, t.ex. under intro/outro-flygningen eller om
+    // sliden dras medan kartan står still i en översiktsvy.
+    const cameraParams = transformer.getCameraParams();
+    const groundRes = groundMetersPerPixel(cameraParams.zoom, this.pose.lat);
+    this.modelGroup.scale.setScalar((this.pixelSize * groundRes) / MODEL_UNIT_SIZE_METERS);
 
     const matrix = transformer.fromLatLngAltitude({
       lat: this.pose.lat,

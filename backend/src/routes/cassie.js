@@ -201,6 +201,7 @@ router.post('/routes', (req, res) => {
     pins: ['always', 'hidden', 'proximity'].includes(body.pins) ? body.pins : 'proximity',
     fmt: ['16x9', '9x16', '1x1'].includes(body.fmt) ? body.fmt : '16x9',
     style: ['roadmap', 'satellite'].includes(body.style) ? body.style : 'roadmap',
+    scale: Number.isFinite(Number(body.scale)) && Number(body.scale) > 0 ? Number(body.scale) : 90,
     createdAt: Date.now()
   };
 

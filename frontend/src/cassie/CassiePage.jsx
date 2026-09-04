@@ -18,6 +18,7 @@ export default function CassiePage() {
   const [pinsMode, setPinsMode] = useState(initial.pins);
   const [format, setFormat] = useState(initial.fmt);
   const [mapStyle, setMapStyle] = useState(initial.style);
+  const [truckSize, setTruckSize] = useState(initial.scale);
   const [routeSlug, setRouteSlug] = useState(initial.route);
 
   const [route, setRoute] = useState(null);
@@ -83,6 +84,7 @@ export default function CassiePage() {
     setPinsMode(match.pins);
     setFormat(match.fmt);
     setMapStyle(match.style);
+    setTruckSize(Number.isFinite(match.scale) && match.scale > 0 ? match.scale : initial.scale);
   }, [routeSlug, savedRoutes]);
 
   // Hämta rutt från backend (ORS) när start och mål är satta.
@@ -119,15 +121,27 @@ export default function CassiePage() {
 
   // Skriv tillbaka state till URL:en (replaceState, fyller inte historiken).
   useEffect(() => {
-    writeUrlState({ from, to, fromLabel, toLabel, dur: duration, pins: pinsMode, fmt: format, style: mapStyle, route: routeSlug });
-  }, [from, to, fromLabel, toLabel, duration, pinsMode, format, mapStyle, routeSlug]);
+    writeUrlState({
+      from,
+      to,
+      fromLabel,
+      toLabel,
+      dur: duration,
+      pins: pinsMode,
+      fmt: format,
+      style: mapStyle,
+      scale: truckSize,
+      route: routeSlug
+    });
+  }, [from, to, fromLabel, toLabel, duration, pinsMode, format, mapStyle, truckSize, routeSlug]);
 
   const animation = useRouteAnimation({
     mapProvider: providerRef.current,
     ready: mapReady,
     route,
     durationSeconds: duration,
-    pinsMode
+    pinsMode,
+    truckSize
   });
 
   const handleSetFrom = useCallback((hit) => {
@@ -161,7 +175,8 @@ export default function CassiePage() {
           dur: duration,
           pins: pinsMode,
           fmt: format,
-          style: mapStyle
+          style: mapStyle,
+          scale: truckSize
         });
         setSavedRoutes((prev) => [...prev, saved]);
         setRouteSlug(saved.slug);
@@ -169,7 +184,7 @@ export default function CassiePage() {
         console.error('[cassie] kunde inte spara rutten:', err);
       }
     },
-    [from, to, fromLabel, toLabel, duration, pinsMode, format, mapStyle]
+    [from, to, fromLabel, toLabel, duration, pinsMode, format, mapStyle, truckSize]
   );
 
   const handleLoadRoute = useCallback((record) => {
@@ -182,6 +197,7 @@ export default function CassiePage() {
     setPinsMode(record.pins);
     setFormat(record.fmt);
     setMapStyle(record.style);
+    setTruckSize(Number.isFinite(record.scale) && record.scale > 0 ? record.scale : 90);
     setRouteSlug(record.slug);
   }, []);
 
@@ -241,6 +257,8 @@ export default function CassiePage() {
         onFormatChange={setFormat}
         mapStyle={mapStyle}
         onMapStyleChange={setMapStyle}
+        truckSize={truckSize}
+        onTruckSizeChange={setTruckSize}
         onPlay={handlePlay}
         onReset={animation.reset}
         phase={animation.phase}

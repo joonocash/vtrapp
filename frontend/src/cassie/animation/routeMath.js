@@ -208,6 +208,16 @@ export class ScalarSmoother {
   }
 }
 
+/**
+ * Marknivå-upplösning (meter per skärmpixel) vid en given zoomnivå och
+ * latitud, enligt standardformeln för Web Mercator. Delad mellan
+ * useRouteAnimation.js (markörernas fade-tröskel) och TruckOverlay.js
+ * (lastbilens skärmstorlek), så de två alltid resonerar i samma enhet.
+ */
+export function groundMetersPerPixel(zoom, lat) {
+  return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
+}
+
 /** Bounding box (BBox) för en lista { lat, lng }-punkter. */
 export function boundsOf(points) {
   let north = -90;

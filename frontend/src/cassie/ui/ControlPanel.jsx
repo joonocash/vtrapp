@@ -95,6 +95,8 @@ export default function ControlPanel({
   onFormatChange,
   mapStyle,
   onMapStyleChange,
+  truckSize,
+  onTruckSizeChange,
   onPlay,
   onReset,
   phase,
@@ -159,6 +161,22 @@ export default function ControlPanel({
             <option value="satellite">Satellit</option>
           </select>
         </div>
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">
+          Lastbilsstorlek <span className="text-gray-600">({Math.round(truckSize)} px)</span>
+        </label>
+        <input
+          type="range"
+          min={20}
+          max={250}
+          step={1}
+          value={truckSize}
+          onChange={(e) => onTruckSizeChange(Number(e.target.value))}
+          disabled={!canControl}
+          className="w-full accent-blue-500 disabled:opacity-50"
+        />
       </div>
 
       <div>

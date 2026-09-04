@@ -8,6 +8,7 @@ import {
   boundsZoom,
   buildRouteTimeline,
   computeZoomForPace,
+  groundMetersPerPixel,
   haversineDistance,
   lookAheadDistance,
   sampleRouteAtTime,
@@ -45,10 +46,6 @@ function lerp(a, b, t) {
 function lerpAngleDeg(a, b, t) {
   const diff = (((b - a + 540) % 360) + 360) % 360 - 180;
   return (a + diff * t + 360) % 360;
-}
-
-function metersPerPixel(zoom, lat) {
-  return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
 }
 
 function smoothstep(edge0, edge1, x) {
@@ -102,10 +99,11 @@ function applyBookendOpacity(mapProvider, pinsMode, value) {
  *   route: { geometry: {coordinates:[number,number][]}, segments: any[], fromLabel?: string, toLabel?: string } | null,
  *   durationSeconds: number,
  *   pinsMode: 'always' | 'hidden' | 'proximity',
+ *   truckSize: number,
  *   containerRef: { current: HTMLElement | null }
  * }} args
  */
-export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, pinsMode }) {
+export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, pinsMode, truckSize }) {
   const [phase, setPhase] = useState('idle'); // idle|ready|overview|flyToStart|countdown|playing|holdEnd|returnToOverview|done
   const [countdown, setCountdown] = useState(null);
 
@@ -116,9 +114,11 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
   const drivenPathRef = useRef([]);
   const pinsModeRef = useRef(pinsMode);
   const durationRef = useRef(durationSeconds);
+  const truckSizeRef = useRef(truckSize);
 
   pinsModeRef.current = pinsMode;
   durationRef.current = durationSeconds;
+  truckSizeRef.current = truckSize;
 
   // Bygg scenen (tidslinje, overlay, linjer, markörer) när rutten är redo.
   useEffect(() => {
@@ -136,6 +136,18 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
     const overlay = new TruckOverlay();
     mapProvider.attachOverlay(overlay);
     overlayRef.current = overlay;
+
+    // Placera lastbilen vid startpunkten direkt, innan uppspelning har
+    // körts igång — annars finns det inget att visa storleksreglaget mot
+    // medan man står still och ställer in det.
+    overlay.setPixelSize(truckSizeRef.current);
+    overlay.setPose({
+      lat: vertices[0].lat,
+      lng: vertices[0].lng,
+      headingDeg: bearingBetween(vertices[0], vertices[1] || vertices[0]),
+      bankDeg: 0
+    });
+    overlay.requestRedraw();
 
     mapProvider.addPolyline('driven', {
       path: [],
@@ -187,6 +199,12 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
     if (phase === 'playing') return;
     applyBookendOpacity(mapProvider, pinsMode, 1);
   }, [pinsMode, mapProvider, phase]);
+
+  // Storleksreglaget ska synas direkt, oavsett fas — sliden får inte kräva
+  // att man spelar upp för att se resultatet.
+  useEffect(() => {
+    overlayRef.current?.setPixelSize(truckSize);
+  }, [truckSize]);
 
   const runPlayback = useCallback(
     (mp) =>
@@ -262,7 +280,7 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
           mp.setPolylinePath('remaining', remaining);
 
           if (pinsModeRef.current === 'proximity') {
-            const threshold = metersPerPixel(paceZoom, sample.lat) * FADE_RADIUS_PX;
+            const threshold = groundMetersPerPixel(paceZoom, sample.lat) * FADE_RADIUS_PX;
             const distStart = haversineDistance(sample, timeline.vertices[0]);
             const distEnd = haversineDistance(sample, timeline.vertices[timeline.vertices.length - 1]);
             mp.setMarkerOpacity('start', smoothstep(threshold, threshold * 0.35, distStart));
