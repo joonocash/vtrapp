@@ -77,7 +77,11 @@ router.get('/geocode', async (req, res, next) => {
         api_key: config.apiKey,
         text: q,
         size: 6,
-        'boundary.country': config.nordicCountries.join(',')
+        'boundary.country': config.nordicCountries.join(','),
+        // Uteslut region/county/land-nivå — en bar sökning som "Stockholm"
+        // ska matcha staden, inte länets centroid (som kan hamna långt ute
+        // i skärgården och göra rutten osnappbar för ORS).
+        layers: 'locality,localadmin,neighbourhood,borough,address,street,venue'
       }
     });
 
@@ -107,9 +111,12 @@ router.post('/route', async (req, res, next) => {
       return res.status(400).json({ error: 'from och to krävs som [lng, lat]' });
     }
 
+    const payload = { coordinates: [from, to] };
+    console.log('[cassie] POST till ORS /v2/directions/driving-hgv/geojson:', JSON.stringify(payload));
+
     const response = await axios.post(
       `${config.baseUrl}/v2/directions/driving-hgv/geojson`,
-      { coordinates: [from, to] },
+      payload,
       {
         headers: {
           Authorization: config.apiKey,
@@ -142,6 +149,11 @@ router.post('/route', async (req, res, next) => {
       const status = error.response.status;
       const message =
         error.response.data?.error?.message || error.response.data?.error || 'ORS-fel';
+      console.error(
+        '[cassie] ORS svarade med fel:',
+        status,
+        JSON.stringify(error.response.data)
+      );
       return res.status(status >= 400 && status < 600 ? status : 502).json({ error: message });
     }
     next(error);
