@@ -4,10 +4,11 @@ import { StopSelector } from './components/StopSelector';
 import AgentsGame from './components/agents/AgentsGame.jsx';
 import ImpostorGame from './components/ImpostorGame';
 import RotspelPage from './rotspel/RotspelPage.jsx';
+import CassiePage from './cassie/CassiePage.jsx';
 import { useDepartures } from './hooks/useDepartures';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('departures'); // 'departures', 'agents', 'imposter', or 'rotspel'
+  const [activeTab, setActiveTab] = useState('departures'); // 'departures', 'agents', 'imposter', 'rotspel', or 'cassie'
   const [selectedStop, setSelectedStop] = useState({
     areaId: '740025695',
     name: 'Göteborg Ullevi Norra'
@@ -65,6 +66,16 @@ function App() {
             >
               Rötspel
             </button>
+            <button
+              onClick={() => setActiveTab('cassie')}
+              className={`shrink-0 whitespace-nowrap px-5 sm:px-6 py-3 rounded-lg font-semibold transition-all ${
+                activeTab === 'cassie'
+                  ? 'bg-white text-blue-700 shadow-lg'
+                  : 'bg-blue-500 text-white hover:bg-blue-400'
+              }`}
+            >
+              Cassie
+            </button>
           </div>
         </div>
       </header>
@@ -98,9 +109,12 @@ function App() {
         ) : activeTab === 'imposter' ? (
           /* Imposter Game */
           <ImpostorGame />
-        ) : (
+        ) : activeTab === 'rotspel' ? (
           /* Rötspel */
           <RotspelPage />
+        ) : (
+          /* Cassie */
+          <CassiePage />
         )}
       </main>
     </div>

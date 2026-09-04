@@ -14,6 +14,46 @@
   }
 }
 
+/* Cassie: markörer på Google-kartan (skapas som ren DOM i GoogleMapProvider,
+   kan inte nås via Tailwind-klasser på elementet innan det finns). */
+.cassie-marker-pin {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #f97316;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+.cassie-marker-label {
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: rgba(17, 24, 39, 0.85);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: center;
+}
+
+@keyframes cassie-countdown-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  40% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.cassie-countdown-pop {
+  animation: cassie-countdown-pop 1000ms ease-out;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

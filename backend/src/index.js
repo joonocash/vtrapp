@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import apiRoutes from './routes/api.js';
 import agentsRoutes from './routes/agents.js';
 import scoresRoutes from '../scores.js';
+import cassieRoutes from './routes/cassie.js';
 import errorHandler from './middleware/errorHandler.js';
 
 dotenv.config();
@@ -23,6 +24,7 @@ app.use(express.json());
 app.use('/api', apiRoutes);
 app.use('/api/agents', agentsRoutes);
 app.use('/api/scores', scoresRoutes);
+app.use('/api/cassie', cassieRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

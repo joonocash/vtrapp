@@ -74,6 +74,48 @@ TRAFIKLAB_API_KEY=a35a9ed3f76342c8a5640d193af486c4
 
 Spara med `Ctrl+O`, Enter, och avsluta med `Ctrl+X`.
 
+### 3.1 Cassie-fliken: Google Maps + OpenRouteService
+
+Cassie-fliken (3D-lastbil som kör en riktig rutt) behöver tre nycklar till –
+en i backend och två i frontend.
+
+**Backend** — lägg till i samma `backend/.env` som ovan:
+
+```
+ORS_API_KEY=din_openrouteservice_nyckel
+```
+
+Skaffa en gratisnyckel på https://openrouteservice.org/dev/#/signup. Backend
+kraschar direkt vid uppstart med ett tydligt felmeddelande om nyckeln
+saknas — det är avsiktligt, hellre det än ett trasigt API vid första
+anropet.
+
+**Frontend** — kopiera `frontend/.env.example` till `frontend/.env`:
+
+```bash
+cd frontend
+cp .env.example .env
+nano .env
+```
+
+```
+VITE_GOOGLE_MAPS_API_KEY=din_google_maps_nyckel
+VITE_GOOGLE_MAPS_MAP_ID=ditt_map_id
+```
+
+Viktigt:
+- **Map ID måste vara en vektorkarta** (Cloud Console → Map Management →
+  skapa ett Map ID med renderingstyp "Vector"). Cassie använder
+  `WebGLOverlayView` och `map.moveCamera()`, som bara fungerar på
+  vektorkartor — inte på en vanlig rasterkarta.
+- Google-nyckeln går inte att gömma i backend eftersom kartan renderas i
+  webbläsaren. Skydda den i stället med en **HTTP-referrer-restriktion** i
+  Cloud Console (Credentials → nyckeln → Application restrictions →
+  Websites), begränsad till din Tailscale-domän/IP.
+- `VITE_`-variabler bakas in i bygget av Vite, inte läses vid körning. Sätt
+  dem i `frontend/.env` **innan** du kör `npm run build` (steg 4 nedan) —
+  ändrar du dem senare måste frontend byggas om.
+
 ## Steg 4: Kör deployment-skriptet
 
 ```bash
@@ -253,10 +295,13 @@ Om du kör detta på TrueNAS Scale VM, kontrollera att:
 
 ## Säkerhet
 
-- ✅ API-nyckeln är skyddad i `.env` (ej i Git)
+- ✅ API-nycklarna är skyddade i `.env` (ej i Git)
 - ✅ Backend exponeras inte direkt, endast via nginx proxy
 - ✅ Tailscale ger end-to-end kryptering
 - ✅ Ingen direktexponering mot internet (om du inte använder Funnel)
+- ✅ ORS-nyckeln proxas via backend och ligger aldrig i frontend-koden
+- ⚠️ Google Maps-nyckeln ligger i frontend-bygget (går inte att undvika) —
+  begränsa den med en HTTP-referrer-restriktion i Cloud Console, se steg 3.1
 
 ## Prestanda
 
