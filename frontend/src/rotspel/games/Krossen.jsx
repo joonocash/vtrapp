@@ -4,6 +4,7 @@ import {
   createBoard,
   planSwap,
   resolveMatches,
+  detonate,
   applyClear,
   applyOmvandla,
   planGravity,
@@ -43,6 +44,14 @@ const PIECES = [
   { fill: '#a855f7', shape: 'sexhorning' },
   { fill: '#ec4899', shape: 'stjarna' },
 ]
+
+// Avstand i rutor mellan tva index. Anvands for att skjuta prismans stralar
+// utat fran mitten i stallet for i indexordning.
+const avstandMellan = (a, b) =>
+  Math.hypot(
+    Math.floor(a / SIZE) - Math.floor(b / SIZE),
+    (a % SIZE) - (b % SIZE)
+  )
 
 const fargFor = (tile) =>
   tile ? (tile.special === 'prisma' ? '#f472b6' : PIECES[tile.color].fill) : '#9ca3af'
@@ -231,7 +240,12 @@ export default function Krossen({ onGameOver }) {
 
   // Spelar upp signaturen för en specialbricka och returnerar hur länge
   // uppspelningen tar innan rutorna ska rensas.
-  function spelaSpecial(index, tile) {
+  // traffade ar rutorna som rensningen faktiskt kommer att ta. Animationen
+  // MASTE utga fran den och inte rakna ut nagot eget: motorn valjer prismans
+  // farg efter grannbrickan vid ett byte, och efter brades vanligaste farg
+  // nar detonate sprangs den som sidoeffekt. Rakna sjalv och stralarna pekar
+  // pa fel brickor.
+  function spelaSpecial(index, tile, traffade) {
     const anim = animRef.current
     if (!anim || !tile) return 0
 
@@ -256,11 +270,11 @@ export default function Krossen({ onGameOver }) {
       anim.ring(index, 4.5, '#f472b6', 520)
       anim.skaka(9, 420)
       ton(220, 500, 'sawtooth', 0.16)
-      // strålar ut till alla brickor av samma färg
-      const mal = []
-      boardRef.current.forEach((t, j) => {
-        if (t && t.color === tile.color && j !== index) mal.push(j)
-      })
+      // stralar till exakt de rutor som rensas, narmast forst sa lasningen
+      // sprider sig utat fran prisman
+      const mal = [...(traffade || [])]
+        .filter((j) => j !== index)
+        .sort((a, b) => avstandMellan(index, a) - avstandMellan(index, b))
       mal.slice(0, 24).forEach((j, k) => {
         anim.stral(index, j, 170, k * 22)
         senare(() => anim.flash(j, 170, 50), k * 22 + 160)
@@ -281,7 +295,7 @@ export default function Krossen({ onGameOver }) {
     const aktiverade = [...traffade].filter((i) => boardRef.current[i]?.special)
     let vantan = 0
     for (const i of aktiverade) {
-      vantan = Math.max(vantan, spelaSpecial(i, boardRef.current[i]))
+      vantan = Math.max(vantan, spelaSpecial(i, boardRef.current[i], traffade))
     }
     if (vantan > 0) {
       await anim.hitstop(70)
@@ -437,26 +451,13 @@ export default function Krossen({ onGameOver }) {
         // tempot accelererar både inom vågen och mellan vågorna
         const takt = Math.max(80, 220 - k * 28 - vagnr * 20)
 
-        const traffade = new Set()
-        const rad = Math.floor(index / SIZE)
-        const kol = index % SIZE
+        // Motorn agar reglerna. Den har logiken var tidigare duplicerad har,
+        // och prisman rensade da fargen den SKAPADES av medan detonate valjer
+        // brades vanligaste farg. detonate laser bara bradet, och kedjar
+        // dessutom in specialbrickor den traffar pa vagen.
+        const traffade = detonate(boardRef.current, index)
 
-        if (tile.special === 'raket-h') {
-          for (let c = 0; c < SIZE; c++) traffade.add(rad * SIZE + c)
-        } else if (tile.special === 'raket-v') {
-          for (let r = 0; r < SIZE; r++) traffade.add(r * SIZE + kol)
-        } else if (tile.special === 'bomb') {
-          for (let r = rad - 1; r <= rad + 1; r++)
-            for (let c = kol - 1; c <= kol + 1; c++)
-              if (r >= 0 && r < SIZE && c >= 0 && c < SIZE) traffade.add(r * SIZE + c)
-        } else if (tile.special === 'prisma') {
-          boardRef.current.forEach((t, j) => {
-            if (t && t.color === tile.color) traffade.add(j)
-          })
-          traffade.add(index)
-        }
-
-        spelaSpecial(index, tile)
+        spelaSpecial(index, tile, traffade)
         await vila(90)
         if (!levande.current) return
 
@@ -568,7 +569,7 @@ export default function Krossen({ onGameOver }) {
                     if (rr >= 0 && rr < SIZE && cc >= 0 && cc < SIZE)
                       traff.add(rr * SIZE + cc)
               }
-              spelaSpecial(j, t)
+              spelaSpecial(j, t, traff)
               await vila(80)
               if (!levande.current) return
               laggPoang(poangFor(traff.size, 2))

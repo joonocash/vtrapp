@@ -91,6 +91,17 @@ export const GAMES = [
     load: () => import('./Krossen.jsx'),
   },
   {
+    id: 'rotblast',
+    name: 'Rötblast',
+    blurb: 'Lägg ut tre bitar i taget. Fyll en rad eller kolumn så sprängs den.',
+    category: 'pussel',
+    accent: 'text-cyan-400',
+    scoreLabel: 'poäng',
+    scoreFormat: 'number',
+    higherIsBetter: true,
+    load: () => import('./Rotblast.jsx'),
+  },
+  {
     id: 'klickern',
     name: 'Klickern',
     blurb: 'Klicka fram avgångar. Uppgradera. Nollställ för guldkort.',
