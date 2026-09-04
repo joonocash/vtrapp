@@ -16,8 +16,12 @@ import { groundMetersPerPixel } from './routeMath.js';
 const MODEL_URL = '/models/truck.glb';
 // Meter över vägbanan — litet lyft undviker z-fighting mot markplattan.
 const MODEL_ALTITUDE = 0.5;
-// Modellens "framåt" pekade bakåt längs rutten med 0 — glTF-tillgången är
-// alltså byggd vänd åt andra hållet. 180° vänder den rätt.
+// Modellens "framåt" pekar bakåt längs rutten vid 0 — glTF-tillgången är
+// alltså byggd vänd åt andra hållet. 180° vänder den rätt. Appliceras som en
+// egen, yttre rotation runt den redan upprättade vertikala axeln (se
+// axisFixGroup/yawTrimGroup i onAdd) — INTE ihopslaget med upprätnings-
+// rotationen i samma Euler-triplett, för då roterar den runt fel axel (se
+// kommentaren där för varför).
 const MODEL_YAW_TRIM_DEG = 180;
 // Ungefärlig egen storlek (meter) hos modellen vid scale=1. Det här är
 // kalibreringskonstanten mellan "pixlar på skärmen" (regeln användaren styr)
@@ -35,6 +39,8 @@ export class TruckOverlay {
     this.headingGroup = null;
     this.bankGroup = null;
     this.modelGroup = null;
+    this.yawTrimGroup = null;
+    this.axisFixGroup = null;
     this.pose = { lat: 0, lng: 0, headingDeg: 0, bankDeg: 0 };
     this.pixelSize = DEFAULT_PIXEL_SIZE;
     this.visible = true;
@@ -56,10 +62,27 @@ export class TruckOverlay {
     sun.position.set(0, 10, 100);
     this.scene.add(sun);
 
-    this.headingGroup = new THREE.Group();
-    this.bankGroup = new THREE.Group();
-    this.modelGroup = new THREE.Group();
+    this.headingGroup = new THREE.Group(); // dynamisk: -bäring runt vertikal axel
+    this.bankGroup = new THREE.Group(); // dynamisk: bank runt egen färdriktning
+    this.modelGroup = new THREE.Group(); // dynamisk: skärmstorlek (scale), satt per bildruta i onDraw
+    this.yawTrimGroup = new THREE.Group(); // STATISK: MODEL_YAW_TRIM_DEG
+    this.axisFixGroup = new THREE.Group(); // STATISK: glTF Y-upp -> lokal Z-upp
 
+    // Två separata grupper i stället för två Euler-komponenter på samma
+    // objekt. Det spelar roll: en enda Object3D.rotation med både x och z
+    // satta komponerar (i three.js standardordning 'XYZ') som Rx * Rz — det
+    // vill säga z-rotationen appliceras FÖRST, runt modellens egen,
+    // okorrigerade Z-axel (som pekar längs med lastbilen, inte upp/ner).
+    // 180° där rullar alltså modellen runt sin egen längdaxel ("på ryggen")
+    // i stället för att gira den. Genom att i stället nesta groups (barnets
+    // transform appliceras före förälderns) blir kompositionen
+    // yawTrimGroup(Rz) * axisFixGroup(Rx) — dvs upprätningen sker FÖRST och
+    // giret sker EFTER, runt den då redan vertikala axeln.
+    this.axisFixGroup.rotation.x = Math.PI / 2;
+    this.yawTrimGroup.rotation.z = THREE.MathUtils.degToRad(MODEL_YAW_TRIM_DEG);
+
+    this.yawTrimGroup.add(this.axisFixGroup);
+    this.modelGroup.add(this.yawTrimGroup);
     this.bankGroup.add(this.modelGroup);
     this.headingGroup.add(this.bankGroup);
     this.scene.add(this.headingGroup);
@@ -68,13 +91,7 @@ export class TruckOverlay {
     loader.load(
       MODEL_URL,
       (gltf) => {
-        const model = gltf.scene;
-        // Rätar upp modellen från glTF:s Y-upp till den lokala Z-upp som
-        // transformern använder. Den faktiska skärmstorleken sätts per
-        // bildruta i onDraw, på modelGroup — inte här.
-        model.rotation.x = Math.PI / 2;
-        model.rotation.z = THREE.MathUtils.degToRad(MODEL_YAW_TRIM_DEG);
-        this.modelGroup.add(model);
+        this.axisFixGroup.add(gltf.scene);
         this.loaded = true;
         this.requestRedraw();
       },
