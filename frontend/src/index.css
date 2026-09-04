@@ -15,17 +15,32 @@
 }
 
 /* Cassie: markörer på Google-kartan (skapas som ren DOM i GoogleMapProvider,
-   kan inte nås via Tailwind-klasser på elementet innan det finns). */
+   kan inte nås via Tailwind-klasser på elementet innan det finns).
+   AdvancedMarkerElement ankrar `content` i botten-mitten av dess bounding
+   box. .cassie-marker är därför 0x0 — den enda punkten i den boxen ÄR
+   ankaret — och pinnen/etiketten är absolut positionerade kring den. */
+.cassie-marker {
+  position: relative;
+  width: 0;
+  height: 0;
+}
 .cassie-marker-pin {
+  position: absolute;
+  left: -7px;
+  top: -7px;
   width: 14px;
   height: 14px;
+  box-sizing: border-box;
   border-radius: 9999px;
   background: #f97316;
   border: 2px solid white;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
 }
 .cassie-marker-label {
-  margin-top: 4px;
+  position: absolute;
+  left: 50%;
+  top: 11px;
+  transform: translateX(-50%);
   padding: 2px 8px;
   border-radius: 9999px;
   background: rgba(17, 24, 39, 0.85);

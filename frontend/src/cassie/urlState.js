@@ -2,7 +2,8 @@
 // eller skicka vidare och landa exakt där man var.
 //
 // ?from=59.334,18.063&fromLabel=Stockholm&to=57.708,11.974&toLabel=G%C3%B6teborg
-// &dur=25&pins=proximity&fmt=16x9&style=roadmap&scale=90&r=stockholm-goteborg
+// &dur=25&pins=proximity&fmt=16x9&style=roadmap&scale=90&trail=full&cam=follow
+// &r=stockholm-goteborg
 
 export const DEFAULTS = {
   from: null, // { lat, lng } | null
@@ -16,6 +17,8 @@ export const DEFAULTS = {
   // Lastbilens ungefärliga skärmstorlek i pixlar — måste matcha
   // DEFAULT_PIXEL_SIZE i animation/TruckOverlay.js.
   scale: 90,
+  trail: 'full', // 'full' | 'fade' | 'none'
+  cam: 'follow', // 'follow' | 'fixed' | 'overview'
   route: '' // slug för sparad rutt
 };
 
@@ -33,6 +36,8 @@ export function parseUrlState(search = window.location.search) {
   const fmt = params.get('fmt');
   const style = params.get('style');
   const scale = Number(params.get('scale'));
+  const trail = params.get('trail');
+  const cam = params.get('cam');
 
   return {
     from: parseLatLng(params.get('from')) || DEFAULTS.from,
@@ -44,6 +49,8 @@ export function parseUrlState(search = window.location.search) {
     fmt: ['16x9', '9x16', '1x1'].includes(fmt) ? fmt : DEFAULTS.fmt,
     style: ['roadmap', 'satellite'].includes(style) ? style : DEFAULTS.style,
     scale: Number.isFinite(scale) && scale > 0 ? scale : DEFAULTS.scale,
+    trail: ['full', 'fade', 'none'].includes(trail) ? trail : DEFAULTS.trail,
+    cam: ['follow', 'fixed', 'overview'].includes(cam) ? cam : DEFAULTS.cam,
     route: params.get('r') || DEFAULTS.route
   };
 }
@@ -61,6 +68,8 @@ export function writeUrlState(state) {
   params.set('fmt', state.fmt || DEFAULTS.fmt);
   params.set('style', state.style || DEFAULTS.style);
   params.set('scale', String(state.scale ?? DEFAULTS.scale));
+  params.set('trail', state.trail || DEFAULTS.trail);
+  params.set('cam', state.cam || DEFAULTS.cam);
   if (state.route) params.set('r', state.route);
 
   const url = `${window.location.pathname}?${params.toString()}`;

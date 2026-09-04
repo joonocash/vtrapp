@@ -13,6 +13,18 @@ const FORMAT_OPTIONS = [
   { id: '1x1', label: '1:1' }
 ];
 
+const TRAIL_OPTIONS = [
+  { id: 'full', label: 'Hela sträckan' },
+  { id: 'fade', label: 'Tonande svans' },
+  { id: 'none', label: 'Ingen linje' }
+];
+
+const CAM_OPTIONS = [
+  { id: 'follow', label: 'Följ lastbilen' },
+  { id: 'fixed', label: 'Fast' },
+  { id: 'overview', label: 'Fast, hela rutten' }
+];
+
 function GeocodeInput({ label, placeholder, value, onSelect }) {
   const [query, setQuery] = useState(value || '');
   const [results, setResults] = useState([]);
@@ -97,6 +109,12 @@ export default function ControlPanel({
   onMapStyleChange,
   truckSize,
   onTruckSizeChange,
+  trailMode,
+  onTrailModeChange,
+  camMode,
+  onCamModeChange,
+  placementMode,
+  onPlacementModeChange,
   onPlay,
   onReset,
   phase,
@@ -126,6 +144,27 @@ export default function ControlPanel({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <GeocodeInput label="Från" placeholder="t.ex. Göteborg" value={fromLabel} onSelect={onSetFrom} />
         <GeocodeInput label="Till" placeholder="t.ex. Kiruna" value={toLabel} onSelect={onSetTo} />
+      </div>
+
+      <div>
+        <button
+          type="button"
+          disabled={!canControl}
+          onClick={() => onPlacementModeChange(!placementMode)}
+          className={`text-xs px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 ${
+            placementMode
+              ? 'bg-blue-600 text-blue-50'
+              : 'bg-gray-900 text-gray-400 hover:bg-gray-700'
+          }`}
+        >
+          {placementMode ? 'Klicka på kartan: på' : 'Klicka på kartan'}
+        </button>
+        {placementMode && (
+          <p className="text-xs text-gray-500 mt-1.5">
+            Klick 1 sätter start, klick 2 sätter mål, klick 3 börjar om. Punkterna går även att
+            dra för att flytta.
+          </p>
+        )}
       </div>
 
       {loadingRoute && <p className="text-xs text-blue-400">Hämtar rutt…</p>}
@@ -177,6 +216,53 @@ export default function ControlPanel({
           disabled={!canControl}
           className="w-full accent-blue-500 disabled:opacity-50"
         />
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Kamera</label>
+        <div className="flex flex-wrap gap-2">
+          {CAM_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              disabled={!canControl}
+              onClick={() => onCamModeChange(opt.id)}
+              className={`text-xs px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 ${
+                camMode === opt.id
+                  ? 'bg-blue-600 text-blue-50'
+                  : 'bg-gray-900 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {camMode === 'fixed' && (
+          <p className="text-xs text-gray-500 mt-1.5">
+            Panorera och zooma kartan till önskad vy — den låses när du trycker Spela upp.
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Körd sträcka</label>
+        <div className="flex flex-wrap gap-2">
+          {TRAIL_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              disabled={!canControl}
+              onClick={() => onTrailModeChange(opt.id)}
+              className={`text-xs px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 ${
+                trailMode === opt.id
+                  ? 'bg-blue-600 text-blue-50'
+                  : 'bg-gray-900 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div>

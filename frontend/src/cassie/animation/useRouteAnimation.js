@@ -26,7 +26,6 @@ const HOLD_END_MS = 3000;
 const RETURN_TO_OVERVIEW_MS = 2000;
 const PLAYING_TILT = 60;
 const TAIL_TRIM_METERS = 50000;
-const TAIL_TRIM_THRESHOLD_METERS = 200000;
 const FADE_RADIUS_PX = 220;
 
 function sleep(ms, cancelledRef) {
@@ -100,10 +99,25 @@ function applyBookendOpacity(mapProvider, pinsMode, value) {
  *   durationSeconds: number,
  *   pinsMode: 'always' | 'hidden' | 'proximity',
  *   truckSize: number,
+ *   trailMode: 'full' | 'fade' | 'none',
+ *   camMode: 'follow' | 'fixed' | 'overview',
+ *   onStartDrag: (pos: {lat:number, lng:number}) => void,
+ *   onEndDrag: (pos: {lat:number, lng:number}) => void,
  *   containerRef: { current: HTMLElement | null }
  * }} args
  */
-export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, pinsMode, truckSize }) {
+export function useRouteAnimation({
+  mapProvider,
+  ready,
+  route,
+  durationSeconds,
+  pinsMode,
+  truckSize,
+  trailMode,
+  camMode,
+  onStartDrag,
+  onEndDrag
+}) {
   const [phase, setPhase] = useState('idle'); // idle|ready|overview|flyToStart|countdown|playing|holdEnd|returnToOverview|done
   const [countdown, setCountdown] = useState(null);
 
@@ -115,10 +129,18 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
   const pinsModeRef = useRef(pinsMode);
   const durationRef = useRef(durationSeconds);
   const truckSizeRef = useRef(truckSize);
+  const trailModeRef = useRef(trailMode);
+  const camModeRef = useRef(camMode);
+  const onStartDragRef = useRef(onStartDrag);
+  const onEndDragRef = useRef(onEndDrag);
 
   pinsModeRef.current = pinsMode;
   durationRef.current = durationSeconds;
   truckSizeRef.current = truckSize;
+  trailModeRef.current = trailMode;
+  camModeRef.current = camMode;
+  onStartDragRef.current = onStartDrag;
+  onEndDragRef.current = onEndDrag;
 
   // Bygg scenen (tidslinje, overlay, linjer, markörer) när rutten är redo.
   useEffect(() => {
@@ -170,12 +192,16 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
     mapProvider.addMarker('start', {
       lat: startPoint.lat,
       lng: startPoint.lng,
-      label: route.fromLabel || 'Start'
+      label: route.fromLabel || 'Start',
+      draggable: true,
+      onDragEnd: (pos) => onStartDragRef.current?.(pos)
     });
     mapProvider.addMarker('end', {
       lat: endPoint.lat,
       lng: endPoint.lng,
-      label: route.toLabel || 'Mål'
+      label: route.toLabel || 'Mål',
+      draggable: true,
+      onDragEnd: (pos) => onEndDragRef.current?.(pos)
     });
     applyBookendOpacity(mapProvider, pinsModeRef.current, 1);
 
@@ -207,7 +233,7 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
   }, [truckSize]);
 
   const runPlayback = useCallback(
-    (mp) =>
+    (mp, camMode) =>
       new Promise((resolve) => {
         const timeline = timelineRef.current;
         const durationMs = Math.max(1, durationRef.current) * 1000;
@@ -217,6 +243,7 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
           (bboxRef.current.north + bboxRef.current.south) / 2
         );
         const playbackSpeedFactor = timeline.totalTime / Math.max(1, durationRef.current);
+        const following = camMode === 'follow';
 
         const bearingSmoother = new BearingSmoother(0.15);
         const bankSmoother = new ScalarSmoother(0.2);
@@ -225,6 +252,9 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
         bankSmoother.reset(0);
 
         drivenPathRef.current = [{ lat: first.lat, lng: first.lng }];
+        if (trailModeRef.current === 'none') {
+          mp.setPolylinePath('driven', []);
+        }
         let prevBearing = first.bearing;
         let lastFrameTime = performance.now();
         const start = performance.now();
@@ -253,25 +283,29 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
           });
           overlay?.requestRedraw();
 
-          const localSpeed = speedAtTime(timeline, t);
-          const mapSpeed = localSpeed * playbackSpeedFactor;
-          const aheadMeters = lookAheadDistance(mapSpeed);
-          const aheadSeconds = aheadMeters / Math.max(0.5, localSpeed);
-          const cameraTarget = sampleRouteAtTime(timeline, Math.min(timeline.totalTime, t + aheadSeconds));
+          if (following) {
+            const localSpeed = speedAtTime(timeline, t);
+            const mapSpeed = localSpeed * playbackSpeedFactor;
+            const aheadMeters = lookAheadDistance(mapSpeed);
+            const aheadSeconds = aheadMeters / Math.max(0.5, localSpeed);
+            const cameraTarget = sampleRouteAtTime(timeline, Math.min(timeline.totalTime, t + aheadSeconds));
 
-          mp.moveCamera({
-            lat: cameraTarget.lat,
-            lng: cameraTarget.lng,
-            zoom: paceZoom,
-            heading: smoothedBearing,
-            tilt: PLAYING_TILT
-          });
-
-          drivenPathRef.current.push({ lat: sample.lat, lng: sample.lng });
-          if (timeline.totalDistance > TAIL_TRIM_THRESHOLD_METERS) {
-            drivenPathRef.current = trimTrailingPath(drivenPathRef.current, TAIL_TRIM_METERS);
+            mp.moveCamera({
+              lat: cameraTarget.lat,
+              lng: cameraTarget.lng,
+              zoom: paceZoom,
+              heading: smoothedBearing,
+              tilt: PLAYING_TILT
+            });
           }
-          mp.setPolylinePath('driven', drivenPathRef.current);
+
+          if (trailModeRef.current !== 'none') {
+            drivenPathRef.current.push({ lat: sample.lat, lng: sample.lng });
+            if (trailModeRef.current === 'fade') {
+              drivenPathRef.current = trimTrailingPath(drivenPathRef.current, TAIL_TRIM_METERS);
+            }
+            mp.setPolylinePath('driven', drivenPathRef.current);
+          }
 
           const remaining = [
             { lat: sample.lat, lng: sample.lng },
@@ -305,6 +339,8 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
 
       cancelledRef.current = false;
       mp.setGestureHandling('none');
+
+      const camMode = camModeRef.current;
 
       const width = containerEl?.clientWidth || 1280;
       const height = containerEl?.clientHeight || 720;
@@ -343,12 +379,19 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
         tilt: PLAYING_TILT
       };
 
-      setPhase('overview');
-      mp.fitBounds(bbox, OVERVIEW_PADDING);
-      if (!(await sleep(OVERVIEW_HOLD_MS, cancelledRef))) return;
+      if (camMode === 'follow') {
+        setPhase('overview');
+        mp.fitBounds(bbox, OVERVIEW_PADDING);
+        if (!(await sleep(OVERVIEW_HOLD_MS, cancelledRef))) return;
 
-      setPhase('flyToStart');
-      if (!(await animateCamera(mp, overviewCamera, startCamera, FLY_TO_START_MS, cancelledRef))) return;
+        setPhase('flyToStart');
+        if (!(await animateCamera(mp, overviewCamera, startCamera, FLY_TO_START_MS, cancelledRef))) return;
+      } else if (camMode === 'overview') {
+        // Ramar in hela rutten en gång och rör sig sedan inte alls.
+        mp.fitBounds(bbox, OVERVIEW_PADDING);
+      }
+      // camMode === 'fixed': rör inte kameran alls — den vy användaren själv
+      // panorerat/zoomat till innan Play ligger kvar oförändrad.
 
       setPhase('countdown');
       for (const step of COUNTDOWN_STEPS) {
@@ -359,16 +402,20 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
       setCountdown(null);
 
       setPhase('playing');
-      if (!(await runPlayback(mp))) return;
+      if (!(await runPlayback(mp, camMode))) return;
 
       setPhase('holdEnd');
-      mp.moveCamera(endCamera);
+      if (camMode === 'follow') {
+        mp.moveCamera(endCamera);
+      }
       applyBookendOpacity(mp, pinsModeRef.current, 1);
       if (!(await sleep(HOLD_END_MS, cancelledRef))) return;
 
-      setPhase('returnToOverview');
-      if (!(await animateCamera(mp, endCamera, overviewCamera, RETURN_TO_OVERVIEW_MS, cancelledRef))) return;
-      mp.fitBounds(bbox, OVERVIEW_PADDING);
+      if (camMode === 'follow') {
+        setPhase('returnToOverview');
+        if (!(await animateCamera(mp, endCamera, overviewCamera, RETURN_TO_OVERVIEW_MS, cancelledRef))) return;
+        mp.fitBounds(bbox, OVERVIEW_PADDING);
+      }
 
       mp.setGestureHandling('greedy');
       setPhase('done');
@@ -380,7 +427,9 @@ export function useRouteAnimation({ mapProvider, ready, route, durationSeconds, 
     cancelledRef.current = true;
     setCountdown(null);
     mapProvider?.setGestureHandling('greedy');
-    if (bboxRef.current && mapProvider) {
+    // I fast kameraläge har användaren själv komponerat vyn innan Play —
+    // ett avbrott ska inte slänga bort den och hoppa till en översikt.
+    if (bboxRef.current && mapProvider && camModeRef.current !== 'fixed') {
       mapProvider.fitBounds(bboxRef.current, OVERVIEW_PADDING);
     }
     setPhase(timelineRef.current ? 'ready' : 'idle');

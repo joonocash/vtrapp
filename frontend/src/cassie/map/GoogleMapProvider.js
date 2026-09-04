@@ -14,13 +14,20 @@ function toGoogleLatLng(point) {
   return { lat: point.lat, lng: point.lng };
 }
 
-function buildMarkerContent(label) {
+function buildMarkerContent(label, draggable) {
+  // AdvancedMarkerElement ankrar egen `content` i botten-mitten av
+  // elementets bounding box. wrap är därför satt till 0x0 (dess enda "punkt"
+  // ÄR ankaret), och allt synligt — pinnen och etiketten — är absolut
+  // positionerat kring den punkten. Utan detta hamnar ankaret i botten av
+  // etiketten (sist i normalt flöde) i stället för i pinnens mitt, vilket
+  // gör att pinnen ser förskjuten ut från den faktiska koordinaten.
   const wrap = document.createElement('div');
   wrap.className = 'cassie-marker';
   wrap.style.opacity = '0';
   wrap.style.transform = 'scale(0.6)';
   wrap.style.transition = 'opacity 300ms ease, transform 300ms ease';
-  wrap.style.pointerEvents = 'none';
+  wrap.style.pointerEvents = draggable ? 'auto' : 'none';
+  if (draggable) wrap.style.cursor = 'grab';
 
   const pin = document.createElement('div');
   pin.className = 'cassie-marker-pin';
@@ -152,19 +159,31 @@ export class GoogleMapProvider extends MapProvider {
     this.polylines.delete(id);
   }
 
-  addMarker(id, { lat, lng, label }) {
+  addMarker(id, { lat, lng, label, draggable = false, onDragEnd }) {
     if (!this.map || !this.markerLib) return;
     this.removeMarker(id);
 
-    const content = buildMarkerContent(label);
+    const content = buildMarkerContent(label, draggable);
     const marker = new this.markerLib.AdvancedMarkerElement({
       map: this.map,
       position: { lat, lng },
       content,
-      title: label || ''
+      title: label || '',
+      gmpDraggable: draggable
     });
 
-    this.markers.set(id, { marker, content });
+    let dragListener = null;
+    if (draggable && onDragEnd) {
+      dragListener = marker.addListener('dragend', (event) => {
+        const pos = event?.latLng;
+        if (!pos) return;
+        const nextLat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
+        const nextLng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
+        onDragEnd({ lat: nextLat, lng: nextLng });
+      });
+    }
+
+    this.markers.set(id, { marker, content, dragListener });
   }
 
   setMarkerOpacity(id, opacity) {
@@ -178,8 +197,18 @@ export class GoogleMapProvider extends MapProvider {
   removeMarker(id) {
     const entry = this.markers.get(id);
     if (!entry) return;
+    entry.dragListener?.remove();
     entry.marker.map = null;
     this.markers.delete(id);
+  }
+
+  onMapClick(callback) {
+    if (!this.map) return () => {};
+    const listener = this.map.addListener('click', (event) => {
+      if (!event?.latLng) return;
+      callback({ lat: event.latLng.lat(), lng: event.latLng.lng() });
+    });
+    return () => listener.remove();
   }
 
   attachOverlay(overlay) {

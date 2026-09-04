@@ -86,7 +86,7 @@ export class MapProvider {
 
   /**
    * @param {string} id
-   * @param {{ lat: number, lng: number, label?: string }} opts
+   * @param {{ lat: number, lng: number, label?: string, draggable?: boolean, onDragEnd?: (pos: LatLng) => void }} opts
    */
   addMarker(id, opts) {
     throw new Error('MapProvider.addMarker är inte implementerad');
@@ -108,6 +108,16 @@ export class MapProvider {
   /** @param {MapOverlay} overlay */
   attachOverlay(overlay) {
     throw new Error('MapProvider.attachOverlay är inte implementerad');
+  }
+
+  /**
+   * Registrerar en klick-lyssnare på kartan (för klick-för-att-placera
+   * start/mål). Returnerar en avregistreringsfunktion.
+   * @param {(point: LatLng) => void} callback
+   * @returns {() => void}
+   */
+  onMapClick(callback) {
+    throw new Error('MapProvider.onMapClick är inte implementerad');
   }
 
   /**

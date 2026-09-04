@@ -7,6 +7,10 @@ import Countdown from './ui/Countdown.jsx';
 import { parseUrlState, writeUrlState } from './urlState.js';
 import { fetchRoute, fetchSavedRoutes, saveRoute } from './api.js';
 
+function formatCoord(lat, lng) {
+  return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+}
+
 export default function CassiePage() {
   const initial = useMemo(() => parseUrlState(), []);
 
@@ -19,6 +23,9 @@ export default function CassiePage() {
   const [format, setFormat] = useState(initial.fmt);
   const [mapStyle, setMapStyle] = useState(initial.style);
   const [truckSize, setTruckSize] = useState(initial.scale);
+  const [trailMode, setTrailMode] = useState(initial.trail);
+  const [camMode, setCamMode] = useState(initial.cam);
+  const [placementMode, setPlacementMode] = useState(false);
   const [routeSlug, setRouteSlug] = useState(initial.route);
 
   const [route, setRoute] = useState(null);
@@ -32,6 +39,13 @@ export default function CassiePage() {
   const frameRef = useRef(null);
   const providerRef = useRef(null);
   const appliedSlugRef = useRef(false);
+  const fromRef = useRef(from);
+  const toRef = useRef(to);
+  const placementModeRef = useRef(placementMode);
+
+  fromRef.current = from;
+  toRef.current = to;
+  placementModeRef.current = placementMode;
 
   if (!providerRef.current) providerRef.current = new GoogleMapProvider();
 
@@ -61,6 +75,49 @@ export default function CassiePage() {
     if (mapReady) providerRef.current.setStyle(mapStyle);
   }, [mapStyle, mapReady]);
 
+  // Klick-för-att-placera: klick ett sätter start, klick två sätter mål,
+  // klick tre börjar om (och blir själv den nya starten). Sökfälten
+  // fungerar parallellt eftersom båda vägarna bara skriver till samma
+  // from/to-state.
+  useEffect(() => {
+    if (!mapReady) return undefined;
+
+    return providerRef.current.onMapClick((point) => {
+      if (!placementModeRef.current) return;
+
+      const label = formatCoord(point.lat, point.lng);
+      appliedSlugRef.current = true;
+      setRouteSlug('');
+
+      if (!fromRef.current) {
+        setFromState(point);
+        setFromLabel(label);
+      } else if (!toRef.current) {
+        setToState(point);
+        setToLabel(label);
+      } else {
+        setToState(null);
+        setToLabel('');
+        setFromState(point);
+        setFromLabel(label);
+      }
+    });
+  }, [mapReady]);
+
+  const handleStartDrag = useCallback((pos) => {
+    setFromState(pos);
+    setFromLabel(formatCoord(pos.lat, pos.lng));
+    setRouteSlug('');
+    appliedSlugRef.current = true;
+  }, []);
+
+  const handleEndDrag = useCallback((pos) => {
+    setToState(pos);
+    setToLabel(formatCoord(pos.lat, pos.lng));
+    setRouteSlug('');
+    appliedSlugRef.current = true;
+  }, []);
+
   // Ladda sparade rutter.
   useEffect(() => {
     fetchSavedRoutes()
@@ -85,6 +142,8 @@ export default function CassiePage() {
     setFormat(match.fmt);
     setMapStyle(match.style);
     setTruckSize(Number.isFinite(match.scale) && match.scale > 0 ? match.scale : initial.scale);
+    setTrailMode(['full', 'fade', 'none'].includes(match.trail) ? match.trail : initial.trail);
+    setCamMode(['follow', 'fixed', 'overview'].includes(match.cam) ? match.cam : initial.cam);
   }, [routeSlug, savedRoutes]);
 
   // Hämta rutt från backend (ORS) när start och mål är satta.
@@ -131,9 +190,24 @@ export default function CassiePage() {
       fmt: format,
       style: mapStyle,
       scale: truckSize,
+      trail: trailMode,
+      cam: camMode,
       route: routeSlug
     });
-  }, [from, to, fromLabel, toLabel, duration, pinsMode, format, mapStyle, truckSize, routeSlug]);
+  }, [
+    from,
+    to,
+    fromLabel,
+    toLabel,
+    duration,
+    pinsMode,
+    format,
+    mapStyle,
+    truckSize,
+    trailMode,
+    camMode,
+    routeSlug
+  ]);
 
   const animation = useRouteAnimation({
     mapProvider: providerRef.current,
@@ -141,8 +215,25 @@ export default function CassiePage() {
     route,
     durationSeconds: duration,
     pinsMode,
-    truckSize
+    truckSize,
+    trailMode,
+    camMode,
+    onStartDrag: handleStartDrag,
+    onEndDrag: handleEndDrag
   });
+
+  // Escape avbryter uppspelningen och återställer panelen/muspekaren. Bara
+  // Escape — inga musklick, så en pågående tagning inte avbryts av misstag.
+  useEffect(() => {
+    if (!animation.isPresenting) return undefined;
+
+    function onKeyDown(e) {
+      if (e.key === 'Escape') animation.reset();
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [animation.isPresenting, animation.reset]);
 
   const handleSetFrom = useCallback((hit) => {
     setFromState({ lat: hit.lat, lng: hit.lng });
@@ -176,7 +267,9 @@ export default function CassiePage() {
           pins: pinsMode,
           fmt: format,
           style: mapStyle,
-          scale: truckSize
+          scale: truckSize,
+          trail: trailMode,
+          cam: camMode
         });
         setSavedRoutes((prev) => [...prev, saved]);
         setRouteSlug(saved.slug);
@@ -184,7 +277,7 @@ export default function CassiePage() {
         console.error('[cassie] kunde inte spara rutten:', err);
       }
     },
-    [from, to, fromLabel, toLabel, duration, pinsMode, format, mapStyle, truckSize]
+    [from, to, fromLabel, toLabel, duration, pinsMode, format, mapStyle, truckSize, trailMode, camMode]
   );
 
   const handleLoadRoute = useCallback((record) => {
@@ -198,6 +291,8 @@ export default function CassiePage() {
     setFormat(record.fmt);
     setMapStyle(record.style);
     setTruckSize(Number.isFinite(record.scale) && record.scale > 0 ? record.scale : 90);
+    setTrailMode(['full', 'fade', 'none'].includes(record.trail) ? record.trail : 'full');
+    setCamMode(['follow', 'fixed', 'overview'].includes(record.cam) ? record.cam : 'follow');
     setRouteSlug(record.slug);
   }, []);
 
@@ -230,7 +325,7 @@ export default function CassiePage() {
       <div
         ref={frameRef}
         className="relative h-[60vh] lg:h-[75vh]"
-        style={{ cursor: presentationActive ? 'none' : 'default' }}
+        style={{ cursor: presentationActive ? 'none' : placementMode ? 'crosshair' : 'default' }}
       >
         <FramingFrame format={format} showGuides={!presentationActive}>
           <div ref={containerRef} className="absolute inset-0" />
@@ -259,6 +354,12 @@ export default function CassiePage() {
         onMapStyleChange={setMapStyle}
         truckSize={truckSize}
         onTruckSizeChange={setTruckSize}
+        trailMode={trailMode}
+        onTrailModeChange={setTrailMode}
+        camMode={camMode}
+        onCamModeChange={setCamMode}
+        placementMode={placementMode}
+        onPlacementModeChange={setPlacementMode}
         onPlay={handlePlay}
         onReset={animation.reset}
         phase={animation.phase}
