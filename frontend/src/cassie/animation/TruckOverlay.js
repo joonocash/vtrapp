@@ -32,6 +32,16 @@ const MODEL_UNIT_SIZE_METERS = 8;
 // Standardvärde innan CassiePage hunnit sätta ett från URL-state.
 const DEFAULT_PIXEL_SIZE = 90;
 
+// TODO: fyll i med de faktiska hex-värdena från den upptäckta paletten i
+// truck.glb (se konsolloggen "[cassie:truck-N] truck.glb — N unika färger
+// funna:" / "Palett (färg: antal vertexar):"). Ska motsvara:
+//   Skåp: vertexantal 66, 40, 8, 8, 6, 6, 2, 2
+//   Hytt: vertexantal 140, 36, 30, 14, 12, 10
+// Tomma tills dess — normalläget i kontrollpanelen kan inte färga något
+// förrän de här är ifyllda.
+export const DEFAULT_CAB_SOURCES = [];
+export const DEFAULT_BOX_SOURCES = [];
+
 // Modellen har ETT delat material ("colormap") för hela karossen och bara
 // SEX meshar totalt (dörr, fyra hjul, kaross) — hytt och skåp sitter i SAMMA
 // "kaross"-mesh, som spänner över flera palettrutor. Klassificering per mesh

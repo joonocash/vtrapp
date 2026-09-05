@@ -7,11 +7,19 @@ import Countdown from './ui/Countdown.jsx';
 import { parseUrlState, writeUrlState } from './urlState.js';
 import { fetchRoute, fetchSavedRoutes, saveRoute } from './api.js';
 import { findSimilarHues } from './animation/paletteTexture.js';
+import { DEFAULT_CAB_SOURCES, DEFAULT_BOX_SOURCES } from './animation/TruckOverlay.js';
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 function sanitizeHexList(list) {
   return Array.isArray(list) ? list.filter((h) => HEX_RE.test(h)) : [];
+}
+
+// En sparad rutt utan egna cabSources/boxSources (t.ex. sparad innan den
+// här funktionen fanns) ska falla tillbaka på standardgrupperna, inte tomt.
+function sourcesOrDefault(list, fallback) {
+  const clean = sanitizeHexList(list);
+  return clean.length ? clean : fallback;
 }
 
 function formatCoord(lat, lng) {
@@ -34,10 +42,16 @@ export default function CassiePage() {
   const [camMode, setCamMode] = useState(initial.cam);
   // cabSources/boxSources: vilka UPPTÄCKTA palettfärger som tillhör
   // respektive roll — en roll äger godtyckligt många (grundfärg +
-  // skuggnyanser), inte bara en.
-  const [cabSources, setCabSources] = useState(initial.cabSources);
+  // skuggnyanser), inte bara en. Faller tillbaka på de hårdkodade
+  // standardgrupperna för truck.glb när URL:en/en sparad rutt inte anger
+  // något annat (t.ex. ett helt nytt besök).
+  const [cabSources, setCabSources] = useState(
+    initial.cabSources.length ? initial.cabSources : DEFAULT_CAB_SOURCES
+  );
   const [cabColor, setCabColor] = useState(initial.cabColor);
-  const [boxSources, setBoxSources] = useState(initial.boxSources);
+  const [boxSources, setBoxSources] = useState(
+    initial.boxSources.length ? initial.boxSources : DEFAULT_BOX_SOURCES
+  );
   const [boxColor, setBoxColor] = useState(initial.boxColor);
   // De faktiska färgerna modellens palett-textur använder, upptäckta i
   // TruckOverlay när glTF:en laddat klart — visas som utbytbara rutor i
@@ -168,9 +182,9 @@ export default function CassiePage() {
     setTruckSize(Number.isFinite(match.scale) && match.scale > 0 ? match.scale : initial.scale);
     setTrailMode(['full', 'fade', 'none'].includes(match.trail) ? match.trail : initial.trail);
     setCamMode(['follow', 'fixed', 'overview'].includes(match.cam) ? match.cam : initial.cam);
-    setCabSources(sanitizeHexList(match.cabSources));
+    setCabSources(sourcesOrDefault(match.cabSources, DEFAULT_CAB_SOURCES));
     setCabColor(HEX_RE.test(match.cabColor) ? match.cabColor : null);
-    setBoxSources(sanitizeHexList(match.boxSources));
+    setBoxSources(sourcesOrDefault(match.boxSources, DEFAULT_BOX_SOURCES));
     setBoxColor(HEX_RE.test(match.boxColor) ? match.boxColor : null);
   }, [routeSlug, savedRoutes]);
 
@@ -387,9 +401,9 @@ export default function CassiePage() {
     setTruckSize(Number.isFinite(record.scale) && record.scale > 0 ? record.scale : 90);
     setTrailMode(['full', 'fade', 'none'].includes(record.trail) ? record.trail : 'full');
     setCamMode(['follow', 'fixed', 'overview'].includes(record.cam) ? record.cam : 'follow');
-    setCabSources(sanitizeHexList(record.cabSources));
+    setCabSources(sourcesOrDefault(record.cabSources, DEFAULT_CAB_SOURCES));
     setCabColor(HEX_RE.test(record.cabColor) ? record.cabColor : null);
-    setBoxSources(sanitizeHexList(record.boxSources));
+    setBoxSources(sourcesOrDefault(record.boxSources, DEFAULT_BOX_SOURCES));
     setBoxColor(HEX_RE.test(record.boxColor) ? record.boxColor : null);
     setRouteSlug(record.slug);
   }, []);

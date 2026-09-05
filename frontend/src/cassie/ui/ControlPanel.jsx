@@ -126,6 +126,33 @@ function PaletteSwatch({ color, isCab, isBox, isReference, maxCount, disabled, o
   );
 }
 
+function SimpleColorField({ label, color, defaultHex, onChange, disabled }) {
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="color"
+          value={color || defaultHex || '#888888'}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          className="h-9 w-12 shrink-0 bg-gray-900 border border-gray-700 rounded-md cursor-pointer disabled:opacity-50"
+        />
+        {color && (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            disabled={disabled}
+            className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
+          >
+            Standard
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RolePicker({
   label,
   sources,
@@ -238,6 +265,7 @@ export default function ControlPanel({
   hidden
 }) {
   const [saveName, setSaveName] = useState('');
+  const [advancedColorMode, setAdvancedColorMode] = useState(false);
   const canControl = phase === 'idle' || phase === 'ready' || phase === 'done';
 
   if (hidden) return null;
@@ -329,53 +357,94 @@ export default function ControlPanel({
       </div>
 
       <div>
-        <label className="block text-xs text-gray-500 mb-1">
-          Karossens färger{' '}
-          {assignMode && <span className="text-blue-400">— klicka rutor för att lägga till/ta bort ur {assignMode === 'cab' ? 'hytten' : 'skåpet'}</span>}
-        </label>
-        {paletteColors.length === 0 ? (
-          <p className="text-xs text-gray-600">Väntar på att modellen ska ladda…</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {paletteColors.map((c) => (
-              <PaletteSwatch
-                key={c.hex}
-                color={c}
-                isCab={cabSources.includes(c.hex)}
-                isBox={boxSources.includes(c.hex)}
-                isReference={c.hex === referenceSwatch}
-                maxCount={paletteColors[0]?.count || 1}
-                disabled={!canControl}
-                onClick={() => onSwatchClick(c.hex)}
-              />
-            ))}
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-xs text-gray-500">Karossens färger</label>
+          <button
+            type="button"
+            onClick={() => setAdvancedColorMode((v) => !v)}
+            className="text-xs text-blue-400 hover:text-blue-300"
+          >
+            {advancedColorMode ? 'Enkelt läge' : 'Avancerat'}
+          </button>
+        </div>
+
+        {!advancedColorMode && (
+          <div className="grid grid-cols-2 gap-3">
+            <SimpleColorField
+              label="Hyttfärg"
+              color={cabColor}
+              defaultHex={cabSources[0]}
+              onChange={onCabColorChange}
+              disabled={!canControl}
+            />
+            <SimpleColorField
+              label="Skåpfärg"
+              color={boxColor}
+              defaultHex={boxSources[0]}
+              onChange={onBoxColorChange}
+              disabled={!canControl}
+            />
           </div>
         )}
-      </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <RolePicker
-          label="Hytt"
-          sources={cabSources}
-          color={cabColor}
-          assignActive={assignMode === 'cab'}
-          onToggleAssign={() => onAssignModeChange(assignMode === 'cab' ? null : 'cab')}
-          onColorChange={onCabColorChange}
-          onSelectSimilar={onSelectSimilarCab}
-          canSelectSimilar={Boolean(referenceSwatch)}
-          disabled={!canControl}
-        />
-        <RolePicker
-          label="Skåp"
-          sources={boxSources}
-          color={boxColor}
-          assignActive={assignMode === 'box'}
-          onToggleAssign={() => onAssignModeChange(assignMode === 'box' ? null : 'box')}
-          onColorChange={onBoxColorChange}
-          onSelectSimilar={onSelectSimilarBox}
-          canSelectSimilar={Boolean(referenceSwatch)}
-          disabled={!canControl}
-        />
+        {advancedColorMode && (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-600">
+              Bara till för att peka ut nya rutor — t.ex. efter att ha bytt 3d-modell. Vanligtvis
+              räcker färgvalen i det enkla läget.
+            </p>
+
+            {assignMode && (
+              <p className="text-xs text-blue-400">
+                Klicka rutor nedan för att lägga till/ta bort ur {assignMode === 'cab' ? 'hytten' : 'skåpet'}.
+              </p>
+            )}
+
+            {paletteColors.length === 0 ? (
+              <p className="text-xs text-gray-600">Väntar på att modellen ska ladda…</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {paletteColors.map((c) => (
+                  <PaletteSwatch
+                    key={c.hex}
+                    color={c}
+                    isCab={cabSources.includes(c.hex)}
+                    isBox={boxSources.includes(c.hex)}
+                    isReference={c.hex === referenceSwatch}
+                    maxCount={paletteColors[0]?.count || 1}
+                    disabled={!canControl}
+                    onClick={() => onSwatchClick(c.hex)}
+                  />
+                ))}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <RolePicker
+                label="Hytt"
+                sources={cabSources}
+                color={cabColor}
+                assignActive={assignMode === 'cab'}
+                onToggleAssign={() => onAssignModeChange(assignMode === 'cab' ? null : 'cab')}
+                onColorChange={onCabColorChange}
+                onSelectSimilar={onSelectSimilarCab}
+                canSelectSimilar={Boolean(referenceSwatch)}
+                disabled={!canControl}
+              />
+              <RolePicker
+                label="Skåp"
+                sources={boxSources}
+                color={boxColor}
+                assignActive={assignMode === 'box'}
+                onToggleAssign={() => onAssignModeChange(assignMode === 'box' ? null : 'box')}
+                onColorChange={onBoxColorChange}
+                onSelectSimilar={onSelectSimilarBox}
+                canSelectSimilar={Boolean(referenceSwatch)}
+                disabled={!canControl}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div>
