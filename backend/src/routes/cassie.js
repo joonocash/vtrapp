@@ -206,7 +206,9 @@ router.post('/routes', (req, res) => {
     scale: Number.isFinite(Number(body.scale)) && Number(body.scale) > 0 ? Number(body.scale) : 90,
     trail: ['full', 'fade', 'none'].includes(body.trail) ? body.trail : 'full',
     cam: ['follow', 'fixed', 'overview'].includes(body.cam) ? body.cam : 'follow',
+    cabSource: HEX_COLOR_RE.test(body.cabSource) ? body.cabSource : null,
     cabColor: HEX_COLOR_RE.test(body.cabColor) ? body.cabColor : null,
+    boxSource: HEX_COLOR_RE.test(body.boxSource) ? body.boxSource : null,
     boxColor: HEX_COLOR_RE.test(body.boxColor) ? body.boxColor : null,
     createdAt: Date.now()
   };

@@ -94,30 +94,76 @@ function GeocodeInput({ label, placeholder, value, onSelect }) {
   );
 }
 
-function ColorField({ label, value, fallback, onChange, disabled }) {
-  const isOverridden = Boolean(value);
+function PaletteSwatch({ color, isCab, isBox, clickable, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!clickable}
+      title={`${color.hex} — ${color.count} vertexar`}
+      className={`relative w-8 h-8 rounded-md border-2 transition-transform ${
+        clickable ? 'border-blue-400 hover:scale-110 cursor-pointer' : 'border-gray-700'
+      }`}
+      style={{ background: color.hex }}
+    >
+      {isCab && (
+        <span className="absolute -top-1.5 -left-1.5 bg-blue-600 text-white text-[9px] font-bold leading-none rounded-full w-4 h-4 flex items-center justify-center">
+          H
+        </span>
+      )}
+      {isBox && (
+        <span className="absolute -top-1.5 -right-1.5 bg-emerald-600 text-white text-[9px] font-bold leading-none rounded-full w-4 h-4 flex items-center justify-center">
+          S
+        </span>
+      )}
+    </button>
+  );
+}
+
+function RolePicker({ label, source, color, assignActive, onToggleAssign, onColorChange, disabled }) {
   return (
     <div>
       <label className="block text-xs text-gray-500 mb-1">{label}</label>
-      <div className="flex items-center gap-2">
-        <input
-          type="color"
-          value={value || fallback || '#888888'}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          className="h-9 w-12 shrink-0 bg-gray-900 border border-gray-700 rounded-md cursor-pointer disabled:opacity-50"
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onToggleAssign}
+        className={`w-full flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+          assignActive
+            ? 'bg-blue-600 border-blue-500 text-blue-50'
+            : 'bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-700'
+        }`}
+      >
+        <span
+          className="w-4 h-4 rounded border border-gray-600 shrink-0"
+          style={{ background: source || 'transparent' }}
         />
-        {isOverridden && (
-          <button
-            type="button"
-            onClick={() => onChange(null)}
+        <span className="truncate">
+          {assignActive ? 'Klicka en ruta ovan…' : source ? 'Byt ruta' : 'Peka ut ruta'}
+        </span>
+      </button>
+
+      {source && (
+        <div className="flex items-center gap-2 mt-2">
+          <input
+            type="color"
+            value={color || source}
+            onChange={(e) => onColorChange(e.target.value)}
             disabled={disabled}
-            className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
-          >
-            Standard
-          </button>
-        )}
-      </div>
+            className="h-9 w-12 shrink-0 bg-gray-900 border border-gray-700 rounded-md cursor-pointer disabled:opacity-50"
+          />
+          {color && (
+            <button
+              type="button"
+              onClick={() => onColorChange(null)}
+              disabled={disabled}
+              className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
+            >
+              Standard
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -141,12 +187,16 @@ export default function ControlPanel({
   onTrailModeChange,
   camMode,
   onCamModeChange,
+  paletteColors,
+  cabSource,
   cabColor,
   onCabColorChange,
-  defaultCabColor,
+  boxSource,
   boxColor,
   onBoxColorChange,
-  defaultBoxColor,
+  assignMode,
+  onAssignModeChange,
+  onAssignSwatch,
   placementMode,
   onPlacementModeChange,
   onPlay,
@@ -252,19 +302,43 @@ export default function ControlPanel({
         />
       </div>
 
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Karossens färger</label>
+        {paletteColors.length === 0 ? (
+          <p className="text-xs text-gray-600">Väntar på att modellen ska ladda…</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {paletteColors.map((c) => (
+              <PaletteSwatch
+                key={c.hex}
+                color={c}
+                isCab={c.hex === cabSource}
+                isBox={c.hex === boxSource}
+                clickable={Boolean(assignMode) && canControl}
+                onClick={() => onAssignSwatch(c.hex)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
-        <ColorField
-          label="Hyttfärg"
-          value={cabColor}
-          fallback={defaultCabColor}
-          onChange={onCabColorChange}
+        <RolePicker
+          label="Hytt"
+          source={cabSource}
+          color={cabColor}
+          assignActive={assignMode === 'cab'}
+          onToggleAssign={() => onAssignModeChange(assignMode === 'cab' ? null : 'cab')}
+          onColorChange={onCabColorChange}
           disabled={!canControl}
         />
-        <ColorField
-          label="Skåpfärg"
-          value={boxColor}
-          fallback={defaultBoxColor}
-          onChange={onBoxColorChange}
+        <RolePicker
+          label="Skåp"
+          source={boxSource}
+          color={boxColor}
+          assignActive={assignMode === 'box'}
+          onToggleAssign={() => onAssignModeChange(assignMode === 'box' ? null : 'box')}
+          onColorChange={onBoxColorChange}
           disabled={!canControl}
         />
       </div>

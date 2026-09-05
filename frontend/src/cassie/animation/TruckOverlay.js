@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { groundMetersPerPixel } from './routeMath.js';
-import { PaletteTexture, detectGrid, rgbToHex } from './paletteTexture.js';
+import { PaletteTexture, detectGrid, rgbToHex, clusterColors } from './paletteTexture.js';
 
 // Ren three.js — ingen google.maps-referens här. Lyder samma duck-typade
 // protokoll som ett riktigt google.maps.WebGLOverlayView förväntar sig
@@ -32,49 +32,21 @@ const MODEL_UNIT_SIZE_METERS = 8;
 // Standardvärde innan CassiePage hunnit sätta ett från URL-state.
 const DEFAULT_PIXEL_SIZE = 90;
 
-// Modellen har ETT delat material ("colormap") för hela karossen — hytt och
-// skåp är inte skilda material, de är olika RUTOR i samma palett-textur som
-// respektive mesh UV-mappar mot. Vi klassificerar därför per MESH (namnet på
-// meshen eller dess förälder-nod), inte per material, och tar reda på vilken
-// palettruta varje mesh pekar på genom dess genomsnittliga UV-koordinat (se
-// paletteTexture.js). Namnmatchning är förstahandsförsöket; om inget namn ger
-// besked faller vi tillbaka på den FAKTISKA färgen i palett-texturen vid den
-// UV-koordinaten (modellen är som standard ljuslila hytt + grönt skåp).
-const CAB_NAME_HINTS = ['cab', 'hytt', 'cockpit', 'driver', 'förar'];
-const BOX_NAME_HINTS = ['box', 'skåp', 'trailer', 'container', 'cargo', 'load', 'back'];
-// Delar vi ALDRIG får färga, oavsett hur nära de råkar ligga hue-intervallen
-// nedan — annars förlorar lastbilen all form.
-const EXCLUDE_NAME_HINTS = [
-  'wheel',
-  'tire',
-  'tyre',
-  'hjul',
-  'glass',
-  'window',
-  'ruta',
-  'ruter',
-  'light',
-  'lamp',
-  'lykta',
-  'bumper',
-  'stötfångare',
-  'chrome',
-  'krom'
-];
-const CAB_HUE_RANGE = [245, 305]; // ljuslila/violett
-const BOX_HUE_RANGE = [70, 160]; // grönt
-const MIN_SATURATION_FOR_HUE_MATCH = 0.15;
-
-function averageUV(geometry) {
+// Modellen har ETT delat material ("colormap") för hela karossen och bara
+// SEX meshar totalt (dörr, fyra hjul, kaross) — hytt och skåp sitter i SAMMA
+// "kaross"-mesh, som spänner över flera palettrutor. Klassificering per mesh
+// (eller ett medelvärde av dess UV) är alltså meningslös: ett medel-UV över
+// flera rutor landar mitt emellan dem, på en färg som inte ens syns på
+// modellen. Vi kan därför inte veta i förväg vilken del som är hytt/skåp —
+// i stället samplas VARJE vertex-UV i hela modellen, de faktiska distinkta
+// färgerna som används listas (se discoverPalette), och användaren pekar
+// själv ut vilken som är hytten och vilken som är skåpet i kontrollpanelen.
+function forEachVertexUV(geometry, callback) {
   const uvAttr = geometry.attributes.uv;
-  if (!uvAttr || uvAttr.count === 0) return null;
-  let sumU = 0;
-  let sumV = 0;
+  if (!uvAttr) return;
   for (let i = 0; i < uvAttr.count; i++) {
-    sumU += uvAttr.getX(i);
-    sumV += uvAttr.getY(i);
+    callback(uvAttr.getX(i), uvAttr.getY(i));
   }
-  return { u: sumU / uvAttr.count, v: sumV / uvAttr.count };
 }
 
 let instanceCounter = 0;
@@ -97,24 +69,25 @@ export class TruckOverlay {
     this.visible = true;
     this.loaded = false;
     // Palett-texturen (canvas + THREE.CanvasTexture) som ersätter det delade
-    // materialets ursprungliga .map, plus vilka pixel-koordinater i den som
-    // hör till respektive del. Fylls av classifyMeshesAndBuildPalette() när
-    // modellen och dess textur laddat klart.
+    // materialets ursprungliga .map. Fylls av discoverPalette() när modellen
+    // och dess textur laddat klart.
     this.paletteTexture = null;
-    this.cabSeeds = [];
-    this.boxSeeds = [];
-    // Hex-strängar eller null ("använd modellens egen färg"). Kan sättas
-    // innan modellen laddat klart (t.ex. från en inläst sparad rutt) —
-    // classifyMeshesAndBuildPalette() applicerar dem så fort paletten finns.
+    // Vilken UPPTÄCKT originalfärg (hex) användaren pekat ut som hytt/skåp,
+    // och vilken ERSÄTTNINGSfärg (hex) den ska bytas mot. Alla fyra kan
+    // sättas innan modellen laddat klart (t.ex. från en inläst sparad rutt)
+    // — discoverPalette()/applyColorOverrides() applicerar dem så fort
+    // paletten finns.
+    this.cabSource = null;
     this.cabColorOverride = null;
+    this.boxSource = null;
     this.boxColorOverride = null;
     // Sätts av GoogleMapProvider.attachOverlay — enda kopplingen ut mot
     // kartmotorn, och den är opaque (bara en callback, ingen typreferens).
     this._requestRedraw = null;
-    // Sätts av useRouteAnimation — rapporterar modellens egna standardfärger
-    // uppåt så kontrollpanelens färgväljare kan visa rätt startvärde innan
-    // användaren aktivt ändrat något.
-    this._onColorsDiscovered = null;
+    // Sätts av useRouteAnimation — rapporterar den upptäckta paletten
+    // (distinkta färger + hur många vertexar som använder var och en) uppåt
+    // så kontrollpanelen kan visa dem som utbytbara rutor.
+    this._onPaletteDiscovered = null;
   }
 
   onAdd() {
@@ -169,7 +142,7 @@ export class TruckOverlay {
         // traverseringen ser samma träd oavsett — men vi gör det i den här
         // ordningen ändå så det är obestridligt att vi traverserar den nod
         // GLTFLoader faktiskt gav oss, innan något annat rört den.
-        this.classifyMeshesAndBuildPalette(gltf.scene);
+        this.discoverPalette(gltf.scene);
         this.axisFixGroup.add(gltf.scene);
         this.loaded = true;
         this.requestRedraw();
@@ -180,20 +153,19 @@ export class TruckOverlay {
   }
 
   /**
-   * Traverserar den laddade modellen mesh för mesh. Modellen har bara ETT
-   * delat material ("colormap") — all färg kommer från en palett-textur som
-   * varje mesh UV-mappar mot en enskild rutas solida färg. Vi kan alltså
-   * inte skilja hytt från skåp via material; i stället:
+   * Traverserar den laddade modellen. Modellen har bara ETT delat material
+   * ("colormap") och bara sex meshar — hytt och skåp sitter i samma mesh,
+   * så vi kan inte klassificera per mesh. I stället:
    *  1. Bygger en om-färgningsbar canvas-kopia av palett-texturen
    *     (PaletteTexture) från det första materialet som har en .map.
-   *  2. Räknar ut varje meshs genomsnittliga UV-koordinat och loggar den
-   *     tillsammans med pixelkoordinaten och den faktiska färgen där i
-   *     paletten — det är den loggen som visar vilka rutor som hör till vad.
-   *  3. Klassificerar meshen via namnet (dess egna eller förälderns) i
-   *     första hand, och den samplade palettfärgens nyans som fallback.
-   * Rör aldrig hjul/rutor/lyktor/stötfångare.
+   *  2. Samplar VARJE vertex-UV i hela modellen (inte ett medelvärde) mot
+   *     paletten, och räknar hur många vertexar som landar på varje
+   *     distinkt färg — det är DEN listan som rapporteras uppåt, inte en
+   *     gissning på vilken del som är vad.
+   * Användaren pekar sedan själv ut i kontrollpanelen vilken upptäckt färg
+   * som är hytten och vilken som är skåpet.
    */
-  classifyMeshesAndBuildPalette(root) {
+  discoverPalette(root) {
     const meshes = [];
     let visitedCount = 0;
     const typeCounts = {};
@@ -208,8 +180,8 @@ export class TruckOverlay {
     console.log(
       `[cassie:${this.id}] traverserade från roten "${root.name || '(namnlös)'}" ` +
         `(${root.type}, ${root.children?.length ?? 0} direkta barn) — ${visitedCount} noder totalt, ` +
-        `${meshes.length} med UV. Typer:`,
-      typeCounts
+        `${meshes.length} med UV:`,
+      meshes.map((m) => m.name || '(namnlös)')
     );
 
     const sourceMaterial = meshes
@@ -242,54 +214,29 @@ export class TruckOverlay {
         'Rent gissningsverk om paletten inte faktiskt är ett regelbundet rutnät.'
     );
 
-    console.log(`[cassie:${this.id}] mesh -> UV -> palettpixel -> färg:`);
+    // Sampla VARJE vertex-UV i hela modellen — inte ett medelvärde, som blir
+    // meningslöst när en enda mesh (kaross) spänner över flera rutor.
+    const rawCounts = {};
+    let totalUVs = 0;
     for (const mesh of meshes) {
-      const uv = averageUV(mesh.geometry);
-      if (!uv) continue;
-      const pixel = this.paletteTexture.samplePixel(uv.u, uv.v);
-      mesh.userData._paletteUV = uv;
-      mesh.userData._palettePixel = pixel;
-      console.log(
-        `  "${mesh.name || '(namnlös)'}" (förälder: "${mesh.parent?.name || '(namnlös)'}") ` +
-          `uv=(${uv.u.toFixed(3)}, ${uv.v.toFixed(3)}) px=(${pixel.x}, ${pixel.y}) ${rgbToHex(pixel.r, pixel.g, pixel.b)}`
-      );
+      forEachVertexUV(mesh.geometry, (u, v) => {
+        const pixel = this.paletteTexture.samplePixel(u, v);
+        const hex = rgbToHex(pixel.r, pixel.g, pixel.b);
+        rawCounts[hex] = (rawCounts[hex] || 0) + 1;
+        totalUVs += 1;
+      });
     }
 
-    for (const mesh of meshes) {
-      const pixel = mesh.userData._palettePixel;
-      if (!pixel) continue;
-      const combinedName = `${mesh.name || ''} ${mesh.parent?.name || ''}`.toLowerCase();
-      if (EXCLUDE_NAME_HINTS.some((hint) => combinedName.includes(hint))) continue;
-
-      let role = null;
-      if (CAB_NAME_HINTS.some((hint) => combinedName.includes(hint))) role = 'cab';
-      else if (BOX_NAME_HINTS.some((hint) => combinedName.includes(hint))) role = 'box';
-      else {
-        const color = new THREE.Color(pixel.r / 255, pixel.g / 255, pixel.b / 255);
-        const hsl = { h: 0, s: 0, l: 0 };
-        color.getHSL(hsl);
-        const hueDeg = hsl.h * 360;
-        if (hsl.s < MIN_SATURATION_FOR_HUE_MATCH) {
-          // Nästan grå/svart/vit — sannolikt krom, gummi eller plast. Rör inte.
-        } else if (hueDeg >= CAB_HUE_RANGE[0] && hueDeg <= CAB_HUE_RANGE[1]) {
-          role = 'cab';
-        } else if (hueDeg >= BOX_HUE_RANGE[0] && hueDeg <= BOX_HUE_RANGE[1]) {
-          role = 'box';
-        }
-      }
-
-      if (role === 'cab') this.cabSeeds.push({ x: pixel.x, y: pixel.y });
-      else if (role === 'box') this.boxSeeds.push({ x: pixel.x, y: pixel.y });
+    const palette = clusterColors(rawCounts);
+    console.log(
+      `[cassie:${this.id}] ${totalUVs} vertex-UV samplade, ${Object.keys(rawCounts).length} exakta färger, ` +
+        `${palette.length} kluster efter tolerans. Palett (färg: antal vertexar):`
+    );
+    for (const { hex, count } of palette) {
+      console.log(`  ${hex}: ${count}`);
     }
 
-    console.log(`[cassie:${this.id}] klassificering — hytt-frön:`, this.cabSeeds, 'skåp-frön:', this.boxSeeds);
-
-    const cabPixel = this.cabSeeds[0] ? this.paletteTexture.samplePixel(this.cabSeeds[0].x / this.paletteTexture.width, this.cabSeeds[0].y / this.paletteTexture.height) : null;
-    const boxPixel = this.boxSeeds[0] ? this.paletteTexture.samplePixel(this.boxSeeds[0].x / this.paletteTexture.width, this.boxSeeds[0].y / this.paletteTexture.height) : null;
-    this._onColorsDiscovered?.({
-      cab: cabPixel ? rgbToHex(cabPixel.r, cabPixel.g, cabPixel.b) : null,
-      box: boxPixel ? rgbToHex(boxPixel.r, boxPixel.g, boxPixel.b) : null
-    });
+    this._onPaletteDiscovered?.(palette);
 
     // Applicera overrides som redan hunnit sättas (t.ex. från en inläst
     // sparad rutt) innan paletten var klar.
@@ -299,19 +246,31 @@ export class TruckOverlay {
   applyColorOverrides() {
     if (!this.paletteTexture) return;
     this.paletteTexture.regenerate([
-      { seeds: this.cabSeeds, hex: this.cabColorOverride },
-      { seeds: this.boxSeeds, hex: this.boxColorOverride }
+      { sourceHex: this.cabSource, hex: this.cabColorOverride },
+      { sourceHex: this.boxSource, hex: this.boxColorOverride }
     ]);
     this.requestRedraw();
   }
 
-  /** @param {string | null} hex Null återställer till modellens originalfärg. */
+  /** @param {string | null} hex Vilken UPPTÄCKT originalfärg som är hytten. */
+  setCabSource(hex) {
+    this.cabSource = hex || null;
+    this.applyColorOverrides();
+  }
+
+  /** @param {string | null} hex Ersättningsfärgen för hytten. Null = originalfärg. */
   setCabColor(hex) {
     this.cabColorOverride = hex || null;
     this.applyColorOverrides();
   }
 
-  /** @param {string | null} hex Null återställer till modellens originalfärg. */
+  /** @param {string | null} hex Vilken UPPTÄCKT originalfärg som är skåpet. */
+  setBoxSource(hex) {
+    this.boxSource = hex || null;
+    this.applyColorOverrides();
+  }
+
+  /** @param {string | null} hex Ersättningsfärgen för skåpet. Null = originalfärg. */
   setBoxColor(hex) {
     this.boxColorOverride = hex || null;
     this.applyColorOverrides();

@@ -103,9 +103,11 @@ function applyBookendOpacity(mapProvider, pinsMode, value) {
  *   camMode: 'follow' | 'fixed' | 'overview',
  *   onStartDrag: (pos: {lat:number, lng:number}) => void,
  *   onEndDrag: (pos: {lat:number, lng:number}) => void,
+ *   cabSource: string | null,
  *   cabColor: string | null,
+ *   boxSource: string | null,
  *   boxColor: string | null,
- *   onColorsDiscovered: (colors: {cab: string|null, box: string|null}) => void,
+ *   onPaletteDiscovered: (palette: {hex: string, count: number}[]) => void,
  *   containerRef: { current: HTMLElement | null }
  * }} args
  */
@@ -120,9 +122,11 @@ export function useRouteAnimation({
   camMode,
   onStartDrag,
   onEndDrag,
+  cabSource,
   cabColor,
+  boxSource,
   boxColor,
-  onColorsDiscovered
+  onPaletteDiscovered
 }) {
   const [phase, setPhase] = useState('idle'); // idle|ready|overview|flyToStart|countdown|playing|holdEnd|returnToOverview|done
   const [countdown, setCountdown] = useState(null);
@@ -139,9 +143,11 @@ export function useRouteAnimation({
   const camModeRef = useRef(camMode);
   const onStartDragRef = useRef(onStartDrag);
   const onEndDragRef = useRef(onEndDrag);
+  const cabSourceRef = useRef(cabSource);
   const cabColorRef = useRef(cabColor);
+  const boxSourceRef = useRef(boxSource);
   const boxColorRef = useRef(boxColor);
-  const onColorsDiscoveredRef = useRef(onColorsDiscovered);
+  const onPaletteDiscoveredRef = useRef(onPaletteDiscovered);
 
   pinsModeRef.current = pinsMode;
   durationRef.current = durationSeconds;
@@ -150,9 +156,11 @@ export function useRouteAnimation({
   camModeRef.current = camMode;
   onStartDragRef.current = onStartDrag;
   onEndDragRef.current = onEndDrag;
+  cabSourceRef.current = cabSource;
   cabColorRef.current = cabColor;
+  boxSourceRef.current = boxSource;
   boxColorRef.current = boxColor;
-  onColorsDiscoveredRef.current = onColorsDiscovered;
+  onPaletteDiscoveredRef.current = onPaletteDiscovered;
 
   // Bygg scenen (tidslinje, overlay, linjer, markörer) när rutten är redo.
   useEffect(() => {
@@ -170,13 +178,15 @@ export function useRouteAnimation({
     const overlay = new TruckOverlay();
     mapProvider.attachOverlay(overlay);
     overlayRef.current = overlay;
-    overlay._onColorsDiscovered = (colors) => onColorsDiscoveredRef.current?.(colors);
+    overlay._onPaletteDiscovered = (palette) => onPaletteDiscoveredRef.current?.(palette);
 
     // Placera lastbilen vid startpunkten direkt, innan uppspelning har
     // körts igång — annars finns det inget att visa storleksreglaget mot
     // medan man står still och ställer in det.
     overlay.setPixelSize(truckSizeRef.current);
+    overlay.setCabSource(cabSourceRef.current);
     overlay.setCabColor(cabColorRef.current);
+    overlay.setBoxSource(boxSourceRef.current);
     overlay.setBoxColor(boxColorRef.current);
     overlay.setPose({
       lat: vertices[0].lat,
@@ -249,8 +259,16 @@ export function useRouteAnimation({
 
   // Samma sak för färgerna — synliga direkt, oavsett fas.
   useEffect(() => {
+    overlayRef.current?.setCabSource(cabSource);
+  }, [cabSource]);
+
+  useEffect(() => {
     overlayRef.current?.setCabColor(cabColor);
   }, [cabColor]);
+
+  useEffect(() => {
+    overlayRef.current?.setBoxSource(boxSource);
+  }, [boxSource]);
 
   useEffect(() => {
     overlayRef.current?.setBoxColor(boxColor);

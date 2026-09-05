@@ -25,13 +25,17 @@ export default function CassiePage() {
   const [truckSize, setTruckSize] = useState(initial.scale);
   const [trailMode, setTrailMode] = useState(initial.trail);
   const [camMode, setCamMode] = useState(initial.cam);
+  const [cabSource, setCabSource] = useState(initial.cabSource);
   const [cabColor, setCabColor] = useState(initial.cabColor);
+  const [boxSource, setBoxSource] = useState(initial.boxSource);
   const [boxColor, setBoxColor] = useState(initial.boxColor);
-  // Modellens egna färger, upptäckta i TruckOverlay när glTF:en laddat
-  // klart — bara för att sliderns "standard"-läge ska visa rätt kulör
-  // innan användaren aktivt valt något.
-  const [defaultCabColor, setDefaultCabColor] = useState(null);
-  const [defaultBoxColor, setDefaultBoxColor] = useState(null);
+  // De faktiska färgerna modellens palett-textur använder, upptäckta i
+  // TruckOverlay när glTF:en laddat klart — visas som utbytbara rutor i
+  // kontrollpanelen så användaren kan peka ut vilken som är hytt/skåp.
+  const [paletteColors, setPaletteColors] = useState([]);
+  // 'cab' | 'box' | null — nästa klick på en palettruta tilldelar den till
+  // denna roll. Samma mönster som "Klicka på kartan".
+  const [assignMode, setAssignMode] = useState(null);
   const [placementMode, setPlacementMode] = useState(false);
   const [routeSlug, setRouteSlug] = useState(initial.route);
 
@@ -151,7 +155,9 @@ export default function CassiePage() {
     setTruckSize(Number.isFinite(match.scale) && match.scale > 0 ? match.scale : initial.scale);
     setTrailMode(['full', 'fade', 'none'].includes(match.trail) ? match.trail : initial.trail);
     setCamMode(['follow', 'fixed', 'overview'].includes(match.cam) ? match.cam : initial.cam);
+    setCabSource(/^#[0-9a-fA-F]{6}$/.test(match.cabSource) ? match.cabSource : null);
     setCabColor(/^#[0-9a-fA-F]{6}$/.test(match.cabColor) ? match.cabColor : null);
+    setBoxSource(/^#[0-9a-fA-F]{6}$/.test(match.boxSource) ? match.boxSource : null);
     setBoxColor(/^#[0-9a-fA-F]{6}$/.test(match.boxColor) ? match.boxColor : null);
   }, [routeSlug, savedRoutes]);
 
@@ -201,7 +207,9 @@ export default function CassiePage() {
       scale: truckSize,
       trail: trailMode,
       cam: camMode,
+      cabSource,
       cabColor,
+      boxSource,
       boxColor,
       route: routeSlug
     });
@@ -217,14 +225,15 @@ export default function CassiePage() {
     truckSize,
     trailMode,
     camMode,
+    cabSource,
     cabColor,
+    boxSource,
     boxColor,
     routeSlug
   ]);
 
-  const handleColorsDiscovered = useCallback(({ cab, box }) => {
-    setDefaultCabColor(cab);
-    setDefaultBoxColor(box);
+  const handlePaletteDiscovered = useCallback((palette) => {
+    setPaletteColors(palette);
   }, []);
 
   const animation = useRouteAnimation({
@@ -238,10 +247,23 @@ export default function CassiePage() {
     camMode,
     onStartDrag: handleStartDrag,
     onEndDrag: handleEndDrag,
+    cabSource,
     cabColor,
+    boxSource,
     boxColor,
-    onColorsDiscovered: handleColorsDiscovered
+    onPaletteDiscovered: handlePaletteDiscovered
   });
+
+  // Klick på en palettruta i "peka ut hytt/skåp"-läge tilldelar den rutan
+  // som källfärg för den aktiva rollen.
+  const handleAssignSwatch = useCallback(
+    (hex) => {
+      if (assignMode === 'cab') setCabSource((prev) => (prev === hex ? null : hex));
+      else if (assignMode === 'box') setBoxSource((prev) => (prev === hex ? null : hex));
+      setAssignMode(null);
+    },
+    [assignMode]
+  );
 
   // Escape avbryter uppspelningen och återställer panelen/muspekaren. Bara
   // Escape — inga musklick, så en pågående tagning inte avbryts av misstag.
@@ -291,7 +313,9 @@ export default function CassiePage() {
           scale: truckSize,
           trail: trailMode,
           cam: camMode,
+          cabSource,
           cabColor,
+          boxSource,
           boxColor
         });
         setSavedRoutes((prev) => [...prev, saved]);
@@ -312,7 +336,9 @@ export default function CassiePage() {
       truckSize,
       trailMode,
       camMode,
+      cabSource,
       cabColor,
+      boxSource,
       boxColor
     ]
   );
@@ -330,7 +356,9 @@ export default function CassiePage() {
     setTruckSize(Number.isFinite(record.scale) && record.scale > 0 ? record.scale : 90);
     setTrailMode(['full', 'fade', 'none'].includes(record.trail) ? record.trail : 'full');
     setCamMode(['follow', 'fixed', 'overview'].includes(record.cam) ? record.cam : 'follow');
+    setCabSource(/^#[0-9a-fA-F]{6}$/.test(record.cabSource) ? record.cabSource : null);
     setCabColor(/^#[0-9a-fA-F]{6}$/.test(record.cabColor) ? record.cabColor : null);
+    setBoxSource(/^#[0-9a-fA-F]{6}$/.test(record.boxSource) ? record.boxSource : null);
     setBoxColor(/^#[0-9a-fA-F]{6}$/.test(record.boxColor) ? record.boxColor : null);
     setRouteSlug(record.slug);
   }, []);
@@ -397,12 +425,16 @@ export default function CassiePage() {
         onTrailModeChange={setTrailMode}
         camMode={camMode}
         onCamModeChange={setCamMode}
+        paletteColors={paletteColors}
+        cabSource={cabSource}
         cabColor={cabColor}
         onCabColorChange={setCabColor}
-        defaultCabColor={defaultCabColor}
+        boxSource={boxSource}
         boxColor={boxColor}
         onBoxColorChange={setBoxColor}
-        defaultBoxColor={defaultBoxColor}
+        assignMode={assignMode}
+        onAssignModeChange={setAssignMode}
+        onAssignSwatch={handleAssignSwatch}
         placementMode={placementMode}
         onPlacementModeChange={setPlacementMode}
         onPlay={handlePlay}

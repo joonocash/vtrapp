@@ -2,15 +2,23 @@ import * as THREE from 'three';
 
 // Kenney-modellen har ETT delat material ("colormap", basfärg vit) för hela
 // karossen — all synlig färg kommer från en liten palett-textur som varje
-// mesh UV-mappar mot en enskild rutas solida färg. Att tona material.color
-// färgar därför HELA lastbilen på en gång, inte bara en del.
+// mesh UV-mappar mot. Att tona material.color färgar därför HELA lastbilen
+// på en gång, inte bara en del.
 //
-// Strategin här i stället: rita palett-texturen till en canvas, och när
-// användaren väljer en färg — flood-filla just den kontinuerliga rutan (från
-// en känd startpixel) med den nya färgen, i en canvas-kopia. Originalet
-// bevaras orört så "ingen override" alltid går att återställa exakt.
+// Modellen har dessutom bara sex meshar (dörr, fyra hjul, kaross), så en
+// enskild mesh ("kaross") kan själv spänna över flera palettrutor — hytt och
+// skåp sitter i SAMMA mesh. Att klassificera per mesh (eller ett medelvärde
+// av dess UV) är alltså meningslöst. I stället: sampla EVERY vertex-UV i
+// hela modellen, lista de FAKTISKA distinkta färgerna som används, och låt
+// användaren peka ut vilken av dem som är hytten respektive skåpet.
+//
+// Om-färgning sker sedan genom att ersätta en given originalfärg (var den än
+// förekommer i paletten) med en ny — inte flood fill från en punkt, eftersom
+// vi nu känner den exakta färgen direkt och kan matcha den var som helst i
+// bilden.
 
-const FLOOD_FILL_TOLERANCE = 40; // Euklidiskt avstånd i 0..255 RGB, per kanal
+const COLOR_MATCH_TOLERANCE = 24; // Euklidiskt avstånd i 0..255 RGB, per kanal
+const CLUSTER_TOLERANCE = 20; // Hur nära två samplade färger får ligga för att räknas som samma ruta
 
 function colorDistanceSq(r1, g1, b1, r2, g2, b2) {
   const dr = r1 - r2;
@@ -34,44 +42,53 @@ export function rgbToHex(r, g, b) {
 }
 
 /**
- * 4-anslutet flood fill i en ImageData, muterar den in-place. Startar vid
- * (startX, startY) och sprider sig så länge pixlarna ligger inom
- * `tolerance` av startpixelns färg — dvs den fyller precis den
- * sammanhängande rutan, inte hela bilden.
+ * Slår ihop en { hex: antal }-tally av exakt samplade färger till kluster av
+ * "samma ruta" — texturkomprimering/bilinjär filtrering kan annars ge en
+ * handfull nästan identiska nyanser per swatch i stället för en. Bearbetar
+ * i fallande frekvensordning så varje klusters representant blir den mest
+ * frekventa exakta nyansen i det klustret.
  */
-export function floodFillReplace(imageData, width, height, startX, startY, [nr, ng, nb], tolerance = FLOOD_FILL_TOLERANCE) {
-  const { data } = imageData;
-  const x0 = Math.max(0, Math.min(width - 1, Math.round(startX)));
-  const y0 = Math.max(0, Math.min(height - 1, Math.round(startY)));
-  const startIdx = (y0 * width + x0) * 4;
-  const tr = data[startIdx];
-  const tg = data[startIdx + 1];
-  const tb = data[startIdx + 2];
+export function clusterColors(rawCounts, tolerance = CLUSTER_TOLERANCE) {
+  const entries = Object.entries(rawCounts)
+    .map(([hex, count]) => ({ hex, rgb: hexToRgb(hex), count }))
+    .sort((a, b) => b.count - a.count);
+
   const toleranceSq = tolerance * tolerance;
+  const clusters = [];
 
-  const visited = new Uint8Array(width * height);
-  const stack = [[x0, y0]];
-  let filled = 0;
-
-  while (stack.length) {
-    const [x, y] = stack.pop();
-    if (x < 0 || y < 0 || x >= width || y >= height) continue;
-    const pixelIndex = y * width + x;
-    if (visited[pixelIndex]) continue;
-    visited[pixelIndex] = 1;
-
-    const idx = pixelIndex * 4;
-    if (colorDistanceSq(data[idx], data[idx + 1], data[idx + 2], tr, tg, tb) > toleranceSq) continue;
-
-    data[idx] = nr;
-    data[idx + 1] = ng;
-    data[idx + 2] = nb;
-    filled += 1;
-
-    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+  for (const entry of entries) {
+    const cluster = clusters.find(
+      (c) => colorDistanceSq(...c.rgb, ...entry.rgb) <= toleranceSq
+    );
+    if (cluster) cluster.count += entry.count;
+    else clusters.push({ hex: entry.hex, rgb: entry.rgb, count: entry.count });
   }
 
-  return filled;
+  return clusters.sort((a, b) => b.count - a.count).map(({ hex, count }) => ({ hex, count }));
+}
+
+/**
+ * Ersätter varje pixel som ligger inom `tolerance` av `fromRgb` med `toRgb`,
+ * var som helst i bilden — inget frö-fyllning, vi vet redan exakt vilken
+ * färg vi letar efter.
+ */
+export function replaceColor(imageData, fromRgb, toRgb, tolerance = COLOR_MATCH_TOLERANCE) {
+  const { data } = imageData;
+  const [fr, fg, fb] = fromRgb;
+  const [tr, tg, tb] = toRgb;
+  const toleranceSq = tolerance * tolerance;
+  let replaced = 0;
+
+  for (let i = 0; i < data.length; i += 4) {
+    if (colorDistanceSq(data[i], data[i + 1], data[i + 2], fr, fg, fb) <= toleranceSq) {
+      data[i] = tr;
+      data[i + 1] = tg;
+      data[i + 2] = tb;
+      replaced += 1;
+    }
+  }
+
+  return replaced;
 }
 
 /**
@@ -92,9 +109,7 @@ export function detectGrid(imageData, width, height) {
     let prev = getPixel(0);
     for (let i = 1; i < length; i++) {
       const cur = getPixel(i);
-      if (colorDistanceSq(prev[0], prev[1], prev[2], cur[0], cur[1], cur[2]) > 30 * 30) {
-        boundaries.push(i);
-      }
+      if (colorDistanceSq(...prev, ...cur) > 30 * 30) boundaries.push(i);
       prev = cur;
     }
     return boundaries;
@@ -155,10 +170,11 @@ export class PaletteTexture {
 
   /**
    * Ritar om canvasen från grunden (alltid från den pristina originalbilden)
-   * och applicerar sedan varje override som ett flood fill från dess
-   * frö-pixlar. `hex: null` betyder "ingen override" — den rutan lämnas
-   * alltså i sitt originalskick.
-   * @param {{seeds: {x:number, y:number}[], hex: string|null}[]} overrides
+   * och ersätter sedan varje aktiv override — `sourceHex` (den ursprungliga
+   * rutans färg) med `hex` (den valda ersättningsfärgen), var den än
+   * förekommer i bilden. `sourceHex` eller `hex` null/tomt hoppas över —
+   * den rutan lämnas i sitt originalskick.
+   * @param {{sourceHex: string|null, hex: string|null}[]} overrides
    */
   regenerate(overrides) {
     const imageData = new ImageData(
@@ -167,12 +183,9 @@ export class PaletteTexture {
       this.height
     );
 
-    for (const { seeds, hex } of overrides) {
-      if (!hex) continue;
-      const rgb = hexToRgb(hex);
-      for (const { x, y } of seeds) {
-        floodFillReplace(imageData, this.width, this.height, x, y, rgb);
-      }
+    for (const { sourceHex, hex } of overrides) {
+      if (!sourceHex || !hex) continue;
+      replaceColor(imageData, hexToRgb(sourceHex), hexToRgb(hex));
     }
 
     this.ctx.putImageData(imageData, 0, 0);
