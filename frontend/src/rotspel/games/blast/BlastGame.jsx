@@ -14,6 +14,11 @@ import { sfx, buzz, unlockAudio, setSoundEnabled } from './audio.js';
 const STORAGE_KEY = 'rotspel-blast-v1';
 const CLEAR_STEP = 28;   // ms mellan varje ruta i en rensning
 const CLEAR_DUR = 300;   // ms för själva försvinnandet
+// Pointer gain: på touch glider biten något snabbare än tummen, så man slipper
+// dra hela vägen upp till brädet. Faktorn växer med avståndet från greppunkten
+// och planar ut mot 1 + GAIN_MAX — små justeringar blir alltså nästan 1:1.
+const GAIN_MAX = 0.35;      // högsta extra andel utöver 1:1
+const GAIN_FALLOFF = 220;   // px innan gain nått ~63 % av taket
 
 /* ---------- sparad progress ---------- */
 
@@ -306,6 +311,38 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
     return rect ? rect.width / SIZE : cs;
   };
 
+  // Enda stället där rå pekarposition blir bitens faktiska position. Både
+  // renderingen och målruteberäkningen läser härifrån, så spökbilden och rutan
+  // biten landar i kan inte glida isär.
+  //
+  // Returnerar bitens MITTPUNKT i viewport-koordinater: .bb-drag har
+  // transform: translate(-50%, -50%), så left/top är mitten och inte hörnet.
+  const dragPos = (d) => {
+    const dx = d.x - d.gx;
+    const dy = d.y - d.gy;
+    let ex = d.x;
+    let ey = d.y;
+
+    if (d.touch) {
+      const dist = Math.hypot(dx, dy);
+      const gain = 1 + GAIN_MAX * (1 - Math.exp(-dist / GAIN_FALLOFF));
+      // hela förskjutningsvektorn skalas med samma faktor, annars drar
+      // diagonala rörelser snett
+      ex = d.gx + dx * gain;
+      ey = d.gy + dy * gain;
+    }
+    ey -= d.lift;
+
+    // klamra så biten aldrig kan hamna utanför skärmen nära kanterna
+    const size = cellSize();
+    const halvW = (d.piece.w * size) / 2;
+    const halvH = (d.piece.h * size) / 2;
+    return {
+      x: Math.min(Math.max(ex, halvW), window.innerWidth - halvW),
+      y: Math.min(Math.max(ey, halvH), window.innerHeight - halvH),
+    };
+  };
+
   const preview = useMemo(() => {
     if (!drag || !drag.target) return null;
     const { piece } = drag;
@@ -540,8 +577,10 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
     const touch = e.pointerType !== 'mouse';
     e.currentTarget.setPointerCapture?.(e.pointerId);
     setDrag({
-      slot, piece, pointerId: e.pointerId,
-      lift: touch ? cellSize() * 1.6 : 0,
+      slot, piece, pointerId: e.pointerId, touch,
+      lift: touch ? cellSize() * 2.2 : 0,
+      // greppunkten: gain räknas som förskjutning härifrån
+      gx: e.clientX, gy: e.clientY,
       x: e.clientX, y: e.clientY, target: null,
     });
   };
@@ -550,7 +589,7 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
     if (!drag) return;
     const move = (e) => {
       if (e.pointerId !== drag.pointerId) return;
-      const pointer = { x: e.clientX, y: e.clientY - drag.lift };
+      const pointer = dragPos({ ...drag, x: e.clientX, y: e.clientY });
       const rect = boardRef.current?.getBoundingClientRect();
       let target = null;
       if (rect) {
@@ -591,6 +630,8 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
     for (const c of preview.cols) for (let r = 0; r < SIZE; r++) s.add(idx(r, c));
     return s;
   }, [preview]);
+
+  const dragPoint = drag ? dragPos(drag) : null;
 
   return (
     <div className={`bb-root bb-play${shake ? ` bb-shake-${shake}` : ''}`} ref={wrapRef}>
@@ -692,8 +733,8 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
         <div
           className={`bb-drag${preview?.valid ? ' bb-drag-ok' : ''}`}
           style={{
-            left: drag.x,
-            top: drag.y - drag.lift,
+            left: dragPoint.x,
+            top: dragPoint.y,
             width: drag.piece.w * cs,
             height: drag.piece.h * cs,
           }}
