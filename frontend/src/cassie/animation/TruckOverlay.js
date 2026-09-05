@@ -61,8 +61,13 @@ const CAB_HUE_RANGE = [245, 305]; // ljuslila/violett
 const BOX_HUE_RANGE = [70, 160]; // grönt
 const MIN_SATURATION_FOR_HUE_MATCH = 0.15;
 
+let instanceCounter = 0;
+
 export class TruckOverlay {
   constructor() {
+    // Unik per instans i loggarna — avslöjar om t.ex. React StrictMode (som
+    // är påslaget i main.jsx) skapar fler överlägg än väntat samtidigt.
+    this.id = `truck-${++instanceCounter}`;
     this.scene = null;
     this.camera = null;
     this.renderer = null;
@@ -134,13 +139,24 @@ export class TruckOverlay {
     loader.load(
       MODEL_URL,
       (gltf) => {
-        this.axisFixGroup.add(gltf.scene);
+        console.log(
+          `[cassie:${this.id}] GLTFLoader klar — gltf.scenes: ${gltf.scenes?.length ?? 0}, ` +
+            `gltf.scene = "${gltf.scene?.name || '(namnlös)'}" (${gltf.scene?.type}), ` +
+            `direkta barn: ${gltf.scene?.children?.length ?? 0}`
+        );
+        // Klassificera INNAN gltf.scene flyttas in i vår grupphierarki.
+        // .add() reparentar bara (sätter parent + pushar till children på
+        // mottagaren) — det rör inte gltf.scene:s EGNA children-array, så
+        // traverseringen ser samma träd oavsett — men vi gör det i den här
+        // ordningen ändå så det är obestridligt att vi traverserar den nod
+        // GLTFLoader faktiskt gav oss, innan något annat rört den.
         this.classifyMaterials(gltf.scene);
+        this.axisFixGroup.add(gltf.scene);
         this.loaded = true;
         this.requestRedraw();
       },
       undefined,
-      (err) => console.error('[cassie] kunde inte ladda truck.glb:', err)
+      (err) => console.error(`[cassie:${this.id}] kunde inte ladda truck.glb:`, err)
     );
   }
 
@@ -154,8 +170,12 @@ export class TruckOverlay {
   classifyMaterials(root) {
     const seen = new Set();
     const materials = [];
+    let visitedCount = 0;
+    const typeCounts = {};
 
     root.traverse((obj) => {
+      visitedCount += 1;
+      typeCounts[obj.type] = (typeCounts[obj.type] || 0) + 1;
       if (!obj.isMesh || !obj.material) return;
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       for (const m of mats) {
@@ -165,7 +185,13 @@ export class TruckOverlay {
       }
     });
 
-    console.log('[cassie] truck.glb — material funna:');
+    console.log(
+      `[cassie:${this.id}] traverserade från roten "${root.name || '(namnlös)'}" ` +
+        `(${root.type}, ${root.children?.length ?? 0} direkta barn) — ${visitedCount} noder totalt. Typer:`,
+      typeCounts
+    );
+
+    console.log(`[cassie:${this.id}] truck.glb — ${materials.length} unika material funna:`);
     for (const m of materials) {
       const hex = m.color ? `#${m.color.getHexString()}` : '(inget .color)';
       console.log(`  "${m.name || '(namnlös)'}" ${hex}`);
@@ -197,7 +223,7 @@ export class TruckOverlay {
     }
 
     console.log(
-      '[cassie] klassificering — hytt:',
+      `[cassie:${this.id}] klassificering — hytt:`,
       this.cabMaterials.map((e) => e.material.name || '(namnlös)'),
       'skåp:',
       this.boxMaterials.map((e) => e.material.name || '(namnlös)')
