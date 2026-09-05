@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { groundMetersPerPixel } from './routeMath.js';
+import { PaletteTexture, detectGrid, rgbToHex } from './paletteTexture.js';
 
 // Ren three.js — ingen google.maps-referens här. Lyder samma duck-typade
 // protokoll som ett riktigt google.maps.WebGLOverlayView förväntar sig
@@ -31,11 +32,14 @@ const MODEL_UNIT_SIZE_METERS = 8;
 // Standardvärde innan CassiePage hunnit sätta ett från URL-state.
 const DEFAULT_PIXEL_SIZE = 90;
 
-// Kenney-modellen har hytt och skåp som skilda material, men vi vet inte i
-// förväg vad de faktiska namnen är förrän vi loggat dem (se classifyMaterials
-// nedan). Namnmatchning är förstahandsförsöket; om inget namn ger besked
-// faller vi tillbaka på materialets egen färgnyans, eftersom modellen som
-// standard har en ljuslila hytt och ett grönt skåp.
+// Modellen har ETT delat material ("colormap") för hela karossen — hytt och
+// skåp är inte skilda material, de är olika RUTOR i samma palett-textur som
+// respektive mesh UV-mappar mot. Vi klassificerar därför per MESH (namnet på
+// meshen eller dess förälder-nod), inte per material, och tar reda på vilken
+// palettruta varje mesh pekar på genom dess genomsnittliga UV-koordinat (se
+// paletteTexture.js). Namnmatchning är förstahandsförsöket; om inget namn ger
+// besked faller vi tillbaka på den FAKTISKA färgen i palett-texturen vid den
+// UV-koordinaten (modellen är som standard ljuslila hytt + grönt skåp).
 const CAB_NAME_HINTS = ['cab', 'hytt', 'cockpit', 'driver', 'förar'];
 const BOX_NAME_HINTS = ['box', 'skåp', 'trailer', 'container', 'cargo', 'load', 'back'];
 // Delar vi ALDRIG får färga, oavsett hur nära de råkar ligga hue-intervallen
@@ -61,6 +65,18 @@ const CAB_HUE_RANGE = [245, 305]; // ljuslila/violett
 const BOX_HUE_RANGE = [70, 160]; // grönt
 const MIN_SATURATION_FOR_HUE_MATCH = 0.15;
 
+function averageUV(geometry) {
+  const uvAttr = geometry.attributes.uv;
+  if (!uvAttr || uvAttr.count === 0) return null;
+  let sumU = 0;
+  let sumV = 0;
+  for (let i = 0; i < uvAttr.count; i++) {
+    sumU += uvAttr.getX(i);
+    sumV += uvAttr.getY(i);
+  }
+  return { u: sumU / uvAttr.count, v: sumV / uvAttr.count };
+}
+
 let instanceCounter = 0;
 
 export class TruckOverlay {
@@ -80,13 +96,16 @@ export class TruckOverlay {
     this.pixelSize = DEFAULT_PIXEL_SIZE;
     this.visible = true;
     this.loaded = false;
-    // { material, originalColor: THREE.Color }[] — fyllda av
-    // classifyMaterials() när modellen laddat klart.
-    this.cabMaterials = [];
-    this.boxMaterials = [];
+    // Palett-texturen (canvas + THREE.CanvasTexture) som ersätter det delade
+    // materialets ursprungliga .map, plus vilka pixel-koordinater i den som
+    // hör till respektive del. Fylls av classifyMeshesAndBuildPalette() när
+    // modellen och dess textur laddat klart.
+    this.paletteTexture = null;
+    this.cabSeeds = [];
+    this.boxSeeds = [];
     // Hex-strängar eller null ("använd modellens egen färg"). Kan sättas
     // innan modellen laddat klart (t.ex. från en inläst sparad rutt) —
-    // classifyMaterials() applicerar dem så fort materialen är kända.
+    // classifyMeshesAndBuildPalette() applicerar dem så fort paletten finns.
     this.cabColorOverride = null;
     this.boxColorOverride = null;
     // Sätts av GoogleMapProvider.attachOverlay — enda kopplingen ut mot
@@ -150,7 +169,7 @@ export class TruckOverlay {
         // traverseringen ser samma träd oavsett — men vi gör det i den här
         // ordningen ändå så det är obestridligt att vi traverserar den nod
         // GLTFLoader faktiskt gav oss, innan något annat rört den.
-        this.classifyMaterials(gltf.scene);
+        this.classifyMeshesAndBuildPalette(gltf.scene);
         this.axisFixGroup.add(gltf.scene);
         this.loaded = true;
         this.requestRedraw();
@@ -161,53 +180,94 @@ export class TruckOverlay {
   }
 
   /**
-   * Traverserar den laddade modellen, loggar alla materialnamn och
-   * basfärger en gång (så vi ser vad Kenney-modellen faktiskt heter
-   * internt), och delar sedan in materialen i hytt/skåp — via namnet i
-   * första hand, via färgens nyans som fallback (modellen är som standard
-   * ljuslila hytt + grönt skåp). Rör aldrig hjul/rutor/lyktor/stötfångare.
+   * Traverserar den laddade modellen mesh för mesh. Modellen har bara ETT
+   * delat material ("colormap") — all färg kommer från en palett-textur som
+   * varje mesh UV-mappar mot en enskild rutas solida färg. Vi kan alltså
+   * inte skilja hytt från skåp via material; i stället:
+   *  1. Bygger en om-färgningsbar canvas-kopia av palett-texturen
+   *     (PaletteTexture) från det första materialet som har en .map.
+   *  2. Räknar ut varje meshs genomsnittliga UV-koordinat och loggar den
+   *     tillsammans med pixelkoordinaten och den faktiska färgen där i
+   *     paletten — det är den loggen som visar vilka rutor som hör till vad.
+   *  3. Klassificerar meshen via namnet (dess egna eller förälderns) i
+   *     första hand, och den samplade palettfärgens nyans som fallback.
+   * Rör aldrig hjul/rutor/lyktor/stötfångare.
    */
-  classifyMaterials(root) {
-    const seen = new Set();
-    const materials = [];
+  classifyMeshesAndBuildPalette(root) {
+    const meshes = [];
     let visitedCount = 0;
     const typeCounts = {};
 
     root.traverse((obj) => {
       visitedCount += 1;
       typeCounts[obj.type] = (typeCounts[obj.type] || 0) + 1;
-      if (!obj.isMesh || !obj.material) return;
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      for (const m of mats) {
-        if (seen.has(m)) continue;
-        seen.add(m);
-        materials.push(m);
-      }
+      if (!obj.isMesh || !obj.material || !obj.geometry?.attributes?.uv) return;
+      meshes.push(obj);
     });
 
     console.log(
       `[cassie:${this.id}] traverserade från roten "${root.name || '(namnlös)'}" ` +
-        `(${root.type}, ${root.children?.length ?? 0} direkta barn) — ${visitedCount} noder totalt. Typer:`,
+        `(${root.type}, ${root.children?.length ?? 0} direkta barn) — ${visitedCount} noder totalt, ` +
+        `${meshes.length} med UV. Typer:`,
       typeCounts
     );
 
-    console.log(`[cassie:${this.id}] truck.glb — ${materials.length} unika material funna:`);
-    for (const m of materials) {
-      const hex = m.color ? `#${m.color.getHexString()}` : '(inget .color)';
-      console.log(`  "${m.name || '(namnlös)'}" ${hex}`);
+    const sourceMaterial = meshes
+      .flatMap((m) => (Array.isArray(m.material) ? m.material : [m.material]))
+      .find((mat) => mat.map);
+    if (!sourceMaterial) {
+      console.warn(`[cassie:${this.id}] inget material med .map hittades — kan inte om-färga karossen.`);
+      return;
     }
 
-    for (const m of materials) {
-      if (!m.color) continue;
-      const name = (m.name || '').toLowerCase();
-      if (EXCLUDE_NAME_HINTS.some((hint) => name.includes(hint))) continue;
+    this.paletteTexture = new PaletteTexture(sourceMaterial.map);
+    // Alla mesh som delar materialet börjar nu sampla från vår
+    // canvas-textur i stället för originalbilden — själva pixlarna är
+    // identiska tills regenerate() kallas med en override.
+    for (const mesh of meshes) {
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const mat of mats) {
+        if (mat.map) {
+          mat.map = this.paletteTexture.texture;
+          mat.needsUpdate = true;
+        }
+      }
+    }
+
+    const grid = detectGrid(this.paletteTexture.originalImageData, this.paletteTexture.width, this.paletteTexture.height);
+    console.log(
+      `[cassie:${this.id}] palett ${this.paletteTexture.width}x${this.paletteTexture.height}px — ` +
+        `bäst gissning på rutnät: ${grid.cols} kolumner x ${grid.rows} rader ` +
+        `(kolumngränser vid x=${grid.colBoundaries.join(',')}, radgränser vid y=${grid.rowBoundaries.join(',')}). ` +
+        'Rent gissningsverk om paletten inte faktiskt är ett regelbundet rutnät.'
+    );
+
+    console.log(`[cassie:${this.id}] mesh -> UV -> palettpixel -> färg:`);
+    for (const mesh of meshes) {
+      const uv = averageUV(mesh.geometry);
+      if (!uv) continue;
+      const pixel = this.paletteTexture.samplePixel(uv.u, uv.v);
+      mesh.userData._paletteUV = uv;
+      mesh.userData._palettePixel = pixel;
+      console.log(
+        `  "${mesh.name || '(namnlös)'}" (förälder: "${mesh.parent?.name || '(namnlös)'}") ` +
+          `uv=(${uv.u.toFixed(3)}, ${uv.v.toFixed(3)}) px=(${pixel.x}, ${pixel.y}) ${rgbToHex(pixel.r, pixel.g, pixel.b)}`
+      );
+    }
+
+    for (const mesh of meshes) {
+      const pixel = mesh.userData._palettePixel;
+      if (!pixel) continue;
+      const combinedName = `${mesh.name || ''} ${mesh.parent?.name || ''}`.toLowerCase();
+      if (EXCLUDE_NAME_HINTS.some((hint) => combinedName.includes(hint))) continue;
 
       let role = null;
-      if (CAB_NAME_HINTS.some((hint) => name.includes(hint))) role = 'cab';
-      else if (BOX_NAME_HINTS.some((hint) => name.includes(hint))) role = 'box';
+      if (CAB_NAME_HINTS.some((hint) => combinedName.includes(hint))) role = 'cab';
+      else if (BOX_NAME_HINTS.some((hint) => combinedName.includes(hint))) role = 'box';
       else {
+        const color = new THREE.Color(pixel.r / 255, pixel.g / 255, pixel.b / 255);
         const hsl = { h: 0, s: 0, l: 0 };
-        m.color.getHSL(hsl);
+        color.getHSL(hsl);
         const hueDeg = hsl.h * 360;
         if (hsl.s < MIN_SATURATION_FOR_HUE_MATCH) {
           // Nästan grå/svart/vit — sannolikt krom, gummi eller plast. Rör inte.
@@ -218,46 +278,43 @@ export class TruckOverlay {
         }
       }
 
-      if (role === 'cab') this.cabMaterials.push({ material: m, originalColor: m.color.clone() });
-      else if (role === 'box') this.boxMaterials.push({ material: m, originalColor: m.color.clone() });
+      if (role === 'cab') this.cabSeeds.push({ x: pixel.x, y: pixel.y });
+      else if (role === 'box') this.boxSeeds.push({ x: pixel.x, y: pixel.y });
     }
 
-    console.log(
-      `[cassie:${this.id}] klassificering — hytt:`,
-      this.cabMaterials.map((e) => e.material.name || '(namnlös)'),
-      'skåp:',
-      this.boxMaterials.map((e) => e.material.name || '(namnlös)')
-    );
+    console.log(`[cassie:${this.id}] klassificering — hytt-frön:`, this.cabSeeds, 'skåp-frön:', this.boxSeeds);
 
+    const cabPixel = this.cabSeeds[0] ? this.paletteTexture.samplePixel(this.cabSeeds[0].x / this.paletteTexture.width, this.cabSeeds[0].y / this.paletteTexture.height) : null;
+    const boxPixel = this.boxSeeds[0] ? this.paletteTexture.samplePixel(this.boxSeeds[0].x / this.paletteTexture.width, this.boxSeeds[0].y / this.paletteTexture.height) : null;
     this._onColorsDiscovered?.({
-      cab: this.cabMaterials[0] ? `#${this.cabMaterials[0].originalColor.getHexString()}` : null,
-      box: this.boxMaterials[0] ? `#${this.boxMaterials[0].originalColor.getHexString()}` : null
+      cab: cabPixel ? rgbToHex(cabPixel.r, cabPixel.g, cabPixel.b) : null,
+      box: boxPixel ? rgbToHex(boxPixel.r, boxPixel.g, boxPixel.b) : null
     });
 
     // Applicera overrides som redan hunnit sättas (t.ex. från en inläst
-    // sparad rutt) innan materialen var kända.
-    this.applyColorOverride(this.cabMaterials, this.cabColorOverride);
-    this.applyColorOverride(this.boxMaterials, this.boxColorOverride);
+    // sparad rutt) innan paletten var klar.
+    this.applyColorOverrides();
   }
 
-  applyColorOverride(entries, hex) {
-    for (const { material, originalColor } of entries) {
-      if (hex) material.color.set(hex);
-      else material.color.copy(originalColor);
-    }
+  applyColorOverrides() {
+    if (!this.paletteTexture) return;
+    this.paletteTexture.regenerate([
+      { seeds: this.cabSeeds, hex: this.cabColorOverride },
+      { seeds: this.boxSeeds, hex: this.boxColorOverride }
+    ]);
     this.requestRedraw();
   }
 
   /** @param {string | null} hex Null återställer till modellens originalfärg. */
   setCabColor(hex) {
     this.cabColorOverride = hex || null;
-    this.applyColorOverride(this.cabMaterials, this.cabColorOverride);
+    this.applyColorOverrides();
   }
 
   /** @param {string | null} hex Null återställer till modellens originalfärg. */
   setBoxColor(hex) {
     this.boxColorOverride = hex || null;
-    this.applyColorOverride(this.boxMaterials, this.boxColorOverride);
+    this.applyColorOverrides();
   }
 
   onContextRestored({ gl }) {
@@ -331,6 +388,8 @@ export class TruckOverlay {
       const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
       materials.forEach((m) => m?.dispose?.());
     });
+    this.paletteTexture?.dispose();
+    this.paletteTexture = null;
     this.scene = null;
     this.camera = null;
   }
