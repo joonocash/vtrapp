@@ -103,6 +103,9 @@ function applyBookendOpacity(mapProvider, pinsMode, value) {
  *   camMode: 'follow' | 'fixed' | 'overview',
  *   onStartDrag: (pos: {lat:number, lng:number}) => void,
  *   onEndDrag: (pos: {lat:number, lng:number}) => void,
+ *   cabColor: string | null,
+ *   boxColor: string | null,
+ *   onColorsDiscovered: (colors: {cab: string|null, box: string|null}) => void,
  *   containerRef: { current: HTMLElement | null }
  * }} args
  */
@@ -116,7 +119,10 @@ export function useRouteAnimation({
   trailMode,
   camMode,
   onStartDrag,
-  onEndDrag
+  onEndDrag,
+  cabColor,
+  boxColor,
+  onColorsDiscovered
 }) {
   const [phase, setPhase] = useState('idle'); // idle|ready|overview|flyToStart|countdown|playing|holdEnd|returnToOverview|done
   const [countdown, setCountdown] = useState(null);
@@ -133,6 +139,9 @@ export function useRouteAnimation({
   const camModeRef = useRef(camMode);
   const onStartDragRef = useRef(onStartDrag);
   const onEndDragRef = useRef(onEndDrag);
+  const cabColorRef = useRef(cabColor);
+  const boxColorRef = useRef(boxColor);
+  const onColorsDiscoveredRef = useRef(onColorsDiscovered);
 
   pinsModeRef.current = pinsMode;
   durationRef.current = durationSeconds;
@@ -141,6 +150,9 @@ export function useRouteAnimation({
   camModeRef.current = camMode;
   onStartDragRef.current = onStartDrag;
   onEndDragRef.current = onEndDrag;
+  cabColorRef.current = cabColor;
+  boxColorRef.current = boxColor;
+  onColorsDiscoveredRef.current = onColorsDiscovered;
 
   // Bygg scenen (tidslinje, overlay, linjer, markörer) när rutten är redo.
   useEffect(() => {
@@ -158,11 +170,14 @@ export function useRouteAnimation({
     const overlay = new TruckOverlay();
     mapProvider.attachOverlay(overlay);
     overlayRef.current = overlay;
+    overlay._onColorsDiscovered = (colors) => onColorsDiscoveredRef.current?.(colors);
 
     // Placera lastbilen vid startpunkten direkt, innan uppspelning har
     // körts igång — annars finns det inget att visa storleksreglaget mot
     // medan man står still och ställer in det.
     overlay.setPixelSize(truckSizeRef.current);
+    overlay.setCabColor(cabColorRef.current);
+    overlay.setBoxColor(boxColorRef.current);
     overlay.setPose({
       lat: vertices[0].lat,
       lng: vertices[0].lng,
@@ -231,6 +246,15 @@ export function useRouteAnimation({
   useEffect(() => {
     overlayRef.current?.setPixelSize(truckSize);
   }, [truckSize]);
+
+  // Samma sak för färgerna — synliga direkt, oavsett fas.
+  useEffect(() => {
+    overlayRef.current?.setCabColor(cabColor);
+  }, [cabColor]);
+
+  useEffect(() => {
+    overlayRef.current?.setBoxColor(boxColor);
+  }, [boxColor]);
 
   const runPlayback = useCallback(
     (mp, camMode) =>

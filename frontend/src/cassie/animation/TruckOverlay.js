@@ -31,6 +31,36 @@ const MODEL_UNIT_SIZE_METERS = 8;
 // Standardvärde innan CassiePage hunnit sätta ett från URL-state.
 const DEFAULT_PIXEL_SIZE = 90;
 
+// Kenney-modellen har hytt och skåp som skilda material, men vi vet inte i
+// förväg vad de faktiska namnen är förrän vi loggat dem (se classifyMaterials
+// nedan). Namnmatchning är förstahandsförsöket; om inget namn ger besked
+// faller vi tillbaka på materialets egen färgnyans, eftersom modellen som
+// standard har en ljuslila hytt och ett grönt skåp.
+const CAB_NAME_HINTS = ['cab', 'hytt', 'cockpit', 'driver', 'förar'];
+const BOX_NAME_HINTS = ['box', 'skåp', 'trailer', 'container', 'cargo', 'load', 'back'];
+// Delar vi ALDRIG får färga, oavsett hur nära de råkar ligga hue-intervallen
+// nedan — annars förlorar lastbilen all form.
+const EXCLUDE_NAME_HINTS = [
+  'wheel',
+  'tire',
+  'tyre',
+  'hjul',
+  'glass',
+  'window',
+  'ruta',
+  'ruter',
+  'light',
+  'lamp',
+  'lykta',
+  'bumper',
+  'stötfångare',
+  'chrome',
+  'krom'
+];
+const CAB_HUE_RANGE = [245, 305]; // ljuslila/violett
+const BOX_HUE_RANGE = [70, 160]; // grönt
+const MIN_SATURATION_FOR_HUE_MATCH = 0.15;
+
 export class TruckOverlay {
   constructor() {
     this.scene = null;
@@ -45,9 +75,22 @@ export class TruckOverlay {
     this.pixelSize = DEFAULT_PIXEL_SIZE;
     this.visible = true;
     this.loaded = false;
+    // { material, originalColor: THREE.Color }[] — fyllda av
+    // classifyMaterials() när modellen laddat klart.
+    this.cabMaterials = [];
+    this.boxMaterials = [];
+    // Hex-strängar eller null ("använd modellens egen färg"). Kan sättas
+    // innan modellen laddat klart (t.ex. från en inläst sparad rutt) —
+    // classifyMaterials() applicerar dem så fort materialen är kända.
+    this.cabColorOverride = null;
+    this.boxColorOverride = null;
     // Sätts av GoogleMapProvider.attachOverlay — enda kopplingen ut mot
     // kartmotorn, och den är opaque (bara en callback, ingen typreferens).
     this._requestRedraw = null;
+    // Sätts av useRouteAnimation — rapporterar modellens egna standardfärger
+    // uppåt så kontrollpanelens färgväljare kan visa rätt startvärde innan
+    // användaren aktivt ändrat något.
+    this._onColorsDiscovered = null;
   }
 
   onAdd() {
@@ -92,12 +135,103 @@ export class TruckOverlay {
       MODEL_URL,
       (gltf) => {
         this.axisFixGroup.add(gltf.scene);
+        this.classifyMaterials(gltf.scene);
         this.loaded = true;
         this.requestRedraw();
       },
       undefined,
       (err) => console.error('[cassie] kunde inte ladda truck.glb:', err)
     );
+  }
+
+  /**
+   * Traverserar den laddade modellen, loggar alla materialnamn och
+   * basfärger en gång (så vi ser vad Kenney-modellen faktiskt heter
+   * internt), och delar sedan in materialen i hytt/skåp — via namnet i
+   * första hand, via färgens nyans som fallback (modellen är som standard
+   * ljuslila hytt + grönt skåp). Rör aldrig hjul/rutor/lyktor/stötfångare.
+   */
+  classifyMaterials(root) {
+    const seen = new Set();
+    const materials = [];
+
+    root.traverse((obj) => {
+      if (!obj.isMesh || !obj.material) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const m of mats) {
+        if (seen.has(m)) continue;
+        seen.add(m);
+        materials.push(m);
+      }
+    });
+
+    console.log('[cassie] truck.glb — material funna:');
+    for (const m of materials) {
+      const hex = m.color ? `#${m.color.getHexString()}` : '(inget .color)';
+      console.log(`  "${m.name || '(namnlös)'}" ${hex}`);
+    }
+
+    for (const m of materials) {
+      if (!m.color) continue;
+      const name = (m.name || '').toLowerCase();
+      if (EXCLUDE_NAME_HINTS.some((hint) => name.includes(hint))) continue;
+
+      let role = null;
+      if (CAB_NAME_HINTS.some((hint) => name.includes(hint))) role = 'cab';
+      else if (BOX_NAME_HINTS.some((hint) => name.includes(hint))) role = 'box';
+      else {
+        const hsl = { h: 0, s: 0, l: 0 };
+        m.color.getHSL(hsl);
+        const hueDeg = hsl.h * 360;
+        if (hsl.s < MIN_SATURATION_FOR_HUE_MATCH) {
+          // Nästan grå/svart/vit — sannolikt krom, gummi eller plast. Rör inte.
+        } else if (hueDeg >= CAB_HUE_RANGE[0] && hueDeg <= CAB_HUE_RANGE[1]) {
+          role = 'cab';
+        } else if (hueDeg >= BOX_HUE_RANGE[0] && hueDeg <= BOX_HUE_RANGE[1]) {
+          role = 'box';
+        }
+      }
+
+      if (role === 'cab') this.cabMaterials.push({ material: m, originalColor: m.color.clone() });
+      else if (role === 'box') this.boxMaterials.push({ material: m, originalColor: m.color.clone() });
+    }
+
+    console.log(
+      '[cassie] klassificering — hytt:',
+      this.cabMaterials.map((e) => e.material.name || '(namnlös)'),
+      'skåp:',
+      this.boxMaterials.map((e) => e.material.name || '(namnlös)')
+    );
+
+    this._onColorsDiscovered?.({
+      cab: this.cabMaterials[0] ? `#${this.cabMaterials[0].originalColor.getHexString()}` : null,
+      box: this.boxMaterials[0] ? `#${this.boxMaterials[0].originalColor.getHexString()}` : null
+    });
+
+    // Applicera overrides som redan hunnit sättas (t.ex. från en inläst
+    // sparad rutt) innan materialen var kända.
+    this.applyColorOverride(this.cabMaterials, this.cabColorOverride);
+    this.applyColorOverride(this.boxMaterials, this.boxColorOverride);
+  }
+
+  applyColorOverride(entries, hex) {
+    for (const { material, originalColor } of entries) {
+      if (hex) material.color.set(hex);
+      else material.color.copy(originalColor);
+    }
+    this.requestRedraw();
+  }
+
+  /** @param {string | null} hex Null återställer till modellens originalfärg. */
+  setCabColor(hex) {
+    this.cabColorOverride = hex || null;
+    this.applyColorOverride(this.cabMaterials, this.cabColorOverride);
+  }
+
+  /** @param {string | null} hex Null återställer till modellens originalfärg. */
+  setBoxColor(hex) {
+    this.boxColorOverride = hex || null;
+    this.applyColorOverride(this.boxMaterials, this.boxColorOverride);
   }
 
   onContextRestored({ gl }) {

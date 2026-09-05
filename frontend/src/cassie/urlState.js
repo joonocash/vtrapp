@@ -19,6 +19,10 @@ export const DEFAULTS = {
   scale: 90,
   trail: 'full', // 'full' | 'fade' | 'none'
   cam: 'follow', // 'follow' | 'fixed' | 'overview'
+  // null = använd modellens egna färger (Kenney-standarden: ljuslila hytt,
+  // grönt skåp) tills användaren aktivt väljer något annat.
+  cabColor: null,
+  boxColor: null,
   route: '' // slug för sparad rutt
 };
 
@@ -27,6 +31,10 @@ function parseLatLng(value) {
   const parts = value.split(',').map(Number);
   if (parts.length !== 2 || parts.some((n) => !Number.isFinite(n))) return null;
   return { lat: parts[0], lng: parts[1] };
+}
+
+function parseHexColor(value) {
+  return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value.toLowerCase() : null;
 }
 
 export function parseUrlState(search = window.location.search) {
@@ -51,6 +59,8 @@ export function parseUrlState(search = window.location.search) {
     scale: Number.isFinite(scale) && scale > 0 ? scale : DEFAULTS.scale,
     trail: ['full', 'fade', 'none'].includes(trail) ? trail : DEFAULTS.trail,
     cam: ['follow', 'fixed', 'overview'].includes(cam) ? cam : DEFAULTS.cam,
+    cabColor: parseHexColor(params.get('cabColor')) || DEFAULTS.cabColor,
+    boxColor: parseHexColor(params.get('boxColor')) || DEFAULTS.boxColor,
     route: params.get('r') || DEFAULTS.route
   };
 }
@@ -70,6 +80,8 @@ export function writeUrlState(state) {
   params.set('scale', String(state.scale ?? DEFAULTS.scale));
   params.set('trail', state.trail || DEFAULTS.trail);
   params.set('cam', state.cam || DEFAULTS.cam);
+  if (state.cabColor) params.set('cabColor', state.cabColor);
+  if (state.boxColor) params.set('boxColor', state.boxColor);
   if (state.route) params.set('r', state.route);
 
   const url = `${window.location.pathname}?${params.toString()}`;

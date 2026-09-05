@@ -94,6 +94,34 @@ function GeocodeInput({ label, placeholder, value, onSelect }) {
   );
 }
 
+function ColorField({ label, value, fallback, onChange, disabled }) {
+  const isOverridden = Boolean(value);
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="color"
+          value={value || fallback || '#888888'}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          className="h-9 w-12 shrink-0 bg-gray-900 border border-gray-700 rounded-md cursor-pointer disabled:opacity-50"
+        />
+        {isOverridden && (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            disabled={disabled}
+            className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
+          >
+            Standard
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ControlPanel({
   fromLabel,
   toLabel,
@@ -113,6 +141,12 @@ export default function ControlPanel({
   onTrailModeChange,
   camMode,
   onCamModeChange,
+  cabColor,
+  onCabColorChange,
+  defaultCabColor,
+  boxColor,
+  onBoxColorChange,
+  defaultBoxColor,
   placementMode,
   onPlacementModeChange,
   onPlay,
@@ -215,6 +249,23 @@ export default function ControlPanel({
           onChange={(e) => onTruckSizeChange(Number(e.target.value))}
           disabled={!canControl}
           className="w-full accent-blue-500 disabled:opacity-50"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <ColorField
+          label="Hyttfärg"
+          value={cabColor}
+          fallback={defaultCabColor}
+          onChange={onCabColorChange}
+          disabled={!canControl}
+        />
+        <ColorField
+          label="Skåpfärg"
+          value={boxColor}
+          fallback={defaultBoxColor}
+          onChange={onBoxColorChange}
+          disabled={!canControl}
         />
       </div>
 

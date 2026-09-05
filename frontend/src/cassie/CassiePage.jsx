@@ -25,6 +25,13 @@ export default function CassiePage() {
   const [truckSize, setTruckSize] = useState(initial.scale);
   const [trailMode, setTrailMode] = useState(initial.trail);
   const [camMode, setCamMode] = useState(initial.cam);
+  const [cabColor, setCabColor] = useState(initial.cabColor);
+  const [boxColor, setBoxColor] = useState(initial.boxColor);
+  // Modellens egna färger, upptäckta i TruckOverlay när glTF:en laddat
+  // klart — bara för att sliderns "standard"-läge ska visa rätt kulör
+  // innan användaren aktivt valt något.
+  const [defaultCabColor, setDefaultCabColor] = useState(null);
+  const [defaultBoxColor, setDefaultBoxColor] = useState(null);
   const [placementMode, setPlacementMode] = useState(false);
   const [routeSlug, setRouteSlug] = useState(initial.route);
 
@@ -144,6 +151,8 @@ export default function CassiePage() {
     setTruckSize(Number.isFinite(match.scale) && match.scale > 0 ? match.scale : initial.scale);
     setTrailMode(['full', 'fade', 'none'].includes(match.trail) ? match.trail : initial.trail);
     setCamMode(['follow', 'fixed', 'overview'].includes(match.cam) ? match.cam : initial.cam);
+    setCabColor(/^#[0-9a-fA-F]{6}$/.test(match.cabColor) ? match.cabColor : null);
+    setBoxColor(/^#[0-9a-fA-F]{6}$/.test(match.boxColor) ? match.boxColor : null);
   }, [routeSlug, savedRoutes]);
 
   // Hämta rutt från backend (ORS) när start och mål är satta.
@@ -192,6 +201,8 @@ export default function CassiePage() {
       scale: truckSize,
       trail: trailMode,
       cam: camMode,
+      cabColor,
+      boxColor,
       route: routeSlug
     });
   }, [
@@ -206,8 +217,15 @@ export default function CassiePage() {
     truckSize,
     trailMode,
     camMode,
+    cabColor,
+    boxColor,
     routeSlug
   ]);
+
+  const handleColorsDiscovered = useCallback(({ cab, box }) => {
+    setDefaultCabColor(cab);
+    setDefaultBoxColor(box);
+  }, []);
 
   const animation = useRouteAnimation({
     mapProvider: providerRef.current,
@@ -219,7 +237,10 @@ export default function CassiePage() {
     trailMode,
     camMode,
     onStartDrag: handleStartDrag,
-    onEndDrag: handleEndDrag
+    onEndDrag: handleEndDrag,
+    cabColor,
+    boxColor,
+    onColorsDiscovered: handleColorsDiscovered
   });
 
   // Escape avbryter uppspelningen och återställer panelen/muspekaren. Bara
@@ -269,7 +290,9 @@ export default function CassiePage() {
           style: mapStyle,
           scale: truckSize,
           trail: trailMode,
-          cam: camMode
+          cam: camMode,
+          cabColor,
+          boxColor
         });
         setSavedRoutes((prev) => [...prev, saved]);
         setRouteSlug(saved.slug);
@@ -277,7 +300,21 @@ export default function CassiePage() {
         console.error('[cassie] kunde inte spara rutten:', err);
       }
     },
-    [from, to, fromLabel, toLabel, duration, pinsMode, format, mapStyle, truckSize, trailMode, camMode]
+    [
+      from,
+      to,
+      fromLabel,
+      toLabel,
+      duration,
+      pinsMode,
+      format,
+      mapStyle,
+      truckSize,
+      trailMode,
+      camMode,
+      cabColor,
+      boxColor
+    ]
   );
 
   const handleLoadRoute = useCallback((record) => {
@@ -293,6 +330,8 @@ export default function CassiePage() {
     setTruckSize(Number.isFinite(record.scale) && record.scale > 0 ? record.scale : 90);
     setTrailMode(['full', 'fade', 'none'].includes(record.trail) ? record.trail : 'full');
     setCamMode(['follow', 'fixed', 'overview'].includes(record.cam) ? record.cam : 'follow');
+    setCabColor(/^#[0-9a-fA-F]{6}$/.test(record.cabColor) ? record.cabColor : null);
+    setBoxColor(/^#[0-9a-fA-F]{6}$/.test(record.boxColor) ? record.boxColor : null);
     setRouteSlug(record.slug);
   }, []);
 
@@ -358,6 +397,12 @@ export default function CassiePage() {
         onTrailModeChange={setTrailMode}
         camMode={camMode}
         onCamModeChange={setCamMode}
+        cabColor={cabColor}
+        onCabColorChange={setCabColor}
+        defaultCabColor={defaultCabColor}
+        boxColor={boxColor}
+        onBoxColorChange={setBoxColor}
+        defaultBoxColor={defaultBoxColor}
         placementMode={placementMode}
         onPlacementModeChange={setPlacementMode}
         onPlay={handlePlay}
