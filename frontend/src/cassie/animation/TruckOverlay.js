@@ -32,15 +32,14 @@ const MODEL_UNIT_SIZE_METERS = 8;
 // Standardvärde innan CassiePage hunnit sätta ett från URL-state.
 const DEFAULT_PIXEL_SIZE = 90;
 
-// TODO: fyll i med de faktiska hex-värdena från den upptäckta paletten i
-// truck.glb (se konsolloggen "[cassie:truck-N] truck.glb — N unika färger
-// funna:" / "Palett (färg: antal vertexar):"). Ska motsvara:
-//   Skåp: vertexantal 66, 40, 8, 8, 6, 6, 2, 2
-//   Hytt: vertexantal 140, 36, 30, 14, 12, 10
-// Tomma tills dess — normalläget i kontrollpanelen kan inte färga något
-// förrän de här är ifyllda.
-export const DEFAULT_CAB_SOURCES = [];
-export const DEFAULT_BOX_SOURCES = [];
+// Avläst ur den faktiska paletten i truck.glb (konsolloggen "Palett (färg:
+// antal vertexar):"). Hytten är ljusa lavendel-/vittoner, skåpet är dess
+// grön/gul/röd-liverad (bas + dekaler) — det är därför gruppen spänner över
+// flera hue:er i stället för en enda grön nyans.
+//   Hytt (vertexantal 140, 36, 30, 14, 12, 10):
+export const DEFAULT_CAB_SOURCES = ['#d6d6e5', '#f8f8fa', '#c1c1d8', '#d4ecff', '#bbc4eb', '#e9e9f1'];
+//   Skåp (vertexantal 66, 40, 8, 8, 6, 6, 2, 2):
+export const DEFAULT_BOX_SOURCES = ['#299270', '#59c387', '#ffc61b', '#ffdf43', '#d3363d', '#fa673f', '#3aa378', '#49b37f'];
 
 // Modellen har ETT delat material ("colormap") för hela karossen och bara
 // SEX meshar totalt (dörr, fyra hjul, kaross) — hytt och skåp sitter i SAMMA
