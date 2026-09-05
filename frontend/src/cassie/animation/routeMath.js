@@ -315,6 +315,21 @@ export function boundsZoom(bbox, mapWidthPx, mapHeightPx) {
 }
 
 /**
+ * Zoomjustering (zoom-nivåer, kan vara negativ) för drönarlägets
+ * avståndsreglage — 0 = nära (något mer inzoomat än pace-zoomen), 100 = långt
+ * bort (betydligt mer utzoomat). Lastbilens skärmstorlek påverkas inte av
+ * detta, eftersom TruckOverlay räknar om sin skala varje bildruta från den
+ * faktiska kamerazoomen — effekten blir precis "kameran drar sig längre bort
+ * och lastbilen krymper inte" som en riktig drönare.
+ */
+export function droneDistanceZoomOffset(distance0to100) {
+  const t = Math.max(0, Math.min(100, distance0to100)) / 100;
+  const CLOSE_OFFSET = 1.4;
+  const FAR_OFFSET = -3;
+  return CLOSE_OFFSET + (FAR_OFFSET - CLOSE_OFFSET) * t;
+}
+
+/**
  * Trimmar en körd-sträcka-path till de senaste maxDistanceMeters (från
  * slutet), så att långa rutter inte blir ett spagettinät på kartan. Ger
  * tillbaka hela pathen om den redan är kortare.

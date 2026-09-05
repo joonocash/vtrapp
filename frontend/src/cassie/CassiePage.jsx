@@ -40,6 +40,10 @@ export default function CassiePage() {
   const [truckSize, setTruckSize] = useState(initial.scale);
   const [trailMode, setTrailMode] = useState(initial.trail);
   const [camMode, setCamMode] = useState(initial.cam);
+  const [droneTilt, setDroneTilt] = useState(initial.droneTilt);
+  const [droneDistance, setDroneDistance] = useState(initial.droneDistance);
+  const [droneSideAngle, setDroneSideAngle] = useState(initial.droneSideAngle);
+  const [droneRotationMode, setDroneRotationMode] = useState(initial.droneRotationMode);
   // cabSources/boxSources: vilka UPPTÄCKTA palettfärger som tillhör
   // respektive roll — en roll äger godtyckligt många (grundfärg +
   // skuggnyanser), inte bara en. Faller tillbaka på de hårdkodade
@@ -181,7 +185,13 @@ export default function CassiePage() {
     setMapStyle(match.style);
     setTruckSize(Number.isFinite(match.scale) && match.scale > 0 ? match.scale : initial.scale);
     setTrailMode(['full', 'fade', 'none'].includes(match.trail) ? match.trail : initial.trail);
-    setCamMode(['follow', 'fixed', 'overview'].includes(match.cam) ? match.cam : initial.cam);
+    setCamMode(['follow', 'fixed', 'overview', 'drone'].includes(match.cam) ? match.cam : initial.cam);
+    setDroneTilt(Number.isFinite(match.droneTilt) ? match.droneTilt : initial.droneTilt);
+    setDroneDistance(Number.isFinite(match.droneDistance) ? match.droneDistance : initial.droneDistance);
+    setDroneSideAngle(Number.isFinite(match.droneSideAngle) ? match.droneSideAngle : initial.droneSideAngle);
+    setDroneRotationMode(
+      ['track', 'fixed'].includes(match.droneRotationMode) ? match.droneRotationMode : initial.droneRotationMode
+    );
     setCabSources(sourcesOrDefault(match.cabSources, DEFAULT_CAB_SOURCES));
     setCabColor(HEX_RE.test(match.cabColor) ? match.cabColor : null);
     setBoxSources(sourcesOrDefault(match.boxSources, DEFAULT_BOX_SOURCES));
@@ -234,6 +244,10 @@ export default function CassiePage() {
       scale: truckSize,
       trail: trailMode,
       cam: camMode,
+      droneTilt,
+      droneDistance,
+      droneSideAngle,
+      droneRotationMode,
       cabSources,
       cabColor,
       boxSources,
@@ -252,6 +266,10 @@ export default function CassiePage() {
     truckSize,
     trailMode,
     camMode,
+    droneTilt,
+    droneDistance,
+    droneSideAngle,
+    droneRotationMode,
     cabSources,
     cabColor,
     boxSources,
@@ -272,6 +290,10 @@ export default function CassiePage() {
     truckSize,
     trailMode,
     camMode,
+    droneTilt,
+    droneDistance,
+    droneSideAngle,
+    droneRotationMode,
     onStartDrag: handleStartDrag,
     onEndDrag: handleEndDrag,
     cabSources,
@@ -358,6 +380,10 @@ export default function CassiePage() {
           scale: truckSize,
           trail: trailMode,
           cam: camMode,
+          droneTilt,
+          droneDistance,
+          droneSideAngle,
+          droneRotationMode,
           cabSources,
           cabColor,
           boxSources,
@@ -381,6 +407,10 @@ export default function CassiePage() {
       truckSize,
       trailMode,
       camMode,
+      droneTilt,
+      droneDistance,
+      droneSideAngle,
+      droneRotationMode,
       cabSources,
       cabColor,
       boxSources,
@@ -400,7 +430,11 @@ export default function CassiePage() {
     setMapStyle(record.style);
     setTruckSize(Number.isFinite(record.scale) && record.scale > 0 ? record.scale : 90);
     setTrailMode(['full', 'fade', 'none'].includes(record.trail) ? record.trail : 'full');
-    setCamMode(['follow', 'fixed', 'overview'].includes(record.cam) ? record.cam : 'follow');
+    setCamMode(['follow', 'fixed', 'overview', 'drone'].includes(record.cam) ? record.cam : 'follow');
+    setDroneTilt(Number.isFinite(record.droneTilt) ? record.droneTilt : 55);
+    setDroneDistance(Number.isFinite(record.droneDistance) ? record.droneDistance : 50);
+    setDroneSideAngle(Number.isFinite(record.droneSideAngle) ? record.droneSideAngle : 0);
+    setDroneRotationMode(['track', 'fixed'].includes(record.droneRotationMode) ? record.droneRotationMode : 'track');
     setCabSources(sourcesOrDefault(record.cabSources, DEFAULT_CAB_SOURCES));
     setCabColor(HEX_RE.test(record.cabColor) ? record.cabColor : null);
     setBoxSources(sourcesOrDefault(record.boxSources, DEFAULT_BOX_SOURCES));
@@ -470,6 +504,14 @@ export default function CassiePage() {
         onTrailModeChange={setTrailMode}
         camMode={camMode}
         onCamModeChange={setCamMode}
+        droneTilt={droneTilt}
+        onDroneTiltChange={setDroneTilt}
+        droneDistance={droneDistance}
+        onDroneDistanceChange={setDroneDistance}
+        droneSideAngle={droneSideAngle}
+        onDroneSideAngleChange={setDroneSideAngle}
+        droneRotationMode={droneRotationMode}
+        onDroneRotationModeChange={setDroneRotationMode}
         paletteColors={paletteColors}
         referenceSwatch={referenceSwatch}
         cabSources={cabSources}

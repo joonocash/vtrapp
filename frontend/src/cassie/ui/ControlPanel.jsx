@@ -21,6 +21,7 @@ const TRAIL_OPTIONS = [
 
 const CAM_OPTIONS = [
   { id: 'follow', label: 'Följ lastbilen' },
+  { id: 'drone', label: 'Drönare' },
   { id: 'fixed', label: 'Fast' },
   { id: 'overview', label: 'Fast, hela rutten' }
 ];
@@ -237,6 +238,14 @@ export default function ControlPanel({
   onTrailModeChange,
   camMode,
   onCamModeChange,
+  droneTilt,
+  onDroneTiltChange,
+  droneDistance,
+  onDroneDistanceChange,
+  droneSideAngle,
+  onDroneSideAngleChange,
+  droneRotationMode,
+  onDroneRotationModeChange,
   paletteColors,
   referenceSwatch,
   cabSources,
@@ -470,6 +479,89 @@ export default function ControlPanel({
           <p className="text-xs text-gray-500 mt-1.5">
             Panorera och zooma kartan till önskad vy — den låses när du trycker Spela upp.
           </p>
+        )}
+        {camMode === 'drone' && (
+          <div className="mt-3 space-y-3 bg-gray-900/60 border border-gray-700 rounded-lg p-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Höjd/tilt <span className="text-gray-600">({droneTilt.toFixed(1)}°)</span>
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={67.5}
+                step={0.5}
+                value={droneTilt}
+                onChange={(e) => onDroneTiltChange(Number(e.target.value))}
+                disabled={!canControl}
+                className="w-full accent-blue-500 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Avstånd <span className="text-gray-600">({Math.round(droneDistance)})</span>
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={droneDistance}
+                onChange={(e) => onDroneDistanceChange(Number(e.target.value))}
+                disabled={!canControl}
+                className="w-full accent-blue-500 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Sidovinkel <span className="text-gray-600">({Math.round(droneSideAngle)}°)</span>
+              </label>
+              <input
+                type="range"
+                min={-90}
+                max={90}
+                step={1}
+                value={droneSideAngle}
+                onChange={(e) => onDroneSideAngleChange(Number(e.target.value))}
+                disabled={!canControl}
+                className="w-full accent-blue-500 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Rotation</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={!canControl}
+                  onClick={() => onDroneRotationModeChange('track')}
+                  className={`flex-1 text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+                    droneRotationMode === 'track'
+                      ? 'bg-blue-600 border-blue-500 text-blue-50'
+                      : 'bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-700'
+                  }`}
+                >
+                  Följer riktning
+                </button>
+                <button
+                  type="button"
+                  disabled={!canControl}
+                  onClick={() => onDroneRotationModeChange('fixed')}
+                  className={`flex-1 text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+                    droneRotationMode === 'fixed'
+                      ? 'bg-blue-600 border-blue-500 text-blue-50'
+                      : 'bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-700'
+                  }`}
+                >
+                  Fast kompassriktning
+                </button>
+              </div>
+              {droneRotationMode === 'fixed' && (
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Kartan ligger still under hela klippet — lastbilen svänger på den i stället.
+                </p>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

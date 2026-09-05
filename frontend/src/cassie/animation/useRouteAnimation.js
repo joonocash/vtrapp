@@ -8,6 +8,7 @@ import {
   boundsZoom,
   buildRouteTimeline,
   computeZoomForPace,
+  droneDistanceZoomOffset,
   groundMetersPerPixel,
   haversineDistance,
   lookAheadDistance,
@@ -50,6 +51,43 @@ function lerpAngleDeg(a, b, t) {
 function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
+}
+
+function normalizeHeadingDeg(deg) {
+  return ((deg % 360) + 360) % 360;
+}
+
+/**
+ * Komponerar en drönarkamera för en given markpunkt. I "track"-rotationsläge
+ * följer kompassriktningen lastbilens bäring (som follow, bara med reglerbar
+ * tilt/avstånd/sidovinkel ovanpå); i "fixed" hålls kompassriktningen kvar vid
+ * fixedHeadingDeg (bäringen vid ruttens start) hela klippet ut, så kartan
+ * ligger still och lastbilen svänger på den i stället — det som gör läget
+ * skakfritt att spela in.
+ *
+ * sideAngle roterar kameran ur "rakt bakom"-läget: eftersom Google-kameran
+ * alltid sitter mitt emot heading-riktningen relativt center, ger ett
+ * heading-offset exakt effekten av att kameran ligger snett bakom i stället
+ * för rakt bakom.
+ */
+function droneCameraFromPoint({
+  point,
+  travelBearingDeg,
+  paceZoom,
+  tilt,
+  distance,
+  sideAngle,
+  rotationMode,
+  fixedHeadingDeg
+}) {
+  const baseHeading = rotationMode === 'fixed' ? fixedHeadingDeg : travelBearingDeg;
+  return {
+    lat: point.lat,
+    lng: point.lng,
+    zoom: paceZoom + droneDistanceZoomOffset(distance),
+    heading: normalizeHeadingDeg(baseHeading + sideAngle),
+    tilt
+  };
 }
 
 function animateCamera(mapProvider, from, to, durationMs, cancelledRef) {
@@ -100,7 +138,11 @@ function applyBookendOpacity(mapProvider, pinsMode, value) {
  *   pinsMode: 'always' | 'hidden' | 'proximity',
  *   truckSize: number,
  *   trailMode: 'full' | 'fade' | 'none',
- *   camMode: 'follow' | 'fixed' | 'overview',
+ *   camMode: 'follow' | 'fixed' | 'overview' | 'drone',
+ *   droneTilt: number,
+ *   droneDistance: number,
+ *   droneSideAngle: number,
+ *   droneRotationMode: 'track' | 'fixed',
  *   onStartDrag: (pos: {lat:number, lng:number}) => void,
  *   onEndDrag: (pos: {lat:number, lng:number}) => void,
  *   cabSources: string[],
@@ -120,6 +162,10 @@ export function useRouteAnimation({
   truckSize,
   trailMode,
   camMode,
+  droneTilt,
+  droneDistance,
+  droneSideAngle,
+  droneRotationMode,
   onStartDrag,
   onEndDrag,
   cabSources,
@@ -141,6 +187,10 @@ export function useRouteAnimation({
   const truckSizeRef = useRef(truckSize);
   const trailModeRef = useRef(trailMode);
   const camModeRef = useRef(camMode);
+  const droneTiltRef = useRef(droneTilt);
+  const droneDistanceRef = useRef(droneDistance);
+  const droneSideAngleRef = useRef(droneSideAngle);
+  const droneRotationModeRef = useRef(droneRotationMode);
   const onStartDragRef = useRef(onStartDrag);
   const onEndDragRef = useRef(onEndDrag);
   const cabSourcesRef = useRef(cabSources);
@@ -154,6 +204,10 @@ export function useRouteAnimation({
   truckSizeRef.current = truckSize;
   trailModeRef.current = trailMode;
   camModeRef.current = camMode;
+  droneTiltRef.current = droneTilt;
+  droneDistanceRef.current = droneDistance;
+  droneSideAngleRef.current = droneSideAngle;
+  droneRotationModeRef.current = droneRotationMode;
   onStartDragRef.current = onStartDrag;
   onEndDragRef.current = onEndDrag;
   cabSourcesRef.current = cabSources;
@@ -274,6 +328,41 @@ export function useRouteAnimation({
     overlayRef.current?.setBoxColor(boxColor);
   }, [boxColor]);
 
+  // Drönarreglagen ska synas direkt medan man pausar, precis som
+  // storleksreglaget — annars måste man trycka Play för varje liten
+  // justering av tilt/avstånd/sidovinkel för att se resultatet.
+  useEffect(() => {
+    if (!mapProvider || !timelineRef.current || camMode !== 'drone') return;
+    // Bara i vilofaserna — under overview/flyToStart/countdown/playing/
+    // holdEnd/returnToOverview äger play()-koreografin kameran, och den här
+    // effekten ska inte köra över den bara för att fasen ändras.
+    if (!['idle', 'ready', 'done'].includes(phase)) return;
+
+    const timeline = timelineRef.current;
+    const bbox = bboxRef.current;
+    const startVertex = timeline.vertices[0];
+    const startBearing = bearingBetween(startVertex, timeline.vertices[1] || startVertex);
+    const paceZoom = computeZoomForPace(
+      timeline.totalDistance,
+      durationSeconds,
+      (bbox.north + bbox.south) / 2
+    );
+
+    mapProvider.moveCamera(
+      droneCameraFromPoint({
+        point: startVertex,
+        travelBearingDeg: startBearing,
+        paceZoom,
+        tilt: droneTilt,
+        distance: droneDistance,
+        sideAngle: droneSideAngle,
+        rotationMode: droneRotationMode,
+        fixedHeadingDeg: startBearing
+      })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camMode, droneTilt, droneDistance, droneSideAngle, droneRotationMode, durationSeconds, mapProvider, phase]);
+
   const runPlayback = useCallback(
     (mp, camMode) =>
       new Promise((resolve) => {
@@ -286,10 +375,12 @@ export function useRouteAnimation({
         );
         const playbackSpeedFactor = timeline.totalTime / Math.max(1, durationRef.current);
         const following = camMode === 'follow';
+        const droning = camMode === 'drone';
 
         const bearingSmoother = new BearingSmoother(0.15);
         const bankSmoother = new ScalarSmoother(0.2);
         const first = sampleRouteAtTime(timeline, 0);
+        const droneFixedHeadingDeg = first.bearing;
         bearingSmoother.reset(first.bearing);
         bankSmoother.reset(0);
 
@@ -339,6 +430,19 @@ export function useRouteAnimation({
               heading: smoothedBearing,
               tilt: PLAYING_TILT
             });
+          } else if (droning) {
+            mp.moveCamera(
+              droneCameraFromPoint({
+                point: { lat: sample.lat, lng: sample.lng },
+                travelBearingDeg: smoothedBearing,
+                paceZoom,
+                tilt: droneTiltRef.current,
+                distance: droneDistanceRef.current,
+                sideAngle: droneSideAngleRef.current,
+                rotationMode: droneRotationModeRef.current,
+                fixedHeadingDeg: droneFixedHeadingDeg
+              })
+            );
           }
 
           if (trailModeRef.current !== 'none') {
@@ -421,13 +525,36 @@ export function useRouteAnimation({
         tilt: PLAYING_TILT
       };
 
-      if (camMode === 'follow') {
+      // Drönarkamerans egen start/slut-komposition — samma tre punkter
+      // (start, slut, fixerad heading vid t=0) som styr valet mellan
+      // "kompassen följer bäringen" och "kompassen ligger fast" hela vägen.
+      const droneCameraArgs = {
+        paceZoom,
+        tilt: droneTiltRef.current,
+        distance: droneDistanceRef.current,
+        sideAngle: droneSideAngleRef.current,
+        rotationMode: droneRotationModeRef.current,
+        fixedHeadingDeg: startBearing
+      };
+      const droneStartCamera = droneCameraFromPoint({
+        ...droneCameraArgs,
+        point: startVertex,
+        travelBearingDeg: startBearing
+      });
+      const droneEndCamera = droneCameraFromPoint({
+        ...droneCameraArgs,
+        point: endVertex,
+        travelBearingDeg: endBearing
+      });
+
+      if (camMode === 'follow' || camMode === 'drone') {
         setPhase('overview');
         mp.fitBounds(bbox, OVERVIEW_PADDING);
         if (!(await sleep(OVERVIEW_HOLD_MS, cancelledRef))) return;
 
         setPhase('flyToStart');
-        if (!(await animateCamera(mp, overviewCamera, startCamera, FLY_TO_START_MS, cancelledRef))) return;
+        const introCamera = camMode === 'follow' ? startCamera : droneStartCamera;
+        if (!(await animateCamera(mp, overviewCamera, introCamera, FLY_TO_START_MS, cancelledRef))) return;
       } else if (camMode === 'overview') {
         // Ramar in hela rutten en gång och rör sig sedan inte alls.
         mp.fitBounds(bbox, OVERVIEW_PADDING);
@@ -449,13 +576,16 @@ export function useRouteAnimation({
       setPhase('holdEnd');
       if (camMode === 'follow') {
         mp.moveCamera(endCamera);
+      } else if (camMode === 'drone') {
+        mp.moveCamera(droneEndCamera);
       }
       applyBookendOpacity(mp, pinsModeRef.current, 1);
       if (!(await sleep(HOLD_END_MS, cancelledRef))) return;
 
-      if (camMode === 'follow') {
+      if (camMode === 'follow' || camMode === 'drone') {
         setPhase('returnToOverview');
-        if (!(await animateCamera(mp, endCamera, overviewCamera, RETURN_TO_OVERVIEW_MS, cancelledRef))) return;
+        const outroFrom = camMode === 'follow' ? endCamera : droneEndCamera;
+        if (!(await animateCamera(mp, outroFrom, overviewCamera, RETURN_TO_OVERVIEW_MS, cancelledRef))) return;
         mp.fitBounds(bbox, OVERVIEW_PADDING);
       }
 

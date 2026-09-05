@@ -66,6 +66,11 @@ function sanitizeHexList(value) {
   return value.filter((h) => typeof h === 'string' && HEX_COLOR_RE.test(h)).slice(0, 50);
 }
 
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+}
+
 const router = express.Router();
 
 /**
@@ -210,7 +215,11 @@ router.post('/routes', (req, res) => {
     style: ['roadmap', 'satellite'].includes(body.style) ? body.style : 'roadmap',
     scale: Number.isFinite(Number(body.scale)) && Number(body.scale) > 0 ? Number(body.scale) : 90,
     trail: ['full', 'fade', 'none'].includes(body.trail) ? body.trail : 'full',
-    cam: ['follow', 'fixed', 'overview'].includes(body.cam) ? body.cam : 'follow',
+    cam: ['follow', 'fixed', 'overview', 'drone'].includes(body.cam) ? body.cam : 'follow',
+    droneTilt: clampNumber(body.droneTilt, 0, 67.5, 55),
+    droneDistance: clampNumber(body.droneDistance, 0, 100, 50),
+    droneSideAngle: clampNumber(body.droneSideAngle, -90, 90, 0),
+    droneRotationMode: ['track', 'fixed'].includes(body.droneRotationMode) ? body.droneRotationMode : 'track',
     cabSources: sanitizeHexList(body.cabSources),
     cabColor: HEX_COLOR_RE.test(body.cabColor) ? body.cabColor : null,
     boxSources: sanitizeHexList(body.boxSources),

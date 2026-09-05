@@ -18,7 +18,14 @@ export const DEFAULTS = {
   // DEFAULT_PIXEL_SIZE i animation/TruckOverlay.js.
   scale: 90,
   trail: 'full', // 'full' | 'fade' | 'none'
-  cam: 'follow', // 'follow' | 'fixed' | 'overview'
+  cam: 'follow', // 'follow' | 'fixed' | 'overview' | 'drone'
+  // Drönarläget: samma "följ lastbilen"-princip som follow, men med
+  // reglerbar tilt/avstånd/sidovinkel, plus valet mellan att kompassen
+  // följer lastbilens riktning eller ligger fast (skakfritt i sväng).
+  droneTilt: 55, // 0 (rakt ovanifrån) .. 67.5 (Googles max)
+  droneDistance: 50, // 0 (nära) .. 100 (långt bort) — se droneDistanceZoomOffset
+  droneSideAngle: 0, // -90 .. 90, offset från "rakt bakom"
+  droneRotationMode: 'track', // 'track' | 'fixed'
   // cabSources/boxSources: vilka UPPTÄCKTA originalfärger i modellens
   // palett användaren pekat ut som hytt/skåp — en roll kan äga flera
   // (grundfärg + skuggnyanser). cabColor/boxColor: vilken ERSÄTTNINGSfärg
@@ -63,6 +70,10 @@ export function parseUrlState(search = window.location.search) {
   const scale = Number(params.get('scale'));
   const trail = params.get('trail');
   const cam = params.get('cam');
+  const droneTilt = Number(params.get('drTilt'));
+  const droneDistance = Number(params.get('drDist'));
+  const droneSideAngle = Number(params.get('drSide'));
+  const droneRotationMode = params.get('drRot');
 
   return {
     from: parseLatLng(params.get('from')) || DEFAULTS.from,
@@ -75,7 +86,17 @@ export function parseUrlState(search = window.location.search) {
     style: ['roadmap', 'satellite'].includes(style) ? style : DEFAULTS.style,
     scale: Number.isFinite(scale) && scale > 0 ? scale : DEFAULTS.scale,
     trail: ['full', 'fade', 'none'].includes(trail) ? trail : DEFAULTS.trail,
-    cam: ['follow', 'fixed', 'overview'].includes(cam) ? cam : DEFAULTS.cam,
+    cam: ['follow', 'fixed', 'overview', 'drone'].includes(cam) ? cam : DEFAULTS.cam,
+    droneTilt: Number.isFinite(droneTilt) ? Math.max(0, Math.min(67.5, droneTilt)) : DEFAULTS.droneTilt,
+    droneDistance: Number.isFinite(droneDistance)
+      ? Math.max(0, Math.min(100, droneDistance))
+      : DEFAULTS.droneDistance,
+    droneSideAngle: Number.isFinite(droneSideAngle)
+      ? Math.max(-90, Math.min(90, droneSideAngle))
+      : DEFAULTS.droneSideAngle,
+    droneRotationMode: ['track', 'fixed'].includes(droneRotationMode)
+      ? droneRotationMode
+      : DEFAULTS.droneRotationMode,
     cabSources: parseHexList(params.get('cabSources')),
     cabColor: parseHexColor(params.get('cabColor')) || DEFAULTS.cabColor,
     boxSources: parseHexList(params.get('boxSources')),
@@ -99,6 +120,10 @@ export function writeUrlState(state) {
   params.set('scale', String(state.scale ?? DEFAULTS.scale));
   params.set('trail', state.trail || DEFAULTS.trail);
   params.set('cam', state.cam || DEFAULTS.cam);
+  params.set('drTilt', String(state.droneTilt ?? DEFAULTS.droneTilt));
+  params.set('drDist', String(state.droneDistance ?? DEFAULTS.droneDistance));
+  params.set('drSide', String(state.droneSideAngle ?? DEFAULTS.droneSideAngle));
+  params.set('drRot', state.droneRotationMode || DEFAULTS.droneRotationMode);
   const cabSourcesStr = serializeHexList(state.cabSources);
   if (cabSourcesStr) params.set('cabSources', cabSourcesStr);
   if (state.cabColor) params.set('cabColor', state.cabColor);
