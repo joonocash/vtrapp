@@ -103,9 +103,9 @@ function applyBookendOpacity(mapProvider, pinsMode, value) {
  *   camMode: 'follow' | 'fixed' | 'overview',
  *   onStartDrag: (pos: {lat:number, lng:number}) => void,
  *   onEndDrag: (pos: {lat:number, lng:number}) => void,
- *   cabSource: string | null,
+ *   cabSources: string[],
  *   cabColor: string | null,
- *   boxSource: string | null,
+ *   boxSources: string[],
  *   boxColor: string | null,
  *   onPaletteDiscovered: (palette: {hex: string, count: number}[]) => void,
  *   containerRef: { current: HTMLElement | null }
@@ -122,9 +122,9 @@ export function useRouteAnimation({
   camMode,
   onStartDrag,
   onEndDrag,
-  cabSource,
+  cabSources,
   cabColor,
-  boxSource,
+  boxSources,
   boxColor,
   onPaletteDiscovered
 }) {
@@ -143,9 +143,9 @@ export function useRouteAnimation({
   const camModeRef = useRef(camMode);
   const onStartDragRef = useRef(onStartDrag);
   const onEndDragRef = useRef(onEndDrag);
-  const cabSourceRef = useRef(cabSource);
+  const cabSourcesRef = useRef(cabSources);
   const cabColorRef = useRef(cabColor);
-  const boxSourceRef = useRef(boxSource);
+  const boxSourcesRef = useRef(boxSources);
   const boxColorRef = useRef(boxColor);
   const onPaletteDiscoveredRef = useRef(onPaletteDiscovered);
 
@@ -156,9 +156,9 @@ export function useRouteAnimation({
   camModeRef.current = camMode;
   onStartDragRef.current = onStartDrag;
   onEndDragRef.current = onEndDrag;
-  cabSourceRef.current = cabSource;
+  cabSourcesRef.current = cabSources;
   cabColorRef.current = cabColor;
-  boxSourceRef.current = boxSource;
+  boxSourcesRef.current = boxSources;
   boxColorRef.current = boxColor;
   onPaletteDiscoveredRef.current = onPaletteDiscovered;
 
@@ -184,9 +184,9 @@ export function useRouteAnimation({
     // körts igång — annars finns det inget att visa storleksreglaget mot
     // medan man står still och ställer in det.
     overlay.setPixelSize(truckSizeRef.current);
-    overlay.setCabSource(cabSourceRef.current);
+    overlay.setCabSources(cabSourcesRef.current);
     overlay.setCabColor(cabColorRef.current);
-    overlay.setBoxSource(boxSourceRef.current);
+    overlay.setBoxSources(boxSourcesRef.current);
     overlay.setBoxColor(boxColorRef.current);
     overlay.setPose({
       lat: vertices[0].lat,
@@ -259,16 +259,16 @@ export function useRouteAnimation({
 
   // Samma sak för färgerna — synliga direkt, oavsett fas.
   useEffect(() => {
-    overlayRef.current?.setCabSource(cabSource);
-  }, [cabSource]);
+    overlayRef.current?.setCabSources(cabSources);
+  }, [cabSources]);
 
   useEffect(() => {
     overlayRef.current?.setCabColor(cabColor);
   }, [cabColor]);
 
   useEffect(() => {
-    overlayRef.current?.setBoxSource(boxSource);
-  }, [boxSource]);
+    overlayRef.current?.setBoxSources(boxSources);
+  }, [boxSources]);
 
   useEffect(() => {
     overlayRef.current?.setBoxColor(boxColor);

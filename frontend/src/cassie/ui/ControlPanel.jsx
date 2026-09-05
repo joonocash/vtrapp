@@ -94,60 +94,83 @@ function GeocodeInput({ label, placeholder, value, onSelect }) {
   );
 }
 
-function PaletteSwatch({ color, isCab, isBox, clickable, onClick }) {
+function PaletteSwatch({ color, isCab, isBox, isReference, maxCount, disabled, onClick }) {
+  const relative = maxCount > 0 ? color.count / maxCount : 1;
+  const opacity = 0.35 + 0.65 * relative;
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!clickable}
-      title={`${color.hex} — ${color.count} vertexar`}
-      className={`relative w-8 h-8 rounded-md border-2 transition-transform ${
-        clickable ? 'border-blue-400 hover:scale-110 cursor-pointer' : 'border-gray-700'
-      }`}
-      style={{ background: color.hex }}
-    >
-      {isCab && (
-        <span className="absolute -top-1.5 -left-1.5 bg-blue-600 text-white text-[9px] font-bold leading-none rounded-full w-4 h-4 flex items-center justify-center">
-          H
-        </span>
-      )}
-      {isBox && (
-        <span className="absolute -top-1.5 -right-1.5 bg-emerald-600 text-white text-[9px] font-bold leading-none rounded-full w-4 h-4 flex items-center justify-center">
-          S
-        </span>
-      )}
-    </button>
+    <div className="flex flex-col items-center gap-0.5">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        title={`${color.hex} — ${color.count} vertexar`}
+        className={`relative w-8 h-8 rounded-md border-2 transition-transform hover:scale-110 disabled:opacity-40 disabled:hover:scale-100 ${
+          isReference ? 'border-white' : 'border-gray-700'
+        }`}
+        style={{ background: color.hex, opacity }}
+      >
+        {isCab && (
+          <span className="absolute -top-1.5 -left-1.5 bg-blue-600 text-white text-[9px] font-bold leading-none rounded-full w-4 h-4 flex items-center justify-center">
+            H
+          </span>
+        )}
+        {isBox && (
+          <span className="absolute -top-1.5 -right-1.5 bg-emerald-600 text-white text-[9px] font-bold leading-none rounded-full w-4 h-4 flex items-center justify-center">
+            S
+          </span>
+        )}
+      </button>
+      <span className="text-[9px] text-gray-600 leading-none">{color.count}</span>
+    </div>
   );
 }
 
-function RolePicker({ label, source, color, assignActive, onToggleAssign, onColorChange, disabled }) {
+function RolePicker({
+  label,
+  sources,
+  color,
+  assignActive,
+  onToggleAssign,
+  onColorChange,
+  onSelectSimilar,
+  canSelectSimilar,
+  disabled
+}) {
   return (
     <div>
-      <label className="block text-xs text-gray-500 mb-1">{label}</label>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onToggleAssign}
-        className={`w-full flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
-          assignActive
-            ? 'bg-blue-600 border-blue-500 text-blue-50'
-            : 'bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-700'
-        }`}
-      >
-        <span
-          className="w-4 h-4 rounded border border-gray-600 shrink-0"
-          style={{ background: source || 'transparent' }}
-        />
-        <span className="truncate">
-          {assignActive ? 'Klicka en ruta ovan…' : source ? 'Byt ruta' : 'Peka ut ruta'}
-        </span>
-      </button>
+      <label className="block text-xs text-gray-500 mb-1">
+        {label} <span className="text-gray-600">({sources.length} {sources.length === 1 ? 'ruta' : 'rutor'})</span>
+      </label>
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onToggleAssign}
+          className={`flex-1 text-xs px-2 py-1.5 rounded-lg border transition-colors disabled:opacity-50 truncate ${
+            assignActive
+              ? 'bg-blue-600 border-blue-500 text-blue-50'
+              : 'bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-700'
+          }`}
+        >
+          {assignActive ? 'Klar' : 'Peka ut rutor'}
+        </button>
+        <button
+          type="button"
+          disabled={disabled || !canSelectSimilar}
+          onClick={onSelectSimilar}
+          title="Lägg till alla rutor med liknande färgton som den senast klickade"
+          className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-gray-900 text-gray-400 hover:bg-gray-700 disabled:opacity-30"
+        >
+          Välj liknande
+        </button>
+      </div>
 
-      {source && (
+      {sources.length > 0 && (
         <div className="flex items-center gap-2 mt-2">
           <input
             type="color"
-            value={color || source}
+            value={color || sources[0]}
             onChange={(e) => onColorChange(e.target.value)}
             disabled={disabled}
             className="h-9 w-12 shrink-0 bg-gray-900 border border-gray-700 rounded-md cursor-pointer disabled:opacity-50"
@@ -188,15 +211,18 @@ export default function ControlPanel({
   camMode,
   onCamModeChange,
   paletteColors,
-  cabSource,
+  referenceSwatch,
+  cabSources,
   cabColor,
   onCabColorChange,
-  boxSource,
+  onSelectSimilarCab,
+  boxSources,
   boxColor,
   onBoxColorChange,
+  onSelectSimilarBox,
   assignMode,
   onAssignModeChange,
-  onAssignSwatch,
+  onSwatchClick,
   placementMode,
   onPlacementModeChange,
   onPlay,
@@ -303,7 +329,10 @@ export default function ControlPanel({
       </div>
 
       <div>
-        <label className="block text-xs text-gray-500 mb-1">Karossens färger</label>
+        <label className="block text-xs text-gray-500 mb-1">
+          Karossens färger{' '}
+          {assignMode && <span className="text-blue-400">— klicka rutor för att lägga till/ta bort ur {assignMode === 'cab' ? 'hytten' : 'skåpet'}</span>}
+        </label>
         {paletteColors.length === 0 ? (
           <p className="text-xs text-gray-600">Väntar på att modellen ska ladda…</p>
         ) : (
@@ -312,10 +341,12 @@ export default function ControlPanel({
               <PaletteSwatch
                 key={c.hex}
                 color={c}
-                isCab={c.hex === cabSource}
-                isBox={c.hex === boxSource}
-                clickable={Boolean(assignMode) && canControl}
-                onClick={() => onAssignSwatch(c.hex)}
+                isCab={cabSources.includes(c.hex)}
+                isBox={boxSources.includes(c.hex)}
+                isReference={c.hex === referenceSwatch}
+                maxCount={paletteColors[0]?.count || 1}
+                disabled={!canControl}
+                onClick={() => onSwatchClick(c.hex)}
               />
             ))}
           </div>
@@ -325,20 +356,24 @@ export default function ControlPanel({
       <div className="grid grid-cols-2 gap-3">
         <RolePicker
           label="Hytt"
-          source={cabSource}
+          sources={cabSources}
           color={cabColor}
           assignActive={assignMode === 'cab'}
           onToggleAssign={() => onAssignModeChange(assignMode === 'cab' ? null : 'cab')}
           onColorChange={onCabColorChange}
+          onSelectSimilar={onSelectSimilarCab}
+          canSelectSimilar={Boolean(referenceSwatch)}
           disabled={!canControl}
         />
         <RolePicker
           label="Skåp"
-          source={boxSource}
+          sources={boxSources}
           color={boxColor}
           assignActive={assignMode === 'box'}
           onToggleAssign={() => onAssignModeChange(assignMode === 'box' ? null : 'box')}
           onColorChange={onBoxColorChange}
+          onSelectSimilar={onSelectSimilarBox}
+          canSelectSimilar={Boolean(referenceSwatch)}
           disabled={!canControl}
         />
       </div>

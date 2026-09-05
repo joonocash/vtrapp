@@ -3,7 +3,7 @@
 //
 // ?from=59.334,18.063&fromLabel=Stockholm&to=57.708,11.974&toLabel=G%C3%B6teborg
 // &dur=25&pins=proximity&fmt=16x9&style=roadmap&scale=90&trail=full&cam=follow
-// &r=stockholm-goteborg
+// &cabSources=%23c9a0dc,%232e7d32&cabColor=%23ff0000&r=stockholm-goteborg
 
 export const DEFAULTS = {
   from: null, // { lat, lng } | null
@@ -19,13 +19,14 @@ export const DEFAULTS = {
   scale: 90,
   trail: 'full', // 'full' | 'fade' | 'none'
   cam: 'follow', // 'follow' | 'fixed' | 'overview'
-  // cabSource/boxSource: vilken UPPTÄCKT originalfärg i modellens palett
-  // användaren pekat ut som hytt/skåp. cabColor/boxColor: vilken
-  // ERSÄTTNINGSfärg den ska bytas mot. Allihop null = rör inget, modellens
-  // egna färger visas tills användaren aktivt valt något.
-  cabSource: null,
+  // cabSources/boxSources: vilka UPPTÄCKTA originalfärger i modellens
+  // palett användaren pekat ut som hytt/skåp — en roll kan äga flera
+  // (grundfärg + skuggnyanser). cabColor/boxColor: vilken ERSÄTTNINGSfärg
+  // gruppen ska bytas mot. Tomma listor/null = rör inget, modellens egna
+  // färger visas tills användaren aktivt valt något.
+  cabSources: [],
   cabColor: null,
-  boxSource: null,
+  boxSources: [],
   boxColor: null,
   route: '' // slug för sparad rutt
 };
@@ -39,6 +40,18 @@ function parseLatLng(value) {
 
 function parseHexColor(value) {
   return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value.toLowerCase() : null;
+}
+
+function parseHexList(value) {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter((h) => /^#[0-9a-fA-F]{6}$/.test(h));
+}
+
+function serializeHexList(list) {
+  return (list || []).filter((h) => /^#[0-9a-fA-F]{6}$/.test(h)).join(',');
 }
 
 export function parseUrlState(search = window.location.search) {
@@ -63,9 +76,9 @@ export function parseUrlState(search = window.location.search) {
     scale: Number.isFinite(scale) && scale > 0 ? scale : DEFAULTS.scale,
     trail: ['full', 'fade', 'none'].includes(trail) ? trail : DEFAULTS.trail,
     cam: ['follow', 'fixed', 'overview'].includes(cam) ? cam : DEFAULTS.cam,
-    cabSource: parseHexColor(params.get('cabSource')) || DEFAULTS.cabSource,
+    cabSources: parseHexList(params.get('cabSources')),
     cabColor: parseHexColor(params.get('cabColor')) || DEFAULTS.cabColor,
-    boxSource: parseHexColor(params.get('boxSource')) || DEFAULTS.boxSource,
+    boxSources: parseHexList(params.get('boxSources')),
     boxColor: parseHexColor(params.get('boxColor')) || DEFAULTS.boxColor,
     route: params.get('r') || DEFAULTS.route
   };
@@ -86,9 +99,11 @@ export function writeUrlState(state) {
   params.set('scale', String(state.scale ?? DEFAULTS.scale));
   params.set('trail', state.trail || DEFAULTS.trail);
   params.set('cam', state.cam || DEFAULTS.cam);
-  if (state.cabSource) params.set('cabSource', state.cabSource);
+  const cabSourcesStr = serializeHexList(state.cabSources);
+  if (cabSourcesStr) params.set('cabSources', cabSourcesStr);
   if (state.cabColor) params.set('cabColor', state.cabColor);
-  if (state.boxSource) params.set('boxSource', state.boxSource);
+  const boxSourcesStr = serializeHexList(state.boxSources);
+  if (boxSourcesStr) params.set('boxSources', boxSourcesStr);
   if (state.boxColor) params.set('boxColor', state.boxColor);
   if (state.route) params.set('r', state.route);
 

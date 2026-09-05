@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { groundMetersPerPixel } from './routeMath.js';
-import { PaletteTexture, detectGrid, rgbToHex, clusterColors } from './paletteTexture.js';
+import { PaletteTexture, detectGrid, rgbToHex, clusterColors, computeGroupReplacementTargets } from './paletteTexture.js';
 
 // Ren three.js — ingen google.maps-referens här. Lyder samma duck-typade
 // protokoll som ett riktigt google.maps.WebGLOverlayView förväntar sig
@@ -72,14 +72,15 @@ export class TruckOverlay {
     // materialets ursprungliga .map. Fylls av discoverPalette() när modellen
     // och dess textur laddat klart.
     this.paletteTexture = null;
-    // Vilken UPPTÄCKT originalfärg (hex) användaren pekat ut som hytt/skåp,
-    // och vilken ERSÄTTNINGSfärg (hex) den ska bytas mot. Alla fyra kan
-    // sättas innan modellen laddat klart (t.ex. från en inläst sparad rutt)
-    // — discoverPalette()/applyColorOverrides() applicerar dem så fort
-    // paletten finns.
-    this.cabSource = null;
+    // Vilka UPPTÄCKTA originalfärger (hex[]) användaren pekat ut som hytt/
+    // skåp — en roll kan äga godtyckligt många källfärger (grundfärg +
+    // skuggnyanser) — och vilken ERSÄTTNINGSfärg (hex) gruppen ska bytas
+    // mot. Kan sättas innan modellen laddat klart (t.ex. från en inläst
+    // sparad rutt) — discoverPalette()/applyColorOverrides() applicerar dem
+    // så fort paletten finns.
+    this.cabSources = [];
     this.cabColorOverride = null;
-    this.boxSource = null;
+    this.boxSources = [];
     this.boxColorOverride = null;
     // Sätts av GoogleMapProvider.attachOverlay — enda kopplingen ut mot
     // kartmotorn, och den är opaque (bara en callback, ingen typreferens).
@@ -245,32 +246,33 @@ export class TruckOverlay {
 
   applyColorOverrides() {
     if (!this.paletteTexture) return;
-    this.paletteTexture.regenerate([
-      { sourceHex: this.cabSource, hex: this.cabColorOverride },
-      { sourceHex: this.boxSource, hex: this.boxColorOverride }
-    ]);
+    const pairs = [
+      ...computeGroupReplacementTargets(this.cabSources, this.cabColorOverride),
+      ...computeGroupReplacementTargets(this.boxSources, this.boxColorOverride)
+    ];
+    this.paletteTexture.regenerate(pairs);
     this.requestRedraw();
   }
 
-  /** @param {string | null} hex Vilken UPPTÄCKT originalfärg som är hytten. */
-  setCabSource(hex) {
-    this.cabSource = hex || null;
+  /** @param {string[]} hexes Vilka UPPTÄCKTA originalfärger som tillhör hytten. */
+  setCabSources(hexes) {
+    this.cabSources = Array.isArray(hexes) ? hexes : [];
     this.applyColorOverrides();
   }
 
-  /** @param {string | null} hex Ersättningsfärgen för hytten. Null = originalfärg. */
+  /** @param {string | null} hex Ersättningsfärgen för hytten. Null = originalfärger. */
   setCabColor(hex) {
     this.cabColorOverride = hex || null;
     this.applyColorOverrides();
   }
 
-  /** @param {string | null} hex Vilken UPPTÄCKT originalfärg som är skåpet. */
-  setBoxSource(hex) {
-    this.boxSource = hex || null;
+  /** @param {string[]} hexes Vilka UPPTÄCKTA originalfärger som tillhör skåpet. */
+  setBoxSources(hexes) {
+    this.boxSources = Array.isArray(hexes) ? hexes : [];
     this.applyColorOverrides();
   }
 
-  /** @param {string | null} hex Ersättningsfärgen för skåpet. Null = originalfärg. */
+  /** @param {string | null} hex Ersättningsfärgen för skåpet. Null = originalfärger. */
   setBoxColor(hex) {
     this.boxColorOverride = hex || null;
     this.applyColorOverrides();

@@ -41,6 +41,115 @@ export function rgbToHex(r, g, b) {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
+/** @returns {{h:number, s:number, l:number}} h/s/l i 0..1 */
+export function rgbToHsl(r, g, b) {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h;
+  switch (max) {
+    case r:
+      h = (g - b) / d + (g < b ? 6 : 0);
+      break;
+    case g:
+      h = (b - r) / d + 2;
+      break;
+    default:
+      h = (r - g) / d + 4;
+  }
+  return { h: h / 6, s, l };
+}
+
+export function hslToRgb(h, s, l) {
+  if (s === 0) {
+    const v = Math.round(l * 255);
+    return [v, v, v];
+  }
+
+  const hue2rgb = (p, q, t) => {
+    let tt = t;
+    if (tt < 0) tt += 1;
+    if (tt > 1) tt -= 1;
+    if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+    if (tt < 1 / 2) return q;
+    if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+    return p;
+  };
+
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [
+    Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
+    Math.round(hue2rgb(p, q, h) * 255),
+    Math.round(hue2rgb(p, q, h - 1 / 3) * 255)
+  ];
+}
+
+/** Kortaste cirkulära avstånd mellan två hue-värden (0..1), i grader (0..180). */
+function hueDistanceDeg(h1, h2) {
+  const diff = Math.abs(h1 - h2);
+  return Math.min(diff, 1 - diff) * 360;
+}
+
+/**
+ * En roll (hytt/skåp) äger godtyckligt många källfärger, inte bara en — en
+ * karossdel består oftast av en grundfärg plus mörkare/ljusare
+ * skuggnyanser. Byter man alla mot EN platt ersättningsfärg försvinner
+ * skuggningen och delen blir en siluett. I stället: räkna varje källfärgs
+ * ljushet relativt gruppens LJUSASTE färg, och applicera samma förhållande
+ * på ersättningsfärgens ljushet — grundfärgen blir ersättningsfärgen
+ * oförändrad, skuggorna blir proportionerligt mörkare varianter av den.
+ * @param {string[]} sourceHexes
+ * @param {string|null} replacementHex
+ * @returns {{sourceHex: string, targetHex: string}[]}
+ */
+export function computeGroupReplacementTargets(sourceHexes, replacementHex) {
+  if (!sourceHexes?.length || !replacementHex) return [];
+
+  const sources = sourceHexes.map((hex) => ({ hex, hsl: rgbToHsl(...hexToRgb(hex)) }));
+  const maxL = Math.max(...sources.map((s) => s.hsl.l)) || 1;
+  const replHsl = rgbToHsl(...hexToRgb(replacementHex));
+
+  return sources.map(({ hex, hsl }) => {
+    const ratio = maxL > 0 ? hsl.l / maxL : 1;
+    const targetL = Math.max(0, Math.min(1, replHsl.l * ratio));
+    const [r, g, b] = hslToRgb(replHsl.h, replHsl.s, targetL);
+    return { sourceHex: hex, targetHex: rgbToHex(r, g, b) };
+  });
+}
+
+/**
+ * "Välj liknande": hittar alla palettfärger vars NYANS ligger nära en
+ * referensfärgs, oavsett ljushet — det är vad som fångar en hel
+ * grundfärg+skuggor-grupp med ett klick. Ignorerar nästan gråa/svarta/vita
+ * kandidater (deras hue är numeriskt instabil och sannolikt hjul/krom, inte
+ * en skuggnyans av referensfärgen).
+ * @param {{hex:string, count:number}[]} colors
+ * @param {string} referenceHex
+ * @param {number} hueToleranceDeg
+ * @param {number} minSaturation
+ * @returns {string[]} hex-koder, referensfärgen inkluderad
+ */
+export function findSimilarHues(colors, referenceHex, hueToleranceDeg = 26, minSaturation = 0.12) {
+  const refHsl = rgbToHsl(...hexToRgb(referenceHex));
+  const matches = new Set([referenceHex]);
+
+  for (const c of colors) {
+    const hsl = rgbToHsl(...hexToRgb(c.hex));
+    if (hsl.s < minSaturation) continue;
+    if (hueDistanceDeg(hsl.h, refHsl.h) <= hueToleranceDeg) matches.add(c.hex);
+  }
+
+  return [...matches];
+}
+
 /**
  * Slår ihop en { hex: antal }-tally av exakt samplade färger till kluster av
  * "samma ruta" — texturkomprimering/bilinjär filtrering kan annars ge en
@@ -170,22 +279,23 @@ export class PaletteTexture {
 
   /**
    * Ritar om canvasen från grunden (alltid från den pristina originalbilden)
-   * och ersätter sedan varje aktiv override — `sourceHex` (den ursprungliga
-   * rutans färg) med `hex` (den valda ersättningsfärgen), var den än
-   * förekommer i bilden. `sourceHex` eller `hex` null/tomt hoppas över —
-   * den rutan lämnas i sitt originalskick.
-   * @param {{sourceHex: string|null, hex: string|null}[]} overrides
+   * och ersätter sedan varje par — `sourceHex` (en ursprunglig palettfärg)
+   * med `targetHex` (dess redan uträknade ersättning, se
+   * computeGroupReplacementTargets) — var de än förekommer i bilden.
+   * Uppringaren ansvarar för att räkna ut targetHex per källfärg (t.ex. med
+   * relativ ljushet inom en grupp); den här metoden bara applicerar paren.
+   * @param {{sourceHex: string, targetHex: string}[]} pairs
    */
-  regenerate(overrides) {
+  regenerate(pairs) {
     const imageData = new ImageData(
       new Uint8ClampedArray(this.originalImageData.data),
       this.width,
       this.height
     );
 
-    for (const { sourceHex, hex } of overrides) {
-      if (!sourceHex || !hex) continue;
-      replaceColor(imageData, hexToRgb(sourceHex), hexToRgb(hex));
+    for (const { sourceHex, targetHex } of pairs) {
+      if (!sourceHex || !targetHex) continue;
+      replaceColor(imageData, hexToRgb(sourceHex), hexToRgb(targetHex));
     }
 
     this.ctx.putImageData(imageData, 0, 0);
