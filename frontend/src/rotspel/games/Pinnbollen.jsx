@@ -3,7 +3,6 @@ import {
   BREDD,
   HOJD,
   PINNE_R,
-  KULA_R,
   skapaSpel,
   nastaBana,
   sikta,
@@ -12,6 +11,8 @@ import {
   siktlinje,
   orangeKvar,
 } from './pinnbollenEngine.js'
+import { GRADER } from './pinnbollenKrafter.js'
+import Kraftlada from './Kraftlada.jsx'
 import { useLjud } from '../useLjud.js'
 import { readSettings } from '../useSettings.js'
 
@@ -19,10 +20,13 @@ import { readSettings } from '../useSettings.js'
 //
 // Motorn sköter fysik och regler och returnerar händelser. Den här filen
 // ritar och spelar upp dem. Allt speltillstånd ligger i refs — en runda är
-// 60 uppdateringar i sekunden och state hade gett 60 renders.
+// 60 uppdateringar i sekunden och state hade gett 60 renders. spel.kulor är
+// numera en array (se pinnbollenEngine.js) — allt som ritar en kula loopar
+// över den i stället för att anta att det bara finns en.
 
 const FARG_BLA = '#3b82f6'
 const FARG_ORANGE = '#f97316'
+const FARG_GRON = '#22c55e'
 
 // Fysiktakten loopen strävar efter i millisekunder. steg() rör kulan lika
 // mycket per anrop oavsett vilket dtMs man skickar in (det används bara av
@@ -40,8 +44,9 @@ export default function Pinnbollen({ onGameOver }) {
   const spelRef = useRef(null)
   if (spelRef.current === null) spelRef.current = skapaSpel(1)
 
-  const [hud, setHud] = useState({ poang: 0, kulor: 10, orange: 0, niva: 1 })
+  const [hud, setHud] = useState({ poang: 0, kulor: 10, orange: 0, niva: 1, aktivKraft: null })
   const [slut, setSlut] = useState(false)
+  const [ladaKraftId, setLadaKraftId] = useState(null)
 
   const partiklar = useRef([])
   const popp = useRef([])
@@ -53,6 +58,17 @@ export default function Pinnbollen({ onGameOver }) {
   const levande = useRef(true)
   const rapporterat = useRef(false)
   const timers = useRef([])
+  // Grön pinne träffad mitt i skottet — kraften är redan dragen av motorn,
+  // men lådan ska inte poppa upp förrän flykten är klar (skottSlut).
+  const vantandeLadaKraft = useRef(null)
+  // Speglar ladaKraftId synkront i en ref, så den fördröjda banaKlar-timern
+  // (se nedan) läser aktuellt läge i stället för det som gällde när timern
+  // schemalades.
+  const ladaOppen = useRef(false)
+  // Sant om banbytet väntar på att lådan ska stängas. Ordningen ska alltid
+  // vara lådan först, banbytet sedan — annars kan spelaren vinna en kraft
+  // som försvinner i bytet innan den hunnit visas.
+  const bytBanaVantar = useRef(false)
 
   const senare = useCallback((fn, ms) => {
     const t = setTimeout(() => {
@@ -65,9 +81,10 @@ export default function Pinnbollen({ onGameOver }) {
     const s = spelRef.current
     setHud({
       poang: s.poang,
-      kulor: s.kulor,
+      kulor: s.kulorKvar,
       orange: orangeKvar(s),
       niva: s.niva,
+      aktivKraft: s.aktivKraft,
     })
   }, [])
 
@@ -78,7 +95,7 @@ export default function Pinnbollen({ onGameOver }) {
       const s = spelRef.current
 
       if (h.typ === 'traff') {
-        const farg = h.orange ? FARG_ORANGE : FARG_BLA
+        const farg = h.pinne.gron ? FARG_GRON : h.orange ? FARG_ORANGE : FARG_BLA
         for (let i = 0; i < (h.orange ? 9 : 5); i++) {
           partiklar.current.push({
             x: h.pinne.x,
@@ -95,6 +112,14 @@ export default function Pinnbollen({ onGameOver }) {
         // tonhöjden stiger med antalet orange i skottet — samma trick som
         // kaskaderna i Krossen
         ton(h.orange ? 380 + s.orangeIskottet * 60 : 240, 90, 'triangle', 0.1)
+        return
+      }
+
+      if (h.typ === 'kraft') {
+        // Kraften är redan avgjord av motorn — lådan visas först vid
+        // skottSlut, så flykten som pågår aldrig avbryts.
+        vantandeLadaKraft.current = h.kraft.id
+        ton(620, 140, 'sine', 0.12)
         return
       }
 
@@ -118,6 +143,12 @@ export default function Pinnbollen({ onGameOver }) {
         return
       }
 
+      if (h.typ === 'golv') {
+        banner.current = { text: 'Studs!', farg: '#38bdf8', t: 0, ms: 900, storlek: 18 }
+        ton(500, 150, 'square', 0.12)
+        return
+      }
+
       if (h.typ === 'hink') {
         banner.current = { text: 'Extra kula', farg: '#4ade80', t: 0, ms: 1000, storlek: 20 }
         ton(700, 260, 'sine', 0.14)
@@ -126,10 +157,15 @@ export default function Pinnbollen({ onGameOver }) {
 
       if (h.typ === 'skottSlut') {
         h.pinnar.forEach((p, i) => {
-          popp.current.push({ x: p.x, y: p.y, t: -i * 2, orange: p.orange })
+          popp.current.push({ x: p.x, y: p.y, t: -i * 2, orange: p.orange, gron: p.gron })
         })
         slowmo.current = 0
         uppdateraHud()
+        if (vantandeLadaKraft.current) {
+          setLadaKraftId(vantandeLadaKraft.current)
+          ladaOppen.current = true
+          vantandeLadaKraft.current = null
+        }
         return
       }
 
@@ -139,6 +175,14 @@ export default function Pinnbollen({ onGameOver }) {
         senare(() => ton(660, 400, 'sine', 0.15), 200)
         senare(() => {
           if (!levande.current) return
+          // Lådan går alltid före banbytet. Är den öppen (kraften som just
+          // vanns visas fortfarande upp) väntar bytet till onKlar i stället
+          // — annars kan spelaren se lådan försvinna mitt i ett banbyte,
+          // eller (värre) missa att den fanns alls.
+          if (ladaOppen.current) {
+            bytBanaVantar.current = true
+            return
+          }
           spelRef.current = nastaBana(spelRef.current)
           uppdateraHud()
         }, 1700)
@@ -154,7 +198,7 @@ export default function Pinnbollen({ onGameOver }) {
         ton(220, 500, 'sawtooth', 0.12)
       }
     },
-    [senare, ton, uppdateraHud]
+    [senare, ton, uppdateraHud, setLadaKraftId]
   )
 
   // ------------------------------------------------------------------ loopen
@@ -191,7 +235,7 @@ export default function Pinnbollen({ onGameOver }) {
         if (p.t > 18) return false
         const skala = 1 + p.t / 6
         ctx.globalAlpha = 1 - p.t / 18
-        ctx.strokeStyle = p.raddning ? '#fbbf24' : p.orange ? FARG_ORANGE : FARG_BLA
+        ctx.strokeStyle = p.raddning ? '#fbbf24' : p.gron ? FARG_GRON : p.orange ? FARG_ORANGE : FARG_BLA
         ctx.lineWidth = 2
         ctx.beginPath()
         ctx.arc(p.x, p.y, PINNE_R * skala, 0, Math.PI * 2)
@@ -203,15 +247,26 @@ export default function Pinnbollen({ onGameOver }) {
       // pinnarna
       for (const p of s.pinnar) {
         if (p.traffad) {
-          ctx.fillStyle = p.orange ? '#fed7aa' : '#dbeafe'
+          ctx.fillStyle = p.gron ? '#bbf7d0' : p.orange ? '#fed7aa' : '#dbeafe'
           ctx.beginPath()
           ctx.arc(p.x, p.y, PINNE_R + 2.5, 0, Math.PI * 2)
           ctx.fill()
         }
-        ctx.fillStyle = p.orange ? FARG_ORANGE : FARG_BLA
+        ctx.fillStyle = p.gron ? FARG_GRON : p.orange ? FARG_ORANGE : FARG_BLA
         ctx.beginPath()
         ctx.arc(p.x, p.y, PINNE_R, 0, Math.PI * 2)
         ctx.fill()
+
+        // gröna pinnar får en tydlig vit ring runt om — annars är de svåra
+        // att skilja från orange på en liten, blank telefonskärm
+        if (p.gron) {
+          ctx.strokeStyle = 'rgba(255,255,255,.9)'
+          ctx.lineWidth = 1.5
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, PINNE_R + 2, 0, Math.PI * 2)
+          ctx.stroke()
+        }
+
         ctx.fillStyle = 'rgba(255,255,255,.35)'
         ctx.beginPath()
         ctx.arc(p.x - 2, p.y - 2, PINNE_R * 0.35, 0, Math.PI * 2)
@@ -262,25 +317,19 @@ export default function Pinnbollen({ onGameOver }) {
       ctx.lineTo(BREDD / 2 + Math.cos(s.vinkel) * 16, 22 + Math.sin(s.vinkel) * 16)
       ctx.stroke()
 
-      // kulan och vakthundens ring
-      if (s.kula) {
+      // kulorna och deras vakthundsringar — ett skott kan ha flera (trippel)
+      for (const k of s.kulor) {
         ctx.fillStyle = '#f3f4f6'
         ctx.beginPath()
-        ctx.arc(s.kula.x, s.kula.y, KULA_R, 0, Math.PI * 2)
+        ctx.arc(k.x, k.y, k.r, 0, Math.PI * 2)
         ctx.fill()
 
-        if (s.utanFramsteg > 600) {
-          const andel = Math.min(1, s.utanFramsteg / 2500)
+        if (k.utanFramsteg > 600) {
+          const andel = Math.min(1, k.utanFramsteg / 2500)
           ctx.strokeStyle = andel > 0.8 ? '#f87171' : '#fbbf24'
           ctx.lineWidth = 2.5
           ctx.beginPath()
-          ctx.arc(
-            s.kula.x,
-            s.kula.y,
-            KULA_R + 7,
-            -Math.PI / 2,
-            -Math.PI / 2 + andel * Math.PI * 2
-          )
+          ctx.arc(k.x, k.y, k.r + 7, -Math.PI / 2, -Math.PI / 2 + andel * Math.PI * 2)
           ctx.stroke()
         }
       }
@@ -375,6 +424,17 @@ export default function Pinnbollen({ onGameOver }) {
     }
   }, [])
 
+  // Stänger lådan och utför ett banbyte som väntade på just det.
+  function stangLada() {
+    setLadaKraftId(null)
+    ladaOppen.current = false
+    if (bytBanaVantar.current) {
+      bytBanaVantar.current = false
+      spelRef.current = nastaBana(spelRef.current)
+      uppdateraHud()
+    }
+  }
+
   // ------------------------------------------------------------------- input
 
   function pekare(e) {
@@ -387,7 +447,7 @@ export default function Pinnbollen({ onGameOver }) {
   }
 
   function tryck(e) {
-    if (slut) return
+    if (slut || ladaKraftId) return
     pekare(e)
     if (skjut(spelRef.current)) {
       ton(300, 70, 'sine', 0.1)
@@ -420,14 +480,26 @@ export default function Pinnbollen({ onGameOver }) {
         </div>
       </div>
 
-      <canvas
-        ref={canvasRef}
-        width={BREDD}
-        height={HOJD}
-        onPointerMove={pekare}
-        onPointerDown={tryck}
-        className="w-full max-w-[400px] h-auto rounded-lg touch-none select-none cursor-crosshair"
-      />
+      {hud.aktivKraft && (
+        <div className="w-full max-w-[400px] flex items-center gap-1.5 text-xs px-1 -mt-1">
+          <span className="text-gray-500">Nästa skott:</span>
+          <span style={{ color: GRADER[hud.aktivKraft.grad]?.farg }}>{hud.aktivKraft.namn}</span>
+        </div>
+      )}
+
+      <div className="relative w-full max-w-[400px]">
+        <canvas
+          ref={canvasRef}
+          width={BREDD}
+          height={HOJD}
+          onPointerMove={pekare}
+          onPointerDown={tryck}
+          className="w-full h-auto rounded-lg touch-none select-none cursor-crosshair"
+        />
+        {ladaKraftId && (
+          <Kraftlada kraftId={ladaKraftId} onKlar={stangLada} ton={ton} />
+        )}
+      </div>
 
       <p className="text-xs text-gray-500 text-center max-w-[400px]">
         {slut

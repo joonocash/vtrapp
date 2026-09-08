@@ -11,15 +11,25 @@
 //   skjut(spel)
 //   const handelser = steg(spel)   // en gång per bildruta
 //
+// spel.kulor är en array — ett skott kan ha fler än en kula i luften
+// samtidigt (se "trippel" i pinnbollenKrafter.js). Varje kula äger sin egen
+// vakthundsdata (lagst/utanFramsteg/ankarX/ankarY) eftersom de kan fastna
+// oberoende av varandra. spel.kulorKvar är lagret av kulor kvar att skjuta —
+// ett annat fält än spel.kulor, trots det snarlika namnet.
+//
 // steg() returnerar en lista av händelser som komponenten spelar upp:
 //   { typ:'traff', pinne, orange, poang, mult }
-//   { typ:'raddning', pinne }      kulan satt fast, pinnen offrades
-//   { typ:'knuff' }                kulan satt fast utan pinne i närheten
+//   { typ:'raddning', pinne, kulaId } kulan satt fast, pinnen offrades
+//   { typ:'knuff', kulaId }        kulan satt fast utan pinne i närheten
 //   { typ:'feber' }                sista orange pinnen träffad
-//   { typ:'hink' }                 kulan landade i hinken
-//   { typ:'skottSlut', pinnar, extraKula, poang }
+//   { typ:'kraft', kraft }         en grön pinne träffades, kraft dragen
+//   { typ:'golv' }                 studsgolvet användes
+//   { typ:'hink', kulaId }         en kula landade i hinken
+//   { typ:'skottSlut', pinnar, extraKulor, poang }
 //   { typ:'banaKlar', bonus }
 //   { typ:'slut' }
+
+import { draKraft } from './pinnbollenKrafter.js'
 
 export const BREDD = 300
 export const HOJD = 420
@@ -63,16 +73,40 @@ export const RORELSE_TROSKEL = (PINNE_R + KULA_R) * 5
 const HINK_BREDD = 52
 const HINK_FART = 1.05
 
+// Krafternas effektstyrka
+const STOR_SKALA = 2
+const MAGNET_FAKTOR = 0.08 // andel av GRAVITATION
+const GOLV_STUDS = 0.8
+
 const STARTKULOR = 10
 const KULOR_PER_BANA = 2
 
 let nastaId = 1
 function pinne(x, y, orange) {
-  return { id: nastaId++, x, y, orange: !!orange, traffad: false }
+  return { id: nastaId++, x, y, orange: !!orange, gron: false, traffad: false }
+}
+
+let nastaKulaId = 1
+function skapaKula(x, y, vx, vy, r) {
+  return {
+    id: nastaKulaId++,
+    x,
+    y,
+    vx,
+    vy,
+    r,
+    // vakthundens tillstånd — en egen uppsättning per kula, de kan fastna
+    // oberoende av varandra
+    lagst: y,
+    utanFramsteg: 0,
+    ankarX: x,
+    ankarY: y,
+  }
 }
 
 export function resetIds() {
   nastaId = 1
+  nastaKulaId = 1
 }
 
 // Poängmultiplikatorn räknar orange pinnar i SAMMA skott, inte totalt.
@@ -188,17 +222,41 @@ export function skapaBana(niva) {
     }
   }
 
-  // 20 orange, jämnt utspridda men slumpade. Minst 10 även på de glesare
-  // banformerna (t.ex. form 2, som bara har ~28 pinnar totalt och annars
-  // hade landat på 8).
-  const idx = inom.map((_, i) => i)
+  // Två gröna pinnar, en ur övre och en ur undre halvan (delat på den
+  // faktiska höjdspridningen, inte pinnantalet) så de sprids ut i stället
+  // för att råka hamna i samma hörn. En pinne är antingen grön eller
+  // orange, aldrig båda — grönt väljs innan orange, från hela poolen.
+  const yVarden = inom.map((q) => q.y)
+  const yMitt = (Math.min(...yVarden) + Math.max(...yVarden)) / 2
+  const ovreHalva = inom.filter((q) => q.y < yMitt)
+  const undreHalva = inom.filter((q) => q.y >= yMitt)
+  const valjGron = (grupp) => {
+    if (grupp.length === 0) return
+    grupp[Math.floor(rnd() * grupp.length)].gron = true
+  }
+  valjGron(ovreHalva)
+  valjGron(undreHalva)
+
+  const antalGrona = inom.filter((q) => q.gron).length
+  if (antalGrona !== 2) {
+    throw new Error(`skapaBana(${niva}): fick ${antalGrona} gröna pinnar i stället för 2`)
+  }
+
+  // 20 orange, jämnt utspridda men slumpade, valda ur de pinnar som inte
+  // redan är gröna. Minst 10 även på de glesare banformerna (t.ex. form 2,
+  // som bara har ~28 pinnar totalt och annars hade landat på 8).
+  const orangePool = inom.filter((q) => !q.gron)
+  const idx = orangePool.map((_, i) => i)
   for (let i = idx.length - 1; i > 0; i--) {
     const j = Math.floor(rnd() * (i + 1))
     ;[idx[i], idx[j]] = [idx[j], idx[i]]
   }
-  const antalOrange = Math.min(inom.length, Math.max(10, Math.min(20, Math.floor(inom.length * 0.3))))
+  const antalOrange = Math.min(
+    orangePool.length,
+    Math.max(10, Math.min(20, Math.floor(inom.length * 0.3)))
+  )
   idx.slice(0, antalOrange).forEach((i) => {
-    inom[i].orange = true
+    orangePool[i].orange = true
   })
 
   return inom
@@ -206,26 +264,27 @@ export function skapaBana(niva) {
 
 // ------------------------------------------------------------------- spel
 
-export function skapaSpel(niva = 1, kulor = STARTKULOR, poang = 0) {
+export function skapaSpel(niva = 1, kulorKvar = STARTKULOR, poang = 0) {
   return {
     niva,
     pinnar: skapaBana(niva),
-    kulor,
+    kulorKvar, // lager av kulor kvar att skjuta — inte samma sak som kulor (nedan)
     poang,
-    kula: null,
+    kulor: [], // kulorna i luften just nu, under det pågående skottet
     vinkel: Math.PI / 2,
     lage: 'siktar', // siktar | skjuter | klar
     traffadeIdn: [],
     orangeIskottet: 0,
     feber: false,
     hink: { x: BREDD / 2, vx: HINK_FART, bredd: HINK_BREDD },
-    // vakthundens tillstånd
-    lagst: 0,
-    utanFramsteg: 0,
     skottTid: 0,
     raddningar: 0,
-    ankarX: 0,
-    ankarY: 0,
+    golvKvar: false,
+    vantandeKraft: null, // dragen under pågående skott, väntar på skottSlut
+    aktivKraft: null, // gäller det pågående/kommande skottet
+    // ackumuleras under skottet, rapporteras i skottSlut-händelsen
+    hinkFangade: 0,
+    hinkBonus: 0,
   }
 }
 
@@ -240,25 +299,43 @@ export function sikta(spel, vinkel) {
 }
 
 export function skjut(spel) {
-  if (spel.lage !== 'siktar' || spel.kulor <= 0) return false
-  spel.kulor -= 1
+  if (spel.lage !== 'siktar' || spel.kulorKvar <= 0) return false
+  spel.kulorKvar -= 1
   spel.traffadeIdn = []
   spel.orangeIskottet = 0
   spel.feber = false
   spel.raddningar = 0
   spel.skottTid = 0
-  spel.kula = {
-    x: BREDD / 2,
-    y: 32,
-    vx: Math.cos(spel.vinkel) * STARTFART,
-    vy: Math.sin(spel.vinkel) * STARTFART,
-  }
-  spel.lagst = spel.kula.y
-  spel.utanFramsteg = 0
-  spel.ankarX = spel.kula.x
-  spel.ankarY = spel.kula.y
+  spel.hinkFangade = 0
+  spel.hinkBonus = 0
+
+  const kraftId = spel.aktivKraft?.id
+  spel.golvKvar = kraftId === 'golv'
+  spel.hink.bredd = kraftId === 'hink' ? HINK_BREDD * 2 : HINK_BREDD
+  const r = kraftId === 'stor' ? KULA_R * STOR_SKALA : KULA_R
+
+  const vinklar = kraftId === 'trippel' ? [spel.vinkel - 0.12, spel.vinkel, spel.vinkel + 0.12] : [spel.vinkel]
+  spel.kulor = vinklar.map((v) =>
+    skapaKula(BREDD / 2, 32, Math.cos(v) * STARTFART, Math.sin(v) * STARTFART, r)
+  )
+
   spel.lage = 'skjuter'
   return true
+}
+
+// Närmaste otraffade orange pinne, för magneten. null om ingen finns kvar.
+function narmasteOrangePinne(spel, k) {
+  let bast = null
+  let bastD = Infinity
+  for (const p of spel.pinnar) {
+    if (!p.orange || p.traffad) continue
+    const d = Math.hypot(p.x - k.x, p.y - k.y)
+    if (d < bastD) {
+      bastD = d
+      bast = p
+    }
+  }
+  return bast
 }
 
 function markeraTraff(spel, p, handelser) {
@@ -276,13 +353,26 @@ function markeraTraff(spel, p, handelser) {
     spel.feber = true
     handelser.push({ typ: 'feber' })
   }
+
+  // Grön pinne: dra en kraft direkt, men den gäller inte förrän nästa skott
+  // (utom "extra", som är omedelbar och aldrig blir aktivKraft) — se
+  // avslutaSkott. Lådan i komponenten visar bara upp ett resultat som redan
+  // är avgjort här.
+  if (p.gron) {
+    const kraft = draKraft()
+    handelser.push({ typ: 'kraft', kraft })
+    if (kraft.direkt) {
+      spel.kulorKvar += 1
+    } else {
+      spel.vantandeKraft = kraft
+    }
+  }
 }
 
 // Räddningen: offra pinnen närmast kulan. Räcker inte den startar mätaren
 // om och nästa åker efter ytterligare FAST_MS. En i taget, inte alla —
 // att ta bort allt på en gång känns som att spelet gav upp.
-function radda(spel, handelser) {
-  const k = spel.kula
+function radda(spel, k, handelser) {
   let narmast = null
   let bast = Infinity
 
@@ -299,10 +389,10 @@ function radda(spel, handelser) {
     // spelet mellan väggarna
     k.vx += (Math.random() - 0.5) * 2
     k.vy += 1.2
-    spel.utanFramsteg = 0
-    spel.ankarX = k.x
-    spel.ankarY = k.y
-    handelser.push({ typ: 'knuff' })
+    k.utanFramsteg = 0
+    k.ankarX = k.x
+    k.ankarY = k.y
+    handelser.push({ typ: 'knuff', kulaId: k.id })
     return
   }
 
@@ -311,45 +401,55 @@ function radda(spel, handelser) {
   markeraTraff(spel, narmast, handelser)
   spel.pinnar = spel.pinnar.filter((p) => p !== narmast)
   spel.raddningar += 1
-  spel.utanFramsteg = 0
-  spel.lagst = k.y
-  spel.ankarX = k.x
-  spel.ankarY = k.y
-  handelser.push({ typ: 'raddning', pinne: narmast })
+  k.lagst = k.y
+  k.utanFramsteg = 0
+  k.ankarX = k.x
+  k.ankarY = k.y
+  handelser.push({ typ: 'raddning', pinne: narmast, kulaId: k.id })
+}
+
+// Kontrollerar om en kula som lämnat planen landade i hinken. Måste göras i
+// samma ögonblick som kulan passerar underkanten — i efterhand vet man inte
+// längre var den var. Flera kulor i samma skott kan fångas var för sig.
+function provaHinkFangst(spel, k, handelser) {
+  if (Math.abs(k.x - spel.hink.x) < spel.hink.bredd / 2) {
+    spel.kulorKvar += 1
+    spel.poang += 500
+    spel.hinkFangade += 1
+    spel.hinkBonus += 500
+    handelser.push({ typ: 'hink', kulaId: k.id })
+  }
 }
 
 function avslutaSkott(spel, handelser) {
-  const iHinken =
-    spel.kula && Math.abs(spel.kula.x - spel.hink.x) < spel.hink.bredd / 2
-
   const borttagna = spel.pinnar.filter((p) => p.traffad)
   spel.pinnar = spel.pinnar.filter((p) => !p.traffad)
   spel.pinnar.forEach((p) => {
     p.traffad = false
   })
-  spel.kula = null
 
-  let bonus = 0
-  if (iHinken) {
-    spel.kulor += 1
-    bonus = 500
-    spel.poang += bonus
-    handelser.push({ typ: 'hink' })
-  }
+  spel.hink.bredd = HINK_BREDD
+  spel.golvKvar = false
 
   handelser.push({
     typ: 'skottSlut',
     pinnar: borttagna,
-    extraKula: !!iHinken,
-    poang: bonus,
+    extraKulor: spel.hinkFangade,
+    poang: spel.hinkBonus,
   })
 
+  // Kraften som gällde skottet som just tog slut är förbrukad. En ny som
+  // vanns under samma skott (grön pinne) blir aktiv för nästa i stället —
+  // den hinner aldrig påverka flykten som redan är i gång.
+  spel.aktivKraft = spel.vantandeKraft
+  spel.vantandeKraft = null
+
   if (orangeKvar(spel) === 0) {
-    const kvarBonus = spel.kulor * 1000
+    const kvarBonus = spel.kulorKvar * 1000
     spel.poang += kvarBonus
     spel.lage = 'klar'
     handelser.push({ typ: 'banaKlar', bonus: kvarBonus })
-  } else if (spel.kulor <= 0) {
+  } else if (spel.kulorKvar <= 0) {
     spel.lage = 'klar'
     handelser.push({ typ: 'slut' })
   } else {
@@ -357,13 +457,23 @@ function avslutaSkott(spel, handelser) {
   }
 }
 
-// Nästa bana: kulorna följer med och man får några till.
+// Nästa bana: kulorna följer med och man får några till. skapaSpel() ger ett
+// helt nytt spelobjekt, så en kraft som precis vanns (aktivKraft, satt av
+// avslutaSkott när den sista orange pinnen föll) måste flyttas över för
+// hand — annars vinner spelaren en trippel som försvinner i banbytet innan
+// den ens gick att använda.
 export function nastaBana(spel) {
-  return skapaSpel(spel.niva + 1, spel.kulor + KULOR_PER_BANA, spel.poang)
+  const nytt = skapaSpel(spel.niva + 1, spel.kulorKvar + KULOR_PER_BANA, spel.poang)
+  nytt.aktivKraft = spel.aktivKraft
+  return nytt
 }
 
 // Ett steg framåt. dtMs bara för vakthundens tidtagning — fysiken kör med
 // fast tidssteg så den blir identisk i Node och i webbläsaren.
+//
+// Loopar över spel.kulor: varje kula kör hela sekvensen (delsteg, väggar,
+// kollisioner, vakthund) för sig. En kula som passerar underkanten tas ur
+// arrayen direkt — skottet avslutas först när arrayen är tom.
 export function steg(spel, dtMs = TIDSSTEG) {
   const handelser = []
 
@@ -372,78 +482,128 @@ export function steg(spel, dtMs = TIDSSTEG) {
     spel.hink.vx *= -1
   }
 
-  if (spel.lage !== 'skjuter' || !spel.kula) return handelser
+  if (spel.lage !== 'skjuter' || spel.kulor.length === 0) return handelser
 
   spel.skottTid += dtMs
-  const k = spel.kula
+  const genom = spel.aktivKraft?.id === 'genom'
+  const magnet = spel.aktivKraft?.id === 'magnet'
 
-  for (let s = 0; s < DELSTEG; s++) {
-    const d = 1 / DELSTEG
-    k.vy += GRAVITATION * d
-    k.x += k.vx * d
-    k.y += k.vy * d
+  for (let ki = spel.kulor.length - 1; ki >= 0; ki--) {
+    const k = spel.kulor[ki]
+    let borttagen = false
 
-    if (k.x < KULA_R) {
-      k.x = KULA_R
-      k.vx = Math.abs(k.vx) * VAGGSTUDS
+    for (let s = 0; s < DELSTEG && !borttagen; s++) {
+      const d = 1 / DELSTEG
+      k.vy += GRAVITATION * d
+
+      if (magnet) {
+        const mal = narmasteOrangePinne(spel, k)
+        if (mal) {
+          const dx = mal.x - k.x
+          const dy = mal.y - k.y
+          const dist = Math.hypot(dx, dy) || 1
+          const accel = GRAVITATION * MAGNET_FAKTOR
+          k.vx += (dx / dist) * accel * d
+          k.vy += (dy / dist) * accel * d
+        }
+      }
+
+      k.x += k.vx * d
+      k.y += k.vy * d
+
+      if (k.x < k.r) {
+        k.x = k.r
+        k.vx = Math.abs(k.vx) * VAGGSTUDS
+      }
+      if (k.x > BREDD - k.r) {
+        k.x = BREDD - k.r
+        k.vx = -Math.abs(k.vx) * VAGGSTUDS
+      }
+      if (k.y < k.r) {
+        k.y = k.r
+        k.vy = Math.abs(k.vy) * VAGGSTUDS
+      }
+
+      // Kollision mot varje pinne. Delstegen är hela knepet: utan dem flyger
+      // kulan rakt igenom pinnar när den går fort, eftersom den hinner passera
+      // hela pinnen mellan två bildrutor.
+      for (const p of spel.pinnar) {
+        const dx = k.x - p.x
+        const dy = k.y - p.y
+        const dist = Math.hypot(dx, dy)
+        if (dist >= PINNE_R + k.r || dist === 0) continue
+
+        const nx = dx / dist
+        const ny = dy / dist
+
+        if (genom) {
+          // Ingen reflektion — kulan ska fortsätta rakt igenom. Men den
+          // måste ändå flyttas ur pinnen, annars upptäcks samma kollision
+          // igen nästa delsteg (farten är ju oförändrad, så den skulle
+          // aldrig ta sig ur på egen hand). Flytta till andra sidan i
+          // färdriktningen i stället för tillbaka mot ingångssidan, annars
+          // fastnar den precis där den gick in.
+          k.x = p.x - nx * (PINNE_R + k.r + 0.1)
+          k.y = p.y - ny * (PINNE_R + k.r + 0.1)
+        } else {
+          // skjut ut kulan ur pinnen, annars upptäcks kollisionen igen nästa
+          // delsteg och kulan vibrerar fast
+          k.x = p.x + nx * (PINNE_R + k.r + 0.1)
+          k.y = p.y + ny * (PINNE_R + k.r + 0.1)
+
+          const dot = k.vx * nx + k.vy * ny
+          k.vx = (k.vx - 2 * dot * nx) * STUDS
+          k.vy = (k.vy - 2 * dot * ny) * STUDS
+        }
+
+        markeraTraff(spel, p, handelser)
+      }
+
+      if (k.y > HOJD + 12) {
+        if (spel.golvKvar) {
+          // studsgolvet: en gratis studs uppåt, en gång per skott oavsett
+          // hur många kulor som är i luften
+          spel.golvKvar = false
+          k.y = HOJD + 11
+          k.vy = -Math.abs(k.vy) * GOLV_STUDS
+          handelser.push({ typ: 'golv', kulaId: k.id })
+        } else {
+          provaHinkFangst(spel, k, handelser)
+          spel.kulor.splice(ki, 1)
+          borttagen = true
+        }
+      }
     }
-    if (k.x > BREDD - KULA_R) {
-      k.x = BREDD - KULA_R
-      k.vx = -Math.abs(k.vx) * VAGGSTUDS
+
+    if (borttagen) continue
+
+    // vakthunden: framsteg räknas som ANTINGEN ett nytt lägsta djup ELLER
+    // tillräcklig förflyttning från senaste ankarpunkten. Djupet ensamt
+    // räcker inte — en kula på väg uppåt i en hög båge gör inget nytt
+    // lägsta på länge, men den är uppenbarligen inte fastkilad om den
+    // samtidigt färdas hundratals pixlar.
+    const nyttDjup = k.y > k.lagst + DJUP_MARGINAL
+    const harRortSig = Math.hypot(k.x - k.ankarX, k.y - k.ankarY) > RORELSE_TROSKEL
+    if (nyttDjup || harRortSig) {
+      if (nyttDjup) k.lagst = k.y
+      k.utanFramsteg = 0
+      k.ankarX = k.x
+      k.ankarY = k.y
+    } else {
+      k.utanFramsteg += dtMs
     }
-    if (k.y < KULA_R) {
-      k.y = KULA_R
-      k.vy = Math.abs(k.vy) * VAGGSTUDS
-    }
-
-    // Kollision mot varje pinne. Delstegen är hela knepet: utan dem flyger
-    // kulan rakt igenom pinnar när den går fort, eftersom den hinner passera
-    // hela pinnen mellan två bildrutor.
-    for (const p of spel.pinnar) {
-      const dx = k.x - p.x
-      const dy = k.y - p.y
-      const dist = Math.hypot(dx, dy)
-      if (dist >= PINNE_R + KULA_R || dist === 0) continue
-
-      const nx = dx / dist
-      const ny = dy / dist
-      // skjut ut kulan ur pinnen, annars upptäcks kollisionen igen nästa
-      // delsteg och kulan vibrerar fast
-      k.x = p.x + nx * (PINNE_R + KULA_R + 0.1)
-      k.y = p.y + ny * (PINNE_R + KULA_R + 0.1)
-
-      const dot = k.vx * nx + k.vy * ny
-      k.vx = (k.vx - 2 * dot * nx) * STUDS
-      k.vy = (k.vy - 2 * dot * ny) * STUDS
-
-      markeraTraff(spel, p, handelser)
-    }
-
-    if (k.y > HOJD + 12) {
-      avslutaSkott(spel, handelser)
-      return handelser
-    }
+    if (k.utanFramsteg >= FAST_MS) radda(spel, k, handelser)
   }
 
-  // vakthunden: framsteg räknas som ANTINGEN ett nytt lägsta djup ELLER
-  // tillräcklig förflyttning från senaste ankarpunkten. Djupet ensamt räcker
-  // inte — en kula på väg uppåt i en hög båge gör inget nytt lägsta på
-  // länge, men den är uppenbarligen inte fastkilad om den samtidigt färdas
-  // hundratals pixlar.
-  const nyttDjup = k.y > spel.lagst + DJUP_MARGINAL
-  const harRortSig = Math.hypot(k.x - spel.ankarX, k.y - spel.ankarY) > RORELSE_TROSKEL
-  if (nyttDjup || harRortSig) {
-    if (nyttDjup) spel.lagst = k.y
-    spel.utanFramsteg = 0
-    spel.ankarX = k.x
-    spel.ankarY = k.y
-  } else {
-    spel.utanFramsteg += dtMs
+  if (spel.kulor.length === 0 && spel.lage === 'skjuter') {
+    avslutaSkott(spel, handelser)
   }
-  if (spel.utanFramsteg >= FAST_MS) radda(spel, handelser)
 
-  // hårt tak: vakthunden täcker det vi tänkt på, taket täcker resten
-  if (spel.skottTid > HART_TAK_MS) {
+  // hårt tak: vakthunden täcker det vi tänkt på, taket täcker resten. Alla
+  // kvarvarande kulor avslutas som om de just passerat underkanten.
+  if (spel.skottTid > HART_TAK_MS && spel.lage === 'skjuter') {
+    for (const k of spel.kulor) provaHinkFangst(spel, k, handelser)
+    spel.kulor = []
     avslutaSkott(spel, handelser)
   }
 
@@ -480,4 +640,7 @@ export const KONSTANTER = {
   HART_TAK_MS,
   STARTKULOR,
   KULOR_PER_BANA,
+  STOR_SKALA,
+  MAGNET_FAKTOR,
+  GOLV_STUDS,
 }
