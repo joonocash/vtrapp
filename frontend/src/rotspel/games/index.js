@@ -91,6 +91,18 @@ export const GAMES = [
     load: () => import('./Krossen.jsx'),
   },
   {
+    id: 'pinnbollen',
+    name: 'Pinnbollen',
+    blurb: 'Sikta och släpp kulan. Träffa alla orange pinnar.',
+    category: 'arkad',
+    accent: 'text-orange-400',
+    scoreLabel: 'poäng',
+    scoreFormat: 'number',
+    higherIsBetter: true,
+    reglage: ['ljud', 'skak'],
+    load: () => import('./Pinnbollen.jsx'),
+  },
+  {
     id: 'rotblast',
     name: 'Rötblast',
     blurb: 'Lägg ut tre bitar i taget. Fyll en rad eller kolumn så sprängs den.',
