@@ -8,6 +8,7 @@ import {
   formatScore,
 } from './useHighscore.js'
 import { useSettings } from './useSettings.js'
+import { useFullskarm } from './useFullskarm.js'
 
 const REGLAGE = [
   { id: 'ljud', namn: 'Ljud' },
@@ -168,6 +169,18 @@ function GameShell({ gameId, player, onExit }) {
     return lazy(game.load)
   }, [game])
 
+  // Fullskärm gäller alla spel, så den hör hemma här och inte i varje spel.
+  // wrapperRef omsluter bara spelytan (rubrikraden + spelrutan) — resultat,
+  // topplista och reglage ligger utanför den, dels så äkta fullskärm
+  // (requestFullscreen) aldrig tar med dem, dels så CSS-reservlösningen
+  // döljer dem explicit nedan.
+  const wrapperRef = useRef(null)
+  const { arFullskarm, vaxla } = useFullskarm(wrapperRef)
+  // Sätts av spelet självt (via fullskarmSparrad-propen) om en pågående
+  // animation skulle bli fel av att spelytan byter storlek mitt i — se
+  // Krossens kaskader. Växlingsknappen ignorerar klick medan den är satt.
+  const fullskarmSparrad = useRef(false)
+
   if (!game) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-10">
@@ -193,46 +206,117 @@ function GameShell({ gameId, player, onExit }) {
     setRound((r) => r + 1)
   }
 
+  function vaxlaFullskarm() {
+    if (fullskarmSparrad.current) return
+    vaxla()
+  }
+
+  // Bredd/höjd-förhållandet styr hur brett --spelbredd får bli i fullskärm i
+  // liggande läge, där höjden är begränsningen — se games/index.js.
+  const forhallande = game.forhallande || 1
+
   return (
     <div className="max-w-3xl mx-auto px-2 sm:px-4 py-5">
-      <div className="flex items-center gap-3 mb-4">
-        <button
-          onClick={onExit}
-          className="text-gray-400 hover:text-gray-200 text-sm"
-          aria-label="Tillbaka till spellistan"
-        >
-          ← Alla spel
-        </button>
-        <div className="min-w-0">
-          <div className="text-gray-100 font-medium leading-tight">{game.name}</div>
-          {game.blurb && (
-            <div className="text-xs text-gray-500 truncate">{game.blurb}</div>
+      <div
+        ref={wrapperRef}
+        className={
+          // overflow-y-auto utöver de angivna klasserna: Klickern och
+          // Sandlådan har inte var(--spelbredd)-behandlingen och kan bli
+          // högre än en kort liggande skärm — utan skroll skulle innehåll
+          // helt enkelt klippas bort och bli oåtkomligt i fullskärm.
+          // Påverkar inte spel som redan får plats.
+          arFullskarm
+            ? 'fixed inset-0 z-50 bg-gray-900 flex flex-col items-center justify-center p-2 overflow-y-auto'
+            : ''
+        }
+        style={{
+          '--spelbredd': arFullskarm
+            ? `min(100vw - 1rem, (100vh - 7rem) * ${forhallande})`
+            : 'min(100%, 400px)',
+        }}
+      >
+        {/* Rubrikraden döljs helt i fullskärm i stället för att bara tappa
+            tillbaka-knappen och blurben — se stäng-knappen nedan för
+            förklaringen till varför den flyttar, inte bara byter ikon. */}
+        {!arFullskarm && (
+          <div className="flex items-center gap-3 mb-4">
+            <button
+              onClick={onExit}
+              className="text-gray-400 hover:text-gray-200 text-sm"
+              aria-label="Tillbaka till spellistan"
+            >
+              ← Alla spel
+            </button>
+            <div className="min-w-0 flex-1">
+              <div className="text-gray-100 font-medium leading-tight">{game.name}</div>
+              {game.blurb && (
+                <div className="text-xs text-gray-500 truncate">{game.blurb}</div>
+              )}
+            </div>
+            <button
+              onClick={vaxlaFullskarm}
+              className="text-gray-400 hover:text-gray-200 text-lg leading-none px-1.5 py-1 flex-shrink-0"
+              aria-label="Fullskärm"
+              title="Fullskärm"
+            >
+              ⛶
+            </button>
+          </div>
+        )}
+
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
+          {game.iframe ? (
+            <iframe
+              src={game.iframe}
+              title={game.name}
+              className="w-full h-[520px] rounded-lg border-0 bg-black"
+              sandbox="allow-scripts allow-same-origin"
+            />
+          ) : (
+            <Suspense
+              fallback={<div className="h-64 grid place-items-center text-gray-500 text-sm">Laddar…</div>}
+            >
+              {Component && (
+                <Component
+                  key={round}
+                  onGameOver={handleGameOver}
+                  fullskarmSparrad={fullskarmSparrad}
+                />
+              )}
+            </Suspense>
           )}
         </div>
-      </div>
 
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
-        {game.iframe ? (
-          <iframe
-            src={game.iframe}
-            title={game.name}
-            className="w-full h-[520px] rounded-lg border-0 bg-black"
-            sandbox="allow-scripts allow-same-origin"
-          />
-        ) : (
-          <Suspense
-            fallback={<div className="h-64 grid place-items-center text-gray-500 text-sm">Laddar…</div>}
+        {/* Stäng-knappen ligger som en flytande cirkel i nedre hörnet i
+            fullskärm i stället för i en rubrikrad ovanför spelet. Två skäl:
+            det sparar en hel rad höjd i liggande läge på en telefon, där
+            varje pixel räknas, och det håller den borta från spelens egna
+            avbrytzoner uppe vid kanonen (Pinnbollen) — två interaktiva ytor
+            på samma ställe hade varit förvirrande även om de facto inte
+            krockar (ett tryck på knappen träffar alltid knappen, aldrig
+            canvasen under). Nedre hörnet är den plats minst spel har någon
+            egen interaktion att krocka med. */}
+        {arFullskarm && (
+          <button
+            onClick={vaxlaFullskarm}
+            className="absolute bottom-4 right-4 z-10 w-10 h-10 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-200 text-lg leading-none grid place-items-center"
+            aria-label="Stäng fullskärm"
+            title="Stäng fullskärm"
           >
-            {Component && (
-              <Component key={round} onGameOver={handleGameOver} />
-            )}
-          </Suspense>
+            ✕
+          </button>
         )}
       </div>
 
+      {/* Utanför wrapperRef med flit: äkta fullskärm (requestFullscreen) tar
+          bara med sig det som ligger i elementet den anropas på, så det här
+          exkluderas automatiskt där. !arFullskarm-vakten täcker dessutom
+          CSS-reservlösningen, som bara är en stil på samma wrapper och inte
+          skiljer på inne/utanför på det viset. */}
+
       {/* Bara de reglage spelet faktiskt använder. Ett spel utan reglage-fält
-          i registret visar ingenting alls här. */}
-      {Array.isArray(game.reglage) && game.reglage.length > 0 && (
+          i registret visar ingenting alls här. Döljs i fullskärm. */}
+      {!arFullskarm && Array.isArray(game.reglage) && game.reglage.length > 0 && (
         <div className="flex flex-wrap gap-x-5 gap-y-2 mt-3 px-1">
           {REGLAGE.filter((r) => game.reglage.includes(r.id)).map((r) => (
             <label
@@ -252,8 +336,9 @@ function GameShell({ gameId, player, onExit }) {
       )}
 
       {/* Idle-spel rapporterar löpande, så resultatrutan med "Igen" vore fel där.
-          Poängen skickas ändå in och topplistan visas som vanligt. */}
-      {lastScore !== null && !game.idle && (
+          Poängen skickas ändå in och topplistan visas som vanligt. Döljs i
+          fullskärm. */}
+      {!arFullskarm && lastScore !== null && !game.idle && (
         <div className="flex items-center justify-between mt-3 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3">
           <div className="text-sm text-gray-200">
             {isRecord ? 'Nytt personbästa: ' : 'Resultat: '}
@@ -271,7 +356,8 @@ function GameShell({ gameId, player, onExit }) {
         </div>
       )}
 
-      {entries.length > 0 && (
+      {/* Döljs i fullskärm. */}
+      {!arFullskarm && entries.length > 0 && (
         <div className="mt-4">
           <div className="text-xs text-gray-500 mb-2">Topplista</div>
           <ol className="bg-gray-800 border border-gray-700 rounded-lg divide-y divide-gray-700">

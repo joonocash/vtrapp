@@ -70,7 +70,7 @@ function Stars({ n, size = 14 }) {
 
 /* ---------- huvudkomponent ---------- */
 
-export default function BlastGame({ onScore }) {
+export default function BlastGame({ onScore, fullskarmSparrad }) {
   const [save, setSave] = useState(loadSave);
   const [view, setView] = useState('menu'); // menu | map | game
   const [level, setLevel] = useState(null); // null = klassiskt läge
@@ -244,6 +244,16 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
   const wrapRef = useRef(null);
   const movesRef = useRef(0); // antal utlagda bitar, används för stjärnorna
 
+  // Om komponenten försvinner mitt i en kaskad måste spärren släppas här
+  // också — annars sitter fullskärmsknappen permanent låst för resten av
+  // GameShell-instansen, eftersom refen den delar lever kvar där.
+  useEffect(() => {
+    return () => {
+      if (fullskarmSparrad) fullskarmSparrad.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /* mät rutstorleken så att bitar och partiklar hamnar rätt */
   useLayoutEffect(() => {
     if (!boardRef.current) return;
@@ -394,6 +404,12 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
     if (!canPlace(board, piece, r, c)) return false;
 
     busy.current = true;
+    // Partiklarnas och de flygande figurernas positioner räknas ut nu (cs,
+    // gridRect, chip-rect) men spelas upp i setTimeout-callbacks långt senare
+    // — byter spelytan storlek mitt i (fullskärm växlas) hamnar de fel.
+    // Spärra växlingen tills kaskaden är klar i stället för att göra hela
+    // animationskedjan storleksmedveten.
+    if (fullskarmSparrad) fullskarmSparrad.current = true;
     const rect = boardRef.current.getBoundingClientRect();
     const cs = rect.width / SIZE;
 
@@ -505,6 +521,7 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
         setClearing(null);
         afterMove({ after, gained, nextStreak, lineCount, gems, tokens: tokenCount, nextTrayRaw, exploded });
         busy.current = false;
+        if (fullskarmSparrad) fullskarmSparrad.current = false;
       }, maxDelay + CLEAR_DUR);
       setScore((s) => s + gained);
       return true;
@@ -525,8 +542,9 @@ function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
     setScore((s) => s + gained);
     afterMove({ after, gained, nextStreak, lineCount: 0, gems: 0, tokens: 0, nextTrayRaw, exploded });
     busy.current = false;
+    if (fullskarmSparrad) fullskarmSparrad.current = false;
     return true;
-  }, [board, tray, streak, status, level]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [board, tray, streak, status, level, fullskarmSparrad]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Allt som ska hända efter att brädet lagt sig: ny bricka, mål, förlust.
   const afterMove = useCallback(({ after, gained, nextStreak, lineCount, gems, tokens, nextTrayRaw, exploded }) => {

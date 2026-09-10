@@ -114,7 +114,10 @@ export default function Simon({ onGameOver }) {
         <span className="text-gray-100 font-medium">{round}</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 w-full max-w-[320px] touch-none select-none">
+      <div
+        className="grid grid-cols-2 gap-3 touch-none select-none"
+        style={{ width: 'var(--spelbredd, 400px)' }}
+      >
         {PADS.map((pad) => (
           <button
             key={pad.id}

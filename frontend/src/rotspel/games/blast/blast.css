@@ -11,8 +11,7 @@
   --gold: #ffc94d;
 
   position: relative;
-  width: 100%;
-  max-width: 440px;
+  width: var(--spelbredd, 400px);
   margin: 0 auto;
   padding: 14px 14px 22px;
   box-sizing: border-box;

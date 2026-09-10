@@ -160,7 +160,11 @@ export default function Snake({ onGameOver }) {
         <span className="text-gray-400">Poäng</span>
         <span className="text-gray-100 font-medium">{score}</span>
       </div>
-      <div ref={wrapRef} className="touch-none select-none w-full max-w-[400px]">
+      <div
+        ref={wrapRef}
+        className="touch-none select-none"
+        style={{ width: 'var(--spelbredd, 400px)' }}
+      >
         <canvas
           ref={canvasRef}
           width={SIZE}

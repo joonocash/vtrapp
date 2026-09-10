@@ -7,6 +7,6 @@ import BlastGame from './blast/BlastGame.jsx'
 // BlastGame anropar onScore först när ett KLASSISKT parti tar slut; koden
 // ligger bakom `if (!level)`. Äventyrsbanorna rapporterar alltså ingenting,
 // vilket är precis vad vi vill: banorna har egna stjärnor och sparas lokalt.
-export default function Rotblast({ onGameOver }) {
-  return <BlastGame onScore={onGameOver} />
+export default function Rotblast({ onGameOver, fullskarmSparrad }) {
+  return <BlastGame onScore={onGameOver} fullskarmSparrad={fullskarmSparrad} />
 }

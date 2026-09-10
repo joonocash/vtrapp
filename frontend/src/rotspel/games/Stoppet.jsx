@@ -179,7 +179,8 @@ export default function Stoppet({ onGameOver }) {
 
       <div
         ref={wrapRef}
-        className="touch-none select-none w-full max-w-[300px] cursor-pointer"
+        className="touch-none select-none cursor-pointer"
+        style={{ width: 'var(--spelbredd, 400px)' }}
       >
         <canvas ref={canvasRef} width={SIZE} height={SIZE} className="w-full h-auto" />
       </div>

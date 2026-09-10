@@ -27,6 +27,18 @@ import { readSettings } from '../useSettings.js'
 const FARG_BLA = '#3b82f6'
 const FARG_ORANGE = '#f97316'
 const FARG_GRON = '#22c55e'
+const FARG_ROD = '#f87171'
+
+// Avbrytzonen: släpper man ovanför den här höjden avfyras inget skott.
+// ZON_MIN_LOGISK (24 = ~6 % av HOJD) är golvet på en normalstor skärm, men
+// zonen mäts om i verkliga pixlar varje gång (se logiskPosition()) eftersom
+// en logisk pixel kan bli mycket liten i fullskärm i liggande läge.
+const ZON_MIN_LOGISK = 24
+const ZON_MIN_REAL_PX = 44 // vedertagen minsta träffyta för ett finger
+
+// Ringen runt fingret. Fast i logiska pixlar (inte omräknad som zonen) —
+// "ungefär" stort nog att synas runt en fingertopp vid normal visningsstorlek.
+const RING_RADIE = 16
 
 // Fysiktakten loopen strävar efter i millisekunder. steg() rör kulan lika
 // mycket per anrop oavsett vilket dtMs man skickar in (det används bara av
@@ -69,6 +81,30 @@ export default function Pinnbollen({ onGameOver }) {
   // vara lådan först, banbytet sedan — annars kan spelaren vinna en kraft
   // som försvinner i bytet innan den hunnit visas.
   const bytBanaVantar = useRef(false)
+
+  // ---- siktning: håll, dra, släpp (se pekarNer/pekarFlytta/pekarSlapp) ----
+  // En aktiv nedtryckning pågår (finger eller nedtryckt musknapp). Skiljer
+  // "sikta" (bara flytta vinkeln) från "hovra" nedan, som bara gäller mus.
+  const siktar = useRef(false)
+  // Musen rör sig över planen UTAN att vara nedtryckt. Bara mus kan hovra —
+  // det finns ingen touch-motsvarighet, en pekskärm har inget "innan man rör
+  // vid den"-läge. Håller det gamla hovringsbeteendet för mus intakt.
+  const hovrarMus = useRef(false)
+  // Senaste pekarposition i logiska canvas-koordinater, för att rita ringen
+  // och den streckade linjen där fingret faktiskt är.
+  const pekarLogisk = useRef({ x: BREDD / 2, y: 0 })
+  // Är den senaste positionen innanför avbrytzonen just nu? Uppdateras
+  // löpande under en pågående siktning, inte bara vid släpp, så
+  // återkopplingen (röd ring/linje/pipa) hänger med i realtid.
+  const iAvbrottzon = useRef(false)
+  // Senast uppmätta zonhöjd i logiska pixlar, sparad för att rita zonens
+  // linje på samma ställe som skjut-logiken faktiskt använder.
+  const avbrottzonHojd = useRef(ZON_MIN_LOGISK)
+  // pointerId på fingret som faktiskt siktar. Rör en andra pekare vid
+  // canvasen mitt i en dragning (två fingrar samtidigt) ska den ignoreras
+  // helt — annars kan den kapa siktet eller lösa ut ett oavsiktligt släpp
+  // för det första fingret.
+  const aktivPekarId = useRef(null)
 
   const senare = useCallback((fn, ms) => {
     const t = setTimeout(() => {
@@ -292,8 +328,14 @@ export default function Pinnbollen({ onGameOver }) {
       ctx.fillStyle = '#065f46'
       ctx.fillRect(s.hink.x - s.hink.bredd / 2 + 3, HOJD - 15, s.hink.bredd - 6, 4)
 
-      // siktlinjen
-      if (s.lage === 'siktar' && !slut) {
+      // Avbryts skottet om man släpper nu? Bara relevant medan man siktar,
+      // men beräknad här uppe så både pipan och siktlinjen kan fråga samma sak.
+      const avbryterNu = siktar.current && iAvbrottzon.current
+
+      // siktlinjen — bara medan man faktiskt siktar (håller nere) eller
+      // hovrar med mus, inte hela tiden. Döljs också om man skulle avbryta,
+      // så det syns att inget kommer att hända.
+      if ((siktar.current || hovrarMus.current) && !avbryterNu && s.lage === 'siktar' && !slut) {
         const pts = siktlinje(s)
         ctx.fillStyle = 'rgba(255,255,255,.32)'
         pts.forEach(([x, y], i) => {
@@ -304,18 +346,56 @@ export default function Pinnbollen({ onGameOver }) {
         })
       }
 
+      // avbrytzonen — bara medan man siktar. En tunn linje och en text som
+      // förklarar att ett släpp ovanför den inte avfyrar något.
+      if (siktar.current) {
+        const zonFarg = avbryterNu ? FARG_ROD : 'rgba(255,255,255,.4)'
+        ctx.strokeStyle = zonFarg
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(0, avbrottzonHojd.current)
+        ctx.lineTo(BREDD, avbrottzonHojd.current)
+        ctx.stroke()
+        ctx.fillStyle = zonFarg
+        ctx.font = '500 10px system-ui,sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText('Släpp här för att avbryta', BREDD / 2, Math.max(10, avbrottzonHojd.current - 6))
+      }
+
       // kanonen
       ctx.fillStyle = '#4b5563'
       ctx.beginPath()
       ctx.arc(BREDD / 2, 22, 10, 0, Math.PI * 2)
       ctx.fill()
-      ctx.strokeStyle = '#d1d5db'
+      ctx.strokeStyle = avbryterNu ? FARG_ROD : '#d1d5db'
       ctx.lineWidth = 3.5
       ctx.lineCap = 'round'
       ctx.beginPath()
       ctx.moveTo(BREDD / 2, 22)
       ctx.lineTo(BREDD / 2 + Math.cos(s.vinkel) * 16, 22 + Math.sin(s.vinkel) * 16)
       ctx.stroke()
+
+      // Fingrets ring och den streckade linjen dit — bara medan man siktar.
+      // Fingret skymmer det man siktar på, så båda måste vara tydliga och
+      // ringen större än en fingertopp.
+      if (siktar.current) {
+        const farg = avbryterNu ? FARG_ROD : 'rgba(255,255,255,.85)'
+        ctx.save()
+        ctx.strokeStyle = farg
+        ctx.lineWidth = 1.5
+        ctx.setLineDash([5, 5])
+        ctx.beginPath()
+        ctx.moveTo(BREDD / 2, 22)
+        ctx.lineTo(pekarLogisk.current.x, pekarLogisk.current.y)
+        ctx.stroke()
+        ctx.setLineDash([])
+
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(pekarLogisk.current.x, pekarLogisk.current.y, RING_RADIE, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.restore()
+      }
 
       // kulorna och deras vakthundsringar — ett skott kan ha flera (trippel)
       for (const k of s.kulor) {
@@ -436,28 +516,115 @@ export default function Pinnbollen({ onGameOver }) {
   }
 
   // ------------------------------------------------------------------- input
+  //
+  // Håll, dra, släpp — inte klicka. onPointerMove ensam räcker inte på en
+  // pekskärm: det finns ingen hovring innan man rör vid glaset, så det gamla
+  // "sikta med move, skjut med down" avfyrade skottet direkt i vilken vinkel
+  // fingret råkade landa. Nu bara siktar nedtryckningen; skottet går av när
+  // man släpper — och inte alls om man släpper i avbrytzonen.
+  //
+  // setPointerCapture låser pointermove/up/cancel till canvasen så att en
+  // dragrörelse ut utanför kanten fortfarande styr siktet. Det är en ren
+  // DOM-grej mellan pekaren och elementet — det bryr sig inte om vilket
+  // element som råkar vara Fullscreen API:ets fullskärmselement (en
+  // förfaderdiv i GameShell, inte canvasen), och överlever därför att
+  // fullskärm växlas. En riktig fullskärmsväxling mitt i en dragning skulle
+  // i värsta fall trigga pointercancel, vilket redan avbryter siktet säkert
+  // utan att skjuta.
 
-  function pekare(e) {
+  // Räknar om en pekarhändelse till logiska canvas-koordinater plus hur hög
+  // avbrytzonen är just nu i logiska pixlar. Mäts om varje gång i stället
+  // för cachat, eftersom skalfaktorn ändras med elementets faktiska storlek
+  // (t.ex. fullskärm) — allt bygger på getBoundingClientRect(), inget
+  // hårdkodat.
+  function logiskPosition(e) {
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas) return null
     const r = canvas.getBoundingClientRect()
+    if (!r.width || !r.height) return null
     const x = (e.clientX - r.left) * (BREDD / r.width)
     const y = (e.clientY - r.top) * (HOJD / r.height)
-    sikta(spelRef.current, Math.atan2(y - 22, x - BREDD / 2))
+    // 44 verkliga pixlar omräknat till logiska, med det gamla värdet (24,
+    // ~6 % av planhöjden) som golv på normalstora skärmar.
+    const zonHojd = Math.max(ZON_MIN_LOGISK, ZON_MIN_REAL_PX * (HOJD / r.height))
+    return { x, y, zonHojd }
   }
 
-  function tryck(e) {
+  function uppdateraSikte(pos) {
+    pekarLogisk.current = { x: pos.x, y: pos.y }
+    avbrottzonHojd.current = pos.zonHojd
+    iAvbrottzon.current = pos.y < pos.zonHojd
+    sikta(spelRef.current, Math.atan2(pos.y - 22, pos.x - BREDD / 2))
+  }
+
+  function pekarNer(e) {
     if (slut || ladaKraftId) return
-    pekare(e)
+    // Redan en siktning igång (annat pointerId)? En andra pekare mot
+    // canvasen ignoreras helt i stället för att kapa den första.
+    if (siktar.current && e.pointerId !== aktivPekarId.current) return
+    const pos = logiskPosition(e)
+    if (!pos) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    siktar.current = true
+    aktivPekarId.current = e.pointerId
+    hovrarMus.current = false
+    uppdateraSikte(pos)
+  }
+
+  function pekarFlytta(e) {
+    if (siktar.current && e.pointerId !== aktivPekarId.current) return
+    const pos = logiskPosition(e)
+    if (!pos) return
+    if (siktar.current) {
+      uppdateraSikte(pos)
+    } else if (e.pointerType === 'mouse') {
+      // Hovringssiktet för mus — oförändrat sedan tidigare. Desktop ska
+      // inte bli sämre av att pekskärmar fick en egen flödeslogik.
+      hovrarMus.current = true
+      pekarLogisk.current = { x: pos.x, y: pos.y }
+      sikta(spelRef.current, Math.atan2(pos.y - 22, pos.x - BREDD / 2))
+    }
+  }
+
+  function pekarSlapp(e) {
+    if (!siktar.current || e.pointerId !== aktivPekarId.current) return
+    siktar.current = false
+    aktivPekarId.current = null
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+    if (slut || ladaKraftId) return
+    if (iAvbrottzon.current) return // släppt ovanför kanonen — inget skott, ingen förlorad kula
     if (skjut(spelRef.current)) {
       ton(300, 70, 'sine', 0.1)
       uppdateraHud()
     }
   }
 
+  function pekarAvbryt(e) {
+    if (e.pointerId !== aktivPekarId.current) return
+    siktar.current = false
+    aktivPekarId.current = null
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+  }
+
+  function pekarLamnar(e) {
+    // Bara relevant för musens hovringsläge — en pågående siktning (med
+    // pointer capture) ska inte påverkas av att pekaren fysiskt lämnar
+    // elementets gränser.
+    if (!siktar.current && e.pointerType === 'mouse') {
+      hovrarMus.current = false
+    }
+  }
+
   return (
     <div className="flex flex-col items-center gap-3 w-full">
-      <div className="w-full max-w-[400px] flex items-center justify-between text-xs px-1">
+      <div
+        className="flex items-center justify-between text-xs px-1"
+        style={{ width: 'var(--spelbredd, 400px)' }}
+      >
         <div>
           <div className="text-gray-500">Poäng</div>
           <div className="text-gray-100 font-medium text-base tabular-nums">
@@ -481,19 +648,25 @@ export default function Pinnbollen({ onGameOver }) {
       </div>
 
       {hud.aktivKraft && (
-        <div className="w-full max-w-[400px] flex items-center gap-1.5 text-xs px-1 -mt-1">
+        <div
+          className="flex items-center gap-1.5 text-xs px-1 -mt-1"
+          style={{ width: 'var(--spelbredd, 400px)' }}
+        >
           <span className="text-gray-500">Nästa skott:</span>
           <span style={{ color: GRADER[hud.aktivKraft.grad]?.farg }}>{hud.aktivKraft.namn}</span>
         </div>
       )}
 
-      <div className="relative w-full max-w-[400px]">
+      <div className="relative" style={{ width: 'var(--spelbredd, 400px)' }}>
         <canvas
           ref={canvasRef}
           width={BREDD}
           height={HOJD}
-          onPointerMove={pekare}
-          onPointerDown={tryck}
+          onPointerDown={pekarNer}
+          onPointerMove={pekarFlytta}
+          onPointerUp={pekarSlapp}
+          onPointerCancel={pekarAvbryt}
+          onPointerLeave={pekarLamnar}
           className="w-full h-auto rounded-lg touch-none select-none cursor-crosshair"
         />
         {ladaKraftId && (

@@ -165,7 +165,8 @@ export default function Game2048({ onGameOver }) {
 
       <div
         ref={boardRef}
-        className="relative bg-gray-900 rounded-lg p-2 touch-none select-none w-full max-w-[340px]"
+        className="relative bg-gray-900 rounded-lg p-2 touch-none select-none"
+        style={{ width: 'var(--spelbredd, 400px)' }}
       >
         <div className="grid grid-cols-4 gap-2">
           {board.flat().map((value, i) => (

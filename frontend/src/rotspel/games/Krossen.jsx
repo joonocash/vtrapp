@@ -113,7 +113,7 @@ function Piece({ tile }) {
 
 // -------------------------------------------------------------- komponenten
 
-export default function Krossen({ onGameOver }) {
+export default function Krossen({ onGameOver, fullskarmSparrad }) {
   const overRef = useRef(onGameOver)
   useEffect(() => {
     overRef.current = onGameOver
@@ -162,7 +162,13 @@ export default function Krossen({ onGameOver }) {
       if (tipsTimer.current) clearTimeout(tipsTimer.current)
       if (scoreRaf.current) cancelAnimationFrame(scoreRaf.current)
       if (animRef.current) animRef.current.forstor()
+      // Om komponenten försvinner mitt i en kaskad (byte av runda, spelaren
+      // lämnar) måste spärren släppas här också — annars sitter
+      // fullskärmsknappen permanent låst för resten av GameShell-instansen,
+      // eftersom refen den delar lever kvar där.
+      if (fullskarmSparrad) fullskarmSparrad.current = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function senare(fn, ms) {
@@ -496,6 +502,13 @@ export default function Krossen({ onGameOver }) {
     async (a, b) => {
       if (busy.current || slut) return
       busy.current = true
+      // Animationslagret läser containerns aktuella pixelbredd (cellPx) när
+      // varje animation startar och håller den värdet hela vägen ut — byter
+      // spelytan storlek mitt i (t.ex. växlar man fullskärm) hamnar fall och
+      // strålar fel resten av kaskaden. Enklast är att helt enkelt spärra
+      // växlingen medan en kaskad pågår, i stället för att göra hela
+      // animationslagret storleksmedvetet.
+      if (fullskarmSparrad) fullskarmSparrad.current = true
       avbrytTips()
       setVald(null)
 
@@ -604,9 +617,10 @@ export default function Krossen({ onGameOver }) {
         }
       } finally {
         busy.current = false
+        if (fullskarmSparrad) fullskarmSparrad.current = false
       }
     },
-    [avbrytTips, koorFinal, koorKaskad, laggPoang, schemalaggTips, slut, ton, vila]
+    [avbrytTips, fullskarmSparrad, koorFinal, koorKaskad, laggPoang, schemalaggTips, slut, ton, vila]
   )
 
   function klicka(index) {
@@ -648,7 +662,10 @@ export default function Krossen({ onGameOver }) {
     <div className="flex flex-col items-center gap-3 w-full">
       <style>{`@keyframes krossVagga{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-5px) rotate(-6deg)}75%{transform:translateY(-2px) rotate(6deg)}}`}</style>
 
-      <div className="w-full max-w-[400px] flex items-center justify-between text-sm px-1">
+      <div
+        className="flex items-center justify-between text-sm px-1"
+        style={{ width: 'var(--spelbredd, 400px)' }}
+      >
         <div>
           <div className="text-xs text-gray-500">Poäng</div>
           <div className="text-gray-100 font-medium text-lg tabular-nums">
@@ -669,8 +686,9 @@ export default function Krossen({ onGameOver }) {
 
       <div
         ref={bradRef}
-        className="relative w-full max-w-[400px] bg-gray-900 rounded-xl p-1.5 touch-none select-none overflow-hidden"
+        className="relative bg-gray-900 rounded-xl p-1.5 touch-none select-none overflow-hidden"
         style={{
+          width: 'var(--spelbredd, 400px)',
           aspectRatio: '1 / 1',
           boxShadow: moves <= 3 && !slut ? 'inset 0 0 40px rgba(248,113,113,.3)' : 'none',
           transition: 'box-shadow 600ms ease-in-out',

@@ -16,6 +16,12 @@
 //                 Utan fältet visas inga reglage alls.
 //   idle          true för spel som aldrig tar slut — GameShell hoppar över
 //                 resultatrutan med "Igen" men skickar poängen som vanligt
+//   forhallande   bredd/höjd-förhållandet på spelytan, t.ex. 300/420 för en
+//                 stående plan. Styr hur bred GameShells --spelbredd-variabel
+//                 får bli i fullskärm i liggande läge, där höjden är
+//                 begränsningen. Saknas fältet antas 1 (kvadratiskt). Bara
+//                 relevant för spel som faktiskt använder var(--spelbredd)
+//                 istället för ett hårdkodat max-w.
 //   load          () => import(...) för React-spel
 //   iframe        sökväg till statiskt spel, används istället för load
 //
@@ -31,6 +37,7 @@ export const GAMES = [
     scoreLabel: 'poäng',
     scoreFormat: 'number',
     higherIsBetter: true,
+    forhallande: 1,
     load: () => import('./Snake.jsx'),
   },
   {
@@ -42,6 +49,7 @@ export const GAMES = [
     scoreLabel: 'block',
     scoreFormat: 'number',
     higherIsBetter: true,
+    forhallande: 320 / 480,
     load: () => import('./StackTower.jsx'),
   },
   {
@@ -53,6 +61,7 @@ export const GAMES = [
     scoreLabel: 'träffar',
     scoreFormat: 'number',
     higherIsBetter: true,
+    forhallande: 1,
     load: () => import('./Stoppet.jsx'),
   },
   {
@@ -65,6 +74,7 @@ export const GAMES = [
     scoreFormat: 'number',
     higherIsBetter: true,
     reglage: ['ljud'],
+    forhallande: 1,
     load: () => import('./Simon.jsx'),
   },
   {
@@ -76,6 +86,7 @@ export const GAMES = [
     scoreLabel: 'poäng',
     scoreFormat: 'number',
     higherIsBetter: true,
+    forhallande: 1,
     load: () => import('./Game2048.jsx'),
   },
   {
@@ -88,6 +99,7 @@ export const GAMES = [
     scoreFormat: 'number',
     higherIsBetter: true,
     reglage: ['ljud', 'skak', 'hitstop'],
+    forhallande: 1,
     load: () => import('./Krossen.jsx'),
   },
   {
@@ -100,6 +112,7 @@ export const GAMES = [
     scoreFormat: 'number',
     higherIsBetter: true,
     reglage: ['ljud', 'skak'],
+    forhallande: 300 / 420,
     load: () => import('./Pinnbollen.jsx'),
   },
   {
@@ -111,6 +124,7 @@ export const GAMES = [
     scoreLabel: 'poäng',
     scoreFormat: 'number',
     higherIsBetter: true,
+    forhallande: 1,
     load: () => import('./Rotblast.jsx'),
   },
   {
