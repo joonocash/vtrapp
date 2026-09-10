@@ -98,6 +98,7 @@ export default function BlastGame({ onScore, fullskarmSparrad }) {
         save={save}
         updateSave={updateSave}
         onScore={onScore}
+        fullskarmSparrad={fullskarmSparrad}
         onExit={() => setView(level ? 'map' : 'menu')}
         onNext={() => {
           const next = buildLevel((level?.id ?? 0) + 1);
@@ -214,7 +215,7 @@ function LevelMap({ pack, setPack, stars, onPick, onExit }) {
 
 /* ---------- själva spelplanen ---------- */
 
-function Board({ level, save, updateSave, onScore, onExit, onNext, onRetry }) {
+function Board({ level, save, updateSave, onScore, fullskarmSparrad, onExit, onNext, onRetry }) {
   const rngRef = useRef(makeRng(level ? level.seed : (Date.now() & 0x7fffffff)));
 
   const [board, setBoard] = useState(() => (level ? boardFromLevel(level) : createBoard()));

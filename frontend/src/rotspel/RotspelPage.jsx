@@ -1,4 +1,4 @@
-import { useState, useMemo, Suspense, lazy, useRef, useEffect } from 'react'
+import { Component, useState, useMemo, Suspense, lazy, useRef, useEffect } from 'react'
 import { GAMES, CATEGORIES, getGame } from './games/index.js'
 import {
   usePlayer,
@@ -149,6 +149,55 @@ function GameCard({ game, best, onClick }) {
   )
 }
 
+// Ett spel som kastar ska bara ta ner sig själv, inte hela fliken — utan den
+// här spärrar React av hela trädet vid ett obehandlat fel i vilket spel som
+// helst, och man kan inte ens navigera bort. Måste vara en klasskomponent —
+// React har inget hook-motsvarighet till getDerivedStateFromError/
+// componentDidCatch. Fångar bara fel som kastas UNDER RENDERING (det är vad
+// getDerivedStateFromError/componentDidCatch är till för) — ett fel i en
+// timeout- eller click-callback i själva spelet fångas inte här.
+class SpelFelgrans extends Component {
+  state = { fel: null }
+
+  static getDerivedStateFromError(fel) {
+    return { fel }
+  }
+
+  componentDidCatch(fel, info) {
+    // Loggas så felsökning fortfarande går att göra, trots att UI:t bara
+    // visar ett kort meddelande.
+    console.error('[Rötspel] Spelet kraschade:', fel, info)
+  }
+
+  componentDidUpdate(forraProps) {
+    // Om resetKey ändras (t.ex. en omstart) ska felläget inte sitta kvar
+    // och blockera en annan instans av samma spel.
+    if (this.state.fel && forraProps.resetKey !== this.props.resetKey) {
+      this.setState({ fel: null })
+    }
+  }
+
+  render() {
+    if (this.state.fel) {
+      return (
+        <div className="h-64 flex flex-col items-center justify-center gap-3 text-center px-6">
+          <p className="text-gray-300 text-sm">Något gick fel i spelet.</p>
+          <p className="text-gray-600 text-xs break-words">
+            {String(this.state.fel?.message || this.state.fel)}
+          </p>
+          <button
+            onClick={this.props.onExit}
+            className="bg-blue-600 hover:bg-blue-500 text-blue-50 text-sm px-4 py-1.5 rounded-lg"
+          >
+            Tillbaka till spellistan
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 function GameShell({ gameId, player, onExit }) {
   const game = getGame(gameId)
   const [lastScore, setLastScore] = useState(null)
@@ -273,17 +322,19 @@ function GameShell({ gameId, player, onExit }) {
               sandbox="allow-scripts allow-same-origin"
             />
           ) : (
-            <Suspense
-              fallback={<div className="h-64 grid place-items-center text-gray-500 text-sm">Laddar…</div>}
-            >
-              {Component && (
-                <Component
-                  key={round}
-                  onGameOver={handleGameOver}
-                  fullskarmSparrad={fullskarmSparrad}
-                />
-              )}
-            </Suspense>
+            <SpelFelgrans resetKey={round} onExit={onExit}>
+              <Suspense
+                fallback={<div className="h-64 grid place-items-center text-gray-500 text-sm">Laddar…</div>}
+              >
+                {Component && (
+                  <Component
+                    key={round}
+                    onGameOver={handleGameOver}
+                    fullskarmSparrad={fullskarmSparrad}
+                  />
+                )}
+              </Suspense>
+            </SpelFelgrans>
           )}
         </div>
 
