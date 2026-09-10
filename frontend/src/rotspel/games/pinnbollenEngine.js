@@ -21,13 +21,19 @@
 //   { typ:'traff', pinne, orange, poang, mult }
 //   { typ:'raddning', pinne, kulaId } kulan satt fast, pinnen offrades
 //   { typ:'knuff', kulaId }        kulan satt fast utan pinne i närheten
-//   { typ:'feber' }                sista orange pinnen träffad
+//   { typ:'feberStart', pinne }    sista orange pinnen träffad, feberfinalen börjar
 //   { typ:'kraft', kraft }         en grön pinne träffades, kraft dragen
 //   { typ:'golv' }                 studsgolvet användes
 //   { typ:'hink', kulaId }         en kula landade i hinken
+//   { typ:'fackTraff', index, poang } en kula landade i ett bonusfack
 //   { typ:'skottSlut', pinnar, extraKulor, poang }
 //   { typ:'banaKlar', bonus }
 //   { typ:'slut' }
+//
+// spel.lage: siktar | skjuter | feber | fack | klar. Feberfinalen (se
+// FEBERFINALEN nedan) körs som två extra lägen mellan skjuter och klar —
+// komponenten styr själv NÄR övergången från feber till fack sker (genom
+// att anropa oppnaFack()), motorn bara VAD som gäller i respektive läge.
 
 import { draKraft } from './pinnbollenKrafter.js'
 
@@ -80,6 +86,34 @@ const GOLV_STUDS = 0.8
 
 const STARTKULOR = 10
 const KULOR_PER_BANA = 2
+
+// ------------------------------------------------------------ feberfinalen
+//
+// Facken (vänster till höger). Mittenfacket är både svårast att träffa och
+// mest värt — det ligger mitt emellan två väggar i stället för att bara
+// gränsa till en, så det kräver en snävare bana.
+export const FACK_POANG = [10000, 25000, 100000, 25000, 10000]
+
+// Skiljeväggarnas höjd — hur högt upp i planen "facklådan" börjar. Väggarna
+// sträcker sig från den här höjden och nedåt (obegränsat, kulan lämnar
+// planen som vanligt vid HOJD+12).
+export const FACK_HOJD = 70
+const FACK_VAGG_TOPP = HOJD - FACK_HOJD
+
+// Väggarnas kollisionsradie — samma sorts rundade topp som en pinne, fast
+// grövre eftersom det är en strukturell vägg, inte en liten pinne. Exporterad
+// så komponenten kan rita väggarna med samma mått som fysiken faktiskt använder.
+export const VAGG_R = 7
+
+// Två olika studsvärden beroende på VAR man träffar väggen (se kollisionen
+// i steg()): en rundad topp man kan komma in över (sidled, förutsägbart) och
+// en rundad topp man kan komma in UNDERIFRÅN — nej, ovanifrån, rakt ner i
+// den rundade toppen. Den sistnämnda är den viktiga, medvetet oförutsägbara
+// studsen som gör att kulan kan hoppa mellan facken i stället för att bara
+// falla ner i det första den råkar nudda — det är den spänningen som gör
+// finalen till en final och inte bara ett sista skott.
+const VAGG_SIDA_STUDS = 0.8
+const VAGG_TOPP_STUDS = 0.62
 
 let nastaId = 1
 function pinne(x, y, orange) {
@@ -275,8 +309,9 @@ export function skapaSpel(niva = 1, kulorKvar = STARTKULOR, poang = 0) {
     lage: 'siktar', // siktar | skjuter | klar
     traffadeIdn: [],
     orangeIskottet: 0,
-    feber: false,
     hink: { x: BREDD / 2, vx: HINK_FART, bredd: HINK_BREDD },
+    fack: null, // sätts av oppnaFack() när feberfinalen når fack-läget
+    fackVaggar: null,
     skottTid: 0,
     raddningar: 0,
     golvKvar: false,
@@ -288,8 +323,13 @@ export function skapaSpel(niva = 1, kulorKvar = STARTKULOR, poang = 0) {
   }
 }
 
+// OBS: filtrerar bort redan träffade pinnar (!traffad). En träffad pinne
+// ligger kvar i spel.pinnar ända till avslutaSkott (se kommentaren där) —
+// utan det filtret skulle den pinnen man precis träffade räkna sig själv och
+// orangeKvar() aldrig kunna bli 0 mitt i ett skott, vilket i sin tur gjorde
+// att feberfinalen (se markeraTraff) aldrig gick att lösa ut.
 export function orangeKvar(spel) {
-  return spel.pinnar.filter((p) => p.orange).length
+  return spel.pinnar.filter((p) => p.orange && !p.traffad).length
 }
 
 export function sikta(spel, vinkel) {
@@ -303,7 +343,6 @@ export function skjut(spel) {
   spel.kulorKvar -= 1
   spel.traffadeIdn = []
   spel.orangeIskottet = 0
-  spel.feber = false
   spel.raddningar = 0
   spel.skottTid = 0
   spel.hinkFangade = 0
@@ -349,9 +388,16 @@ function markeraTraff(spel, p, handelser) {
   spel.poang += poang
   handelser.push({ typ: 'traff', pinne: p, orange: p.orange, poang, mult: m })
 
-  if (p.orange && orangeKvar(spel) === 0 && !spel.feber) {
-    spel.feber = true
-    handelser.push({ typ: 'feber' })
+  // Feberfinalen: sätts EXAKT när den sista orange pinnen faller, oavsett
+  // hur många kulor som råkar vara i luften samtidigt (trippel). Kulan som
+  // träffade fortsätter flyga precis som vanligt — det är komponenten som
+  // bestämmer när facken faktiskt öppnas (oppnaFack), motorn markerar bara
+  // att finalen har börjat. Lage-kollen (i stället för en enkel flagga)
+  // hindrar också att en andra/tredje kula (samma trippel) triggar om
+  // finalen om den råkar träffa en pinne som redan räknats.
+  if (p.orange && orangeKvar(spel) === 0 && spel.lage !== 'feber' && spel.lage !== 'fack') {
+    spel.lage = 'feber'
+    handelser.push({ typ: 'feberStart', pinne: p })
   }
 
   // Grön pinne: dra en kraft direkt, men den gäller inte förrän nästa skott
@@ -421,6 +467,18 @@ function provaHinkFangst(spel, k, handelser) {
   }
 }
 
+// Motsvarigheten till provaHinkFangst under feberfinalens fack-läge. Facken
+// täcker HELA bredden (se oppnaFack) så kulan kan aldrig missa alla fem —
+// clamp:en är bara ett skydd mot flyttal som landar en hårsmån utanför 0
+// eller BREDD, inte en riktig missad-fallback.
+function provaFackTraff(spel, k, handelser) {
+  const bredd = BREDD / spel.fack.length
+  const index = Math.max(0, Math.min(spel.fack.length - 1, Math.floor(k.x / bredd)))
+  const poang = spel.fack[index].poang
+  spel.poang += poang
+  handelser.push({ typ: 'fackTraff', index, poang })
+}
+
 function avslutaSkott(spel, handelser) {
   const borttagna = spel.pinnar.filter((p) => p.traffad)
   spel.pinnar = spel.pinnar.filter((p) => !p.traffad)
@@ -468,6 +526,36 @@ export function nastaBana(spel) {
   return nytt
 }
 
+// Tar bort alla kvarvarande pinnar (blå/gröna — orange finns per definition
+// inga kvar, det är precis det som utlöste feberläget) och returnerar dem,
+// så komponenten kan spela upp sin egen våganimation utan att motorn behöver
+// veta något om ritning eller timing. Kulorna i luften påverkas inte.
+export function rensaPinnar(spel) {
+  const borttagna = spel.pinnar
+  spel.pinnar = []
+  return borttagna
+}
+
+// Komponenten avgör NÄR facken ska öppnas (se den exakta tidslinjen i
+// Pinnbollen.jsx) — motorn bara utför bytet: den rörliga hinken försvinner
+// och ersätts av fem fasta fack över hela bredden plus fyra skiljeväggar.
+// Ett no-op om spelet redan lämnat feber-läget (t.ex. en fördröjd timer som
+// hinner köra efter att finalen redan löstes ut på annat sätt).
+export function oppnaFack(spel) {
+  if (spel.lage !== 'feber') return
+  const n = FACK_POANG.length
+  const bredd = BREDD / n
+  spel.hink = null
+  spel.fack = FACK_POANG.map((poang, i) => ({
+    index: i,
+    poang,
+    xMin: bredd * i,
+    xMax: bredd * (i + 1),
+  }))
+  spel.fackVaggar = Array.from({ length: n - 1 }, (_, i) => bredd * (i + 1))
+  spel.lage = 'fack'
+}
+
 // Ett steg framåt. dtMs bara för vakthundens tidtagning — fysiken kör med
 // fast tidssteg så den blir identisk i Node och i webbläsaren.
 //
@@ -477,12 +565,20 @@ export function nastaBana(spel) {
 export function steg(spel, dtMs = TIDSSTEG) {
   const handelser = []
 
-  spel.hink.x += spel.hink.vx
-  if (spel.hink.x < spel.hink.bredd / 2 + 4 || spel.hink.x > BREDD - spel.hink.bredd / 2 - 4) {
-    spel.hink.vx *= -1
+  // Hinken finns bara innan facken öppnats (oppnaFack sätter den till null).
+  if (spel.hink) {
+    spel.hink.x += spel.hink.vx
+    if (spel.hink.x < spel.hink.bredd / 2 + 4 || spel.hink.x > BREDD - spel.hink.bredd / 2 - 4) {
+      spel.hink.vx *= -1
+    }
   }
 
-  if (spel.lage !== 'skjuter' || spel.kulor.length === 0) return handelser
+  // Feber och fack är förlängningar av skjuter — kulan/kulorna som redan är
+  // i luften när den sista orange pinnen faller ska fortsätta flyga med
+  // exakt samma fysik, bara reglerna för vad som händer vid underkanten
+  // ändras (se fack-grenen nedan).
+  const flyger = spel.lage === 'skjuter' || spel.lage === 'feber' || spel.lage === 'fack'
+  if (!flyger || spel.kulor.length === 0) return handelser
 
   spel.skottTid += dtMs
   const genom = spel.aktivKraft?.id === 'genom'
@@ -559,6 +655,35 @@ export function steg(spel, dtMs = TIDSSTEG) {
         markeraTraff(spel, p, handelser)
       }
 
+      // Skiljeväggarna i fack-läget. Varje vägg är en "kapsel": en rundad
+      // topp vid FACK_VAGG_TOPP och därunder en rak stolpe. Träffpunkten
+      // beräknas som avståndet till närmaste punkt på den (nedåt oändliga)
+      // linjen — kommer kulan uppifrån klipper den in mot den rundade toppen
+      // (ny pekar uppåt, oförutsägbar studs uppåt), kommer den från sidan
+      // klipper den in mot stolpen (ny blir 0, ren sidledsstuds). Samma
+      // knep som pinnkollisionen: flytta ut kulan innan studsen, annars
+      // upptäcks samma kollision igen nästa delsteg.
+      if (spel.lage === 'fack') {
+        for (const vx of spel.fackVaggar) {
+          const cy = Math.max(FACK_VAGG_TOPP, k.y)
+          const dx = k.x - vx
+          const dy = k.y - cy
+          const dist = Math.hypot(dx, dy)
+          if (dist >= VAGG_R + k.r || dist === 0) continue
+
+          const nx = dx / dist
+          const ny = dy / dist
+          k.x = vx + nx * (VAGG_R + k.r + 0.1)
+          k.y = cy + ny * (VAGG_R + k.r + 0.1)
+
+          const uppifran = cy === FACK_VAGG_TOPP && ny < -0.3
+          const studs = uppifran ? VAGG_TOPP_STUDS : VAGG_SIDA_STUDS
+          const dot = k.vx * nx + k.vy * ny
+          k.vx = (k.vx - 2 * dot * nx) * studs
+          k.vy = (k.vy - 2 * dot * ny) * studs
+        }
+      }
+
       if (k.y > HOJD + 12) {
         if (spel.golvKvar) {
           // studsgolvet: en gratis studs uppåt, en gång per skott oavsett
@@ -567,6 +692,10 @@ export function steg(spel, dtMs = TIDSSTEG) {
           k.y = HOJD + 11
           k.vy = -Math.abs(k.vy) * GOLV_STUDS
           handelser.push({ typ: 'golv', kulaId: k.id })
+        } else if (spel.lage === 'fack') {
+          provaFackTraff(spel, k, handelser)
+          spel.kulor.splice(ki, 1)
+          borttagen = true
         } else {
           provaHinkFangst(spel, k, handelser)
           spel.kulor.splice(ki, 1)
@@ -600,11 +729,33 @@ export function steg(spel, dtMs = TIDSSTEG) {
   }
 
   // hårt tak: vakthunden täcker det vi tänkt på, taket täcker resten. Alla
-  // kvarvarande kulor avslutas som om de just passerat underkanten.
+  // kvarvarande kulor avslutas som om de just passerat underkanten. Gäller
+  // även feber/fack — annars kan en enda pinsamt fastkilad kula i facket
+  // frysa finalen för alltid om vakthundens knuff mot förmodan aldrig lyckas
+  // få loss den.
   if (spel.skottTid > HART_TAK_MS && spel.lage === 'skjuter') {
     for (const k of spel.kulor) provaHinkFangst(spel, k, handelser)
     spel.kulor = []
     avslutaSkott(spel, handelser)
+  } else if (spel.skottTid > HART_TAK_MS && (spel.lage === 'feber' || spel.lage === 'fack')) {
+    for (const k of spel.kulor) {
+      if (spel.lage === 'fack') provaFackTraff(spel, k, handelser)
+      else if (spel.hink) provaHinkFangst(spel, k, handelser)
+    }
+    spel.kulor = []
+  }
+
+  // Fack-läget har ingen avslutaSkott (se kommentaren där uppe) — banan är
+  // redan definitivt klar (orangeKvar var 0 när feberläget startade), så när
+  // sista kulan lämnat facken avslutas nivån direkt, på samma sätt som
+  // avslutaSkotts orangeKvar===0-gren men utan pinnstädning (det är redan
+  // gjort av rensaPinnar). Kollas sist i funktionen så den även fångar
+  // hårda-tak-grenen ovan, som kan tömma spel.kulor i samma anrop.
+  if (spel.kulor.length === 0 && spel.lage === 'fack') {
+    spel.lage = 'klar'
+    const kvarBonus = spel.kulorKvar * 1000
+    spel.poang += kvarBonus
+    handelser.push({ typ: 'banaKlar', bonus: kvarBonus })
   }
 
   return handelser
@@ -643,4 +794,6 @@ export const KONSTANTER = {
   STOR_SKALA,
   MAGNET_FAKTOR,
   GOLV_STUDS,
+  VAGG_SIDA_STUDS,
+  VAGG_TOPP_STUDS,
 }

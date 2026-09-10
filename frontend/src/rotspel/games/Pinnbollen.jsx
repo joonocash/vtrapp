@@ -10,6 +10,11 @@ import {
   steg,
   siktlinje,
   orangeKvar,
+  oppnaFack,
+  rensaPinnar,
+  FACK_POANG,
+  FACK_HOJD,
+  VAGG_R,
 } from './pinnbollenEngine.js'
 import { GRADER } from './pinnbollenKrafter.js'
 import Kraftlada from './Kraftlada.jsx'
@@ -36,14 +41,59 @@ const FARG_ROD = '#f87171'
 const ZON_MIN_LOGISK = 24
 const ZON_MIN_REAL_PX = 44 // vedertagen minsta träffyta för ett finger
 
-// Ringen runt fingret. Fast i logiska pixlar (inte omräknad som zonen) —
-// "ungefär" stort nog att synas runt en fingertopp vid normal visningsstorlek.
-const RING_RADIE = 16
+// Ringarna för det relativa siktet. Fasta i logiska pixlar (inte omräknade
+// som zonen) — "ungefär" stort nog att synas vid normal visningsstorlek.
+const ANKARE_RING_RADIE = 5
+const FINGER_RING_RADIE = 17
+
+// Relativt sikte: vinkeln följer INTE fingrets absoluta position (den
+// gamla modellen krävde att tummen nådde skärmens hörn för extrema vinklar,
+// och fingret skymde alltid det man siktade på). I stället är det en ren
+// förflyttning — dx sidledes från ankarpunkten där man tryckte ner —
+// omräknad till en vinkeländring.
+const MIN_VINKEL = Math.PI * 0.08
+const MAX_VINKEL = Math.PI * 0.92
+// Hela svängen (MIN till MAX) över hela planens bredd, vid känslighet 1.
+const RAD_PER_PX = (MAX_VINKEL - MIN_VINKEL) / BREDD
+// Speltestad, inte uträknad — känns rätt i handen på en telefon. Utan
+// förstärkningen känns dragningen trög eftersom en hel sidledes
+// fingerrörelse annars bara svänger siktet en bråkdel av hela registret.
+const KANSLIGHET = 4.5
+// Finläge: drar man fingret neråt förbi det här (i logiska pixlar, från
+// ankaret) sänks känsligheten kraftigt för precisionssikte. Kompenserar för
+// att det relativa siktet, till skillnad från det gamla absoluta, inte
+// längre ger exakt vinkelupplösning nära kanonen.
+const FINLAGE_TROSKEL_PX = 70
+const FINLAGE_FAKTOR = 0.35
 
 // Fysiktakten loopen strävar efter i millisekunder. steg() rör kulan lika
 // mycket per anrop oavsett vilket dtMs man skickar in (det används bara av
 // vakthunden), så det här är bara hur ofta vi väljer att anropa den.
 const TAKT_MS = 1000 / 60
+
+// ------------------------------------------------------------ feberfinalen
+//
+// Exakt tidslinje från att feberStart-händelsen kommer (se spelaHandelse):
+// 0ms slowmo+zoom+banner+skärmskakning+fyrverkeri, 900ms pinnarna städas i
+// en våg, 1900ms facken öppnas, 2600ms slowmo av. Facken öppnas medvetet
+// SIST, inte samtidigt som resten — allt på en gång blir för mycket på en
+// gång för spelaren att hänga med i.
+const FEBER_STAD_MS = 900
+const FEBER_FACK_MS = 1900
+const FEBER_SLUT_MS = 2600
+const FEBER_PINNE_VAG_MS = 28 // ungefärligt mellanrum mellan varje pinne i städvågen
+
+// Kamerans zoomlägen under finalen — in vid feberstart, ut lite när facken
+// öppnas (man behöver se hela bredden av dem), tillbaka till normalt när allt
+// är klart.
+const ZOOM_FEBER = 2.3
+const ZOOM_FACK = 1.35
+const ZOOM_NORMAL = 1
+// Hur snabbt kameran (position/zoom) hinner ikapp sitt mål varje bildruta —
+// en enkel exponentiell glidning, inte en riktig kamera. Speltestade värden:
+// för lågt känns det trögt/laggigt, för högt rycker det till vid varje studs.
+const KAM_LERP = 0.09
+const ZOOM_LERP = 0.07
 
 export default function Pinnbollen({ onGameOver }) {
   const overRef = useRef(onGameOver)
@@ -63,10 +113,18 @@ export default function Pinnbollen({ onGameOver }) {
   const partiklar = useRef([])
   const popp = useRef([])
   const flyt = useRef([])
+  const fyrverkeri = useRef([])
   const banner = useRef(null)
   const slowmo = useRef(0)
   const ackumulator = useRef(0)
   const skak = useRef(0)
+  // Kameran under feberfinalen — se ZOOM_*/KAM_LERP-kommentaren ovan. Vilar
+  // på (mitten, zoom 1) resten av tiden, vilket gör transformen till en
+  // no-op (translate(BREDD/2,HOJD/2) scale(1) translate(-BREDD/2,-HOJD/2)).
+  const kamX = useRef(BREDD / 2)
+  const kamY = useRef(HOJD / 2)
+  const zoom = useRef(ZOOM_NORMAL)
+  const zoomMal = useRef(ZOOM_NORMAL)
   const levande = useRef(true)
   const rapporterat = useRef(false)
   const timers = useRef([])
@@ -105,6 +163,13 @@ export default function Pinnbollen({ onGameOver }) {
   // helt — annars kan den kapa siktet eller lösa ut ett oavsiktligt släpp
   // för det första fingret.
   const aktivPekarId = useRef(null)
+  // Ankarpunkten (där fingret tryckte ner) och vinkeln som gällde just då —
+  // det relativa siktet mäter allt som en förflyttning från de här två.
+  const siktAnkare = useRef({ x: BREDD / 2, y: 0 })
+  const siktStartVinkel = useRef(Math.PI / 2)
+  // Finläge just nu (se FINLAGE_TROSKEL_PX) — styr både känsligheten och
+  // fingerringens färg/text.
+  const finlage = useRef(false)
 
   const senare = useCallback((fn, ms) => {
     const t = setTimeout(() => {
@@ -123,6 +188,24 @@ export default function Pinnbollen({ onGameOver }) {
       aktivKraft: s.aktivKraft,
     })
   }, [])
+
+  // Ett fyrverkeri-utbrott (feberstart och fackTraff). Bara refs inblandade
+  // så den behöver inte vara ett useCallback.
+  const FYRVERKERI_FARGER = ['#fb923c', '#facc15', '#4ade80', '#38bdf8', '#f472b6']
+  function skapaFyrverkeri(x, y, antal, skala = 1) {
+    for (let i = 0; i < antal; i++) {
+      const vinkel = Math.random() * Math.PI * 2
+      const fart = (1.5 + Math.random() * 3) * skala
+      fyrverkeri.current.push({
+        x,
+        y,
+        vx: Math.cos(vinkel) * fart,
+        vy: Math.sin(vinkel) * fart,
+        t: 0,
+        f: FYRVERKERI_FARGER[Math.floor(Math.random() * FYRVERKERI_FARGER.length)],
+      })
+    }
+  }
 
   // ------------------------------------------------------- händelser -> effekt
 
@@ -171,11 +254,57 @@ export default function Pinnbollen({ onGameOver }) {
         return
       }
 
-      if (h.typ === 'feber') {
+      if (h.typ === 'feberStart') {
+        // Sista orange pinnen föll — finalen börjar. Facken öppnas
+        // medvetet inte förrän FEBER_FACK_MS (se konstanterna ovan): allt på
+        // en gång (zoom+fyrverkeri+städning+fack) hade känts som kaos i
+        // stället för en tydlig sekvens.
         slowmo.current = 1
+        zoomMal.current = ZOOM_FEBER
         banner.current = { text: 'FEBER!', farg: '#fb923c', t: 0, ms: 1400, storlek: 30 }
-        if (readSettings().skak) skak.current = 12
+        if (readSettings().skak) skak.current = 14
         ton(560, 500, 'sawtooth', 0.16)
+        skapaFyrverkeri(h.pinne.x, h.pinne.y, 26)
+
+        senare(() => {
+          if (!levande.current) return
+          const s = spelRef.current
+          const borttagna = rensaPinnar(s)
+          borttagna.forEach((p, i) => {
+            popp.current.push({ x: p.x, y: p.y, t: -i * 1.7, orange: p.orange, gron: p.gron })
+          })
+        }, FEBER_STAD_MS)
+
+        senare(() => {
+          if (!levande.current) return
+          oppnaFack(spelRef.current)
+          banner.current = { text: 'Bonusfack', farg: '#38bdf8', t: 0, ms: 1300, storlek: 24 }
+          zoomMal.current = ZOOM_FACK
+        }, FEBER_FACK_MS)
+
+        senare(() => {
+          if (!levande.current) return
+          slowmo.current = 0
+        }, FEBER_SLUT_MS)
+        return
+      }
+
+      if (h.typ === 'fackTraff') {
+        const arMitten = h.index === Math.floor(FACK_POANG.length / 2)
+        banner.current = {
+          text: '+' + h.poang.toLocaleString('sv-SE'),
+          farg: arMitten ? '#facc15' : '#4ade80',
+          t: 0,
+          ms: arMitten ? 2200 : 1500,
+          storlek: arMitten ? 40 : 24,
+        }
+        const fackBredd = BREDD / FACK_POANG.length
+        const fx = fackBredd * (h.index + 0.5)
+        const fy = HOJD - FACK_HOJD / 2
+        skapaFyrverkeri(fx, fy, arMitten ? 60 : 22, arMitten ? 1.6 : 1)
+        if (readSettings().skak) skak.current = arMitten ? 16 : 6
+        ton(arMitten ? 900 : 650, arMitten ? 500 : 260, 'sine', 0.16)
+        uppdateraHud()
         return
       }
 
@@ -206,6 +335,11 @@ export default function Pinnbollen({ onGameOver }) {
       }
 
       if (h.typ === 'banaKlar') {
+        // Kameran hör bara hemma i feberfinalen — så fort banan är klar
+        // (feber-vägen eller den vanliga) ska den glida tillbaka till
+        // normalläget. Ofarligt att sätta även när den redan står på 1.
+        zoomMal.current = ZOOM_NORMAL
+        uppdateraHud()
         banner.current = { text: 'Banan klar', farg: '#4ade80', t: 0, ms: 1600, storlek: 24 }
         ton(520, 200, 'sine', 0.15)
         senare(() => ton(660, 400, 'sine', 0.15), 200)
@@ -248,6 +382,17 @@ export default function Pinnbollen({ onGameOver }) {
 
     function rita(dt) {
       const s = spelRef.current
+
+      // Kameran under feberfinalen: följ första kulan i luften, annars glid
+      // tillbaka mot mitten. Ren exponentiell glidning (inte en riktig
+      // kamera) — se KAM_LERP/ZOOM_LERP-kommentaren där de definieras.
+      const iFinalen = s.lage === 'feber' || s.lage === 'fack'
+      const kamMalX = iFinalen && s.kulor.length > 0 ? s.kulor[0].x : BREDD / 2
+      const kamMalY = iFinalen && s.kulor.length > 0 ? s.kulor[0].y : HOJD / 2
+      kamX.current += (kamMalX - kamX.current) * KAM_LERP
+      kamY.current += (kamMalY - kamY.current) * KAM_LERP
+      zoom.current += (zoomMal.current - zoom.current) * ZOOM_LERP
+
       ctx.save()
 
       if (skak.current > 0) {
@@ -255,6 +400,14 @@ export default function Pinnbollen({ onGameOver }) {
         ctx.translate((Math.random() * 2 - 1) * d * 0.4, (Math.random() * 2 - 1) * d * 0.4)
         skak.current = Math.max(0, skak.current - 0.6)
       }
+
+      // Kameratransformen (se komponentens uppdrag: översätt/skala/översätt)
+      // omsluter ENDAST spelvärlden. Banner och "Slut på kulor"-skärmen
+      // ritas efter motsvarande ctx.restore() nedan, så de aldrig zoomas.
+      ctx.save()
+      ctx.translate(BREDD / 2, HOJD / 2)
+      ctx.scale(zoom.current, zoom.current)
+      ctx.translate(-kamX.current, -kamY.current)
 
       ctx.fillStyle = '#0b1120'
       ctx.fillRect(-20, -20, BREDD + 40, HOJD + 40)
@@ -322,11 +475,53 @@ export default function Pinnbollen({ onGameOver }) {
         return true
       })
 
-      // hinken
-      ctx.fillStyle = '#22c55e'
-      ctx.fillRect(s.hink.x - s.hink.bredd / 2, HOJD - 15, s.hink.bredd, 11)
-      ctx.fillStyle = '#065f46'
-      ctx.fillRect(s.hink.x - s.hink.bredd / 2 + 3, HOJD - 15, s.hink.bredd - 6, 4)
+      // fyrverkerierna (feberstart och fackTraff)
+      fyrverkeri.current = fyrverkeri.current.filter((p) => {
+        p.t += 1
+        p.x += p.vx
+        p.y += p.vy
+        p.vy += 0.06
+        p.vx *= 0.98
+        if (p.t > 46) return false
+        ctx.globalAlpha = 1 - p.t / 46
+        ctx.fillStyle = p.f
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 1
+        return true
+      })
+
+      // hinken — eller, efter oppnaFack(), de fem bonusfacken och deras
+      // skiljeväggar i stället. s.hink är null i fack-läget (se motorn).
+      if (s.hink) {
+        ctx.fillStyle = '#22c55e'
+        ctx.fillRect(s.hink.x - s.hink.bredd / 2, HOJD - 15, s.hink.bredd, 11)
+        ctx.fillStyle = '#065f46'
+        ctx.fillRect(s.hink.x - s.hink.bredd / 2 + 3, HOJD - 15, s.hink.bredd - 6, 4)
+      } else if (s.fack) {
+        const n = s.fack.length
+        const fackBredd = BREDD / n
+        for (let i = 0; i < n; i++) {
+          const fx = i * fackBredd
+          ctx.fillStyle = i === Math.floor(n / 2) ? '#facc15' : '#22c55e'
+          ctx.fillRect(fx + 2, HOJD - FACK_HOJD, fackBredd - 4, FACK_HOJD - 4)
+          ctx.fillStyle = '#0b1120'
+          ctx.font = '600 11px system-ui,sans-serif'
+          ctx.textAlign = 'center'
+          ctx.fillText(s.fack[i].poang.toLocaleString('sv-SE'), fx + fackBredd / 2, HOJD - 10)
+        }
+        ctx.fillStyle = '#e5e7eb'
+        for (const vx of s.fackVaggar) {
+          ctx.beginPath()
+          ctx.moveTo(vx - 3, HOJD + 20)
+          ctx.lineTo(vx - 3, HOJD - FACK_HOJD + VAGG_R)
+          ctx.arc(vx, HOJD - FACK_HOJD, VAGG_R, Math.PI, 0)
+          ctx.lineTo(vx + 3, HOJD + 20)
+          ctx.closePath()
+          ctx.fill()
+        }
+      }
 
       // Avbryts skottet om man släpper nu? Bara relevant medan man siktar,
       // men beräknad här uppe så både pipan och siktlinjen kan fråga samma sak.
@@ -375,25 +570,43 @@ export default function Pinnbollen({ onGameOver }) {
       ctx.lineTo(BREDD / 2 + Math.cos(s.vinkel) * 16, 22 + Math.sin(s.vinkel) * 16)
       ctx.stroke()
 
-      // Fingrets ring och den streckade linjen dit — bara medan man siktar.
-      // Fingret skymmer det man siktar på, så båda måste vara tydliga och
-      // ringen större än en fingertopp.
+      // Ankarringen, den streckade linjen och fingerringen — bara medan man
+      // siktar. Sikte är relativt nu (se KANSLIGHET-kommentaren ovan): linjen
+      // går från ANKARET till fingret, inte från kanonen, eftersom det är
+      // den förflyttningen som faktiskt styr vinkeln.
       if (siktar.current) {
-        const farg = avbryterNu ? FARG_ROD : 'rgba(255,255,255,.85)'
+        const linjeFarg = avbryterNu ? FARG_ROD : 'rgba(255,255,255,.85)'
+        const fingerFarg = avbryterNu ? FARG_ROD : finlage.current ? FARG_BLA : 'rgba(255,255,255,.85)'
         ctx.save()
-        ctx.strokeStyle = farg
+
+        ctx.strokeStyle = linjeFarg
         ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.arc(siktAnkare.current.x, siktAnkare.current.y, ANKARE_RING_RADIE, 0, Math.PI * 2)
+        ctx.stroke()
+
         ctx.setLineDash([5, 5])
         ctx.beginPath()
-        ctx.moveTo(BREDD / 2, 22)
+        ctx.moveTo(siktAnkare.current.x, siktAnkare.current.y)
         ctx.lineTo(pekarLogisk.current.x, pekarLogisk.current.y)
         ctx.stroke()
         ctx.setLineDash([])
 
+        ctx.strokeStyle = fingerFarg
         ctx.lineWidth = 2
         ctx.beginPath()
-        ctx.arc(pekarLogisk.current.x, pekarLogisk.current.y, RING_RADIE, 0, Math.PI * 2)
+        ctx.arc(pekarLogisk.current.x, pekarLogisk.current.y, FINGER_RING_RADIE, 0, Math.PI * 2)
         ctx.stroke()
+
+        if (finlage.current) {
+          ctx.fillStyle = fingerFarg
+          ctx.font = '500 9px system-ui,sans-serif'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText('fin', pekarLogisk.current.x, pekarLogisk.current.y)
+          ctx.textBaseline = 'alphabetic'
+        }
+
         ctx.restore()
       }
 
@@ -426,6 +639,10 @@ export default function Pinnbollen({ onGameOver }) {
         ctx.globalAlpha = 1
         return true
       })
+
+      // Kameratransformen slutar här — bannern och "Slut på kulor" nedan
+      // ritas i skärmkoordinater, aldrig zoomade.
+      ctx.restore()
 
       // banner
       if (banner.current) {
@@ -550,11 +767,13 @@ export default function Pinnbollen({ onGameOver }) {
     return { x, y, zonHojd }
   }
 
-  function uppdateraSikte(pos) {
+  // Uppdaterar bara pekarens position/avbrytzon, inte vinkeln — används av
+  // både nedtryckning (som INTE ska ändra vinkeln) och den relativa
+  // flyttlogiken (som beräknar vinkeln separat).
+  function uppdateraPekarlage(pos) {
     pekarLogisk.current = { x: pos.x, y: pos.y }
     avbrottzonHojd.current = pos.zonHojd
     iAvbrottzon.current = pos.y < pos.zonHojd
-    sikta(spelRef.current, Math.atan2(pos.y - 22, pos.x - BREDD / 2))
   }
 
   function pekarNer(e) {
@@ -568,7 +787,12 @@ export default function Pinnbollen({ onGameOver }) {
     siktar.current = true
     aktivPekarId.current = e.pointerId
     hovrarMus.current = false
-    uppdateraSikte(pos)
+    // Spara ankaret och vinkeln som redan gällde — man ska kunna börja dra
+    // var som helst på planen utan att siktet hoppar till den positionen.
+    siktAnkare.current = { x: pos.x, y: pos.y }
+    siktStartVinkel.current = spelRef.current.vinkel
+    finlage.current = false
+    uppdateraPekarlage(pos)
   }
 
   function pekarFlytta(e) {
@@ -576,10 +800,18 @@ export default function Pinnbollen({ onGameOver }) {
     const pos = logiskPosition(e)
     if (!pos) return
     if (siktar.current) {
-      uppdateraSikte(pos)
+      uppdateraPekarlage(pos)
+
+      const dx = pos.x - siktAnkare.current.x
+      const dy = pos.y - siktAnkare.current.y
+      finlage.current = dy > FINLAGE_TROSKEL_PX
+      const kanslighet = finlage.current ? KANSLIGHET * FINLAGE_FAKTOR : KANSLIGHET
+      const vinkel = siktStartVinkel.current + dx * RAD_PER_PX * kanslighet
+      sikta(spelRef.current, vinkel)
     } else if (e.pointerType === 'mouse') {
-      // Hovringssiktet för mus — oförändrat sedan tidigare. Desktop ska
-      // inte bli sämre av att pekskärmar fick en egen flödeslogik.
+      // Hovringssiktet för mus är oförändrat och fortfarande absolut —
+      // musen har ingen fingertopp som skymmer sikteslinjen, så det gamla
+      // beteendet är fortfarande det rätta där.
       hovrarMus.current = true
       pekarLogisk.current = { x: pos.x, y: pos.y }
       sikta(spelRef.current, Math.atan2(pos.y - 22, pos.x - BREDD / 2))

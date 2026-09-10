@@ -27,6 +27,10 @@ import {
   skjut,
   steg,
   KONSTANTER,
+  oppnaFack,
+  rensaPinnar,
+  FACK_POANG,
+  FACK_HOJD,
 } from '../src/rotspel/games/pinnbollenEngine.js'
 import { draKraft, chansPerGrad, KRAFTER, TOTALVIKT, GRADER, kraftMedId } from '../src/rotspel/games/pinnbollenKrafter.js'
 
@@ -722,6 +726,287 @@ test('räddningsfrekvensen är under 5 % per banform med storkula aktiv', () => 
   for (const form of [0, 1, 2, 3]) {
     assert.ok(perForm[form] < 5, `form ${form} med storkula: ${perForm[form]}/100 räddningar (>=5%)`)
   }
+})
+
+// ----------------------------------------------------------- feberfinalen
+
+section('Feberfinalen')
+
+test('femte (sista) orange pinnen i skottet sätter läget till feber, inte bara en flagga', () => {
+  const spel = skapaSpel(1)
+  const offset = PINNE_R + KULA_R - 1
+  spel.pinnar = [80, 120, 160, 200, 240].map((y, i) => ({
+    id: i + 1,
+    x: 150,
+    y,
+    orange: true,
+    gron: false,
+    traffad: false,
+  }))
+  spel.kulor = [manuellKula(150, spel.pinnar[0].y - offset, 0, 3, { id: 1 })]
+  spel.lage = 'skjuter'
+
+  let traffar = 0
+  const feberHandelser = []
+  for (let ronda = 0; ronda < 5; ronda++) {
+    const mal = spel.pinnar.filter((p) => !p.traffad)[0]
+    spel.kulor[0].x = mal.x
+    spel.kulor[0].y = mal.y - offset
+    spel.kulor[0].vx = 0
+    spel.kulor[0].vy = 3
+    let traffadDennaRonda = false
+    for (let i = 0; i < 50 && !traffadDennaRonda; i++) {
+      const h = steg(spel, 16.7)
+      for (const e of h) {
+        if (e.typ === 'traff') {
+          traffar++
+          traffadDennaRonda = true
+        }
+        if (e.typ === 'feberStart') feberHandelser.push(e)
+      }
+    }
+    assert.ok(traffadDennaRonda, `pinne ${ronda + 1} träffades aldrig`)
+  }
+  assert.strictEqual(traffar, 5, 'inte alla fem pinnar träffades')
+  assert.strictEqual(feberHandelser.length, 1, 'feberStart kom inte exakt en gång')
+  assert.strictEqual(spel.lage, 'feber', 'läget blev inte feber efter femte pinnen')
+  assert.strictEqual(
+    feberHandelser[0].pinne.id,
+    spel.pinnar[4].id,
+    'feberStart pekade inte på den femte/sista pinnen'
+  )
+  assert.strictEqual(spel.kulor.length, 1, 'kulan borde fortfarande flyga vidare efter feberstarten')
+})
+
+test('en andra kula (trippel) som träffar en redan borttagen orange pinne triggar inte om finalen', () => {
+  // markeraTraff() har en tidig retur för redan träffade pinnar, men
+  // feber-övergången har dessutom en egen lage-koll — testar båda samtidigt.
+  const spel = skapaSpel(1)
+  spel.pinnar = [{ id: 1, x: 150, y: 100, orange: true, gron: false, traffad: false }]
+  spel.lage = 'feber' // finalen har redan börjat (en tidigare kula)
+  spel.kulor = [manuellKula(150, 100 - (PINNE_R + KULA_R - 1), 0, 3, { id: 2 })]
+  // simulera att pinnen redan är markerad träffad av den första kulan
+  spel.pinnar[0].traffad = true
+
+  const h = steg(spel, 16.7)
+  assert.ok(!h.some((e) => e.typ === 'feberStart'), 'feberStart kom en andra gång')
+  assert.strictEqual(spel.lage, 'feber', 'läget ändrades av den andra kulans icke-träff')
+})
+
+test('oppnaFack skapar fem fack (med rätt poäng) och fyra skiljeväggar, och tar bort hinken', () => {
+  const spel = skapaSpel(1)
+  spel.lage = 'feber'
+  oppnaFack(spel)
+
+  assert.strictEqual(spel.lage, 'fack')
+  assert.strictEqual(spel.hink, null, 'hinken togs inte bort')
+  assert.strictEqual(spel.fack.length, 5, 'fel antal fack')
+  assert.strictEqual(spel.fackVaggar.length, 4, 'fel antal skiljeväggar')
+  assert.deepStrictEqual(
+    spel.fack.map((f) => f.poang),
+    FACK_POANG
+  )
+  const bredd = BREDD / 5
+  assert.deepStrictEqual(spel.fackVaggar, [bredd, bredd * 2, bredd * 3, bredd * 4])
+})
+
+test('oppnaFack är ett no-op om spelet inte är i feber-läge', () => {
+  const spel = skapaSpel(1)
+  spel.lage = 'siktar'
+  oppnaFack(spel)
+  assert.strictEqual(spel.lage, 'siktar')
+  assert.strictEqual(spel.fack, null, 'fack skapades trots att läget inte var feber')
+})
+
+test('rensaPinnar tömmer spel.pinnar och returnerar de borttagna pinnarna', () => {
+  const spel = skapaSpel(1)
+  spel.pinnar = [
+    { id: 1, x: 10, y: 10, orange: false, gron: false, traffad: false },
+    { id: 2, x: 20, y: 20, orange: false, gron: true, traffad: false },
+  ]
+  const borttagna = rensaPinnar(spel)
+  assert.strictEqual(spel.pinnar.length, 0)
+  assert.strictEqual(borttagna.length, 2)
+})
+
+test('en kula som passerar underkanten i fack-läge ger fackTraff med rätt index, för alla fem fack', () => {
+  const bredd = BREDD / 5
+  for (let index = 0; index < 5; index++) {
+    const spel = skapaSpel(1)
+    spel.pinnar = []
+    spel.lage = 'feber'
+    oppnaFack(spel)
+    // Nollställ kulorKvar: annars lägger banaKlar-grenen (som också triggas
+    // här, eftersom det här är sista/enda kulan) till en egen bonus
+    // (kulorKvar*1000) ovanpå fackets poäng, vilket gör testet svårare att
+    // läsa. Se det separata banaKlar-testet för att den bonusen räknas rätt.
+    spel.kulorKvar = 0
+    const x = bredd * index + bredd / 2 // mitt i facket, långt från väggarna
+    spel.kulor = [manuellKula(x, HOJD + 20, 0, 5, { id: 1 })]
+    const poangFore = spel.poang
+
+    const h = steg(spel, 16.7)
+    const traff = h.find((e) => e.typ === 'fackTraff')
+    assert.ok(traff, `inget fackTraff för fack ${index} (x=${x})`)
+    assert.strictEqual(traff.index, index, `fel index för fack ${index}`)
+    assert.strictEqual(traff.poang, FACK_POANG[index], `fel poäng för fack ${index}`)
+    assert.strictEqual(spel.poang, poangFore + FACK_POANG[index], 'poängen lades inte till spel.poang')
+    assert.strictEqual(spel.kulor.length, 0, 'kulan togs inte bort efter fackTraff')
+  }
+})
+
+test('en kula kan aldrig missa facken, inte ens exakt på gränserna mellan dem', () => {
+  const bredd = BREDD / 5
+  const granser = [0, bredd, bredd * 2, bredd * 3, bredd * 4, BREDD - 0.001]
+  for (const x of granser) {
+    const spel = skapaSpel(1)
+    spel.pinnar = []
+    spel.lage = 'feber'
+    oppnaFack(spel)
+    spel.kulor = [manuellKula(x, HOJD + 20, 0, 5, { id: 1 })]
+
+    const h = steg(spel, 16.7)
+    const traff = h.find((e) => e.typ === 'fackTraff')
+    assert.ok(traff, `kulan vid x=${x} gav inget fackTraff`)
+    assert.ok(
+      Number.isInteger(traff.index) && traff.index >= 0 && traff.index <= 4,
+      `index ${traff.index} utanför giltigt intervall vid x=${x}`
+    )
+  }
+})
+
+test('vakthunden ger en knuff (inte en raddning) i fack-läge när inga pinnar finns kvar', () => {
+  const spel = skapaSpel(1)
+  spel.pinnar = []
+  spel.lage = 'feber'
+  oppnaFack(spel)
+  const x = spel.fackVaggar[1] + 3 // fastkilad nära en skiljevägg, ingen pinne att räddas mot
+  spel.kulor = [manuellKula(x, HOJD - 20, 0, 0, { id: 1 })]
+
+  let knuffHandelse = null
+  let raddningHandelse = null
+  for (let i = 0; i < 400 && !knuffHandelse && !raddningHandelse; i++) {
+    const h = steg(spel, 16.7)
+    knuffHandelse = h.find((e) => e.typ === 'knuff')
+    raddningHandelse = h.find((e) => e.typ === 'raddning')
+    if (spel.kulor[0]) {
+      spel.kulor[0].y = HOJD - 20
+      spel.kulor[0].vy = 0
+      spel.kulor[0].vx = 0
+    }
+  }
+  assert.ok(knuffHandelse, 'ingen knuff-händelse kom')
+  assert.ok(!raddningHandelse, 'en raddning kom trots att inga pinnar finns i fack-läget')
+})
+
+test('en skiljevägg som träffas rakt uppifrån ger en studs uppåt (den viktiga, oförutsägbara studsen)', () => {
+  const spel = skapaSpel(1)
+  spel.pinnar = []
+  spel.lage = 'feber'
+  oppnaFack(spel)
+  const vx = spel.fackVaggar[0]
+  spel.kulor = [manuellKula(vx, HOJD - FACK_HOJD - 20, 0, 5, { id: 1 })]
+
+  let vyFore = null
+  let vyEfter = null
+  for (let i = 0; i < 100 && spel.kulor.length > 0; i++) {
+    const fore = spel.kulor[0].vy
+    steg(spel, 16.7)
+    if (spel.kulor[0] && spel.kulor[0].vy < 0 && fore > 0) {
+      vyFore = fore
+      vyEfter = spel.kulor[0].vy
+      break
+    }
+  }
+  assert.notStrictEqual(vyEfter, null, 'kulan studsade aldrig uppåt mot väggens topp')
+  const dampning = -vyEfter / vyFore
+  assert.ok(
+    Math.abs(dampning - KONSTANTER.VAGG_TOPP_STUDS) < 0.02,
+    `dämpningen (${dampning.toFixed(3)}) matchade inte VAGG_TOPP_STUDS (${KONSTANTER.VAGG_TOPP_STUDS})`
+  )
+})
+
+test('en skiljevägg som träffas från sidan ger en sidledsstuds med rätt dämpning', () => {
+  const spel = skapaSpel(1)
+  spel.pinnar = []
+  spel.lage = 'feber'
+  oppnaFack(spel)
+  const vx = spel.fackVaggar[0]
+  spel.kulor = [manuellKula(vx - 30, HOJD - 10, 6, 0, { id: 1 })]
+
+  let vxFore = null
+  let vxEfter = null
+  for (let i = 0; i < 100 && spel.kulor.length > 0; i++) {
+    const fore = spel.kulor[0].vx
+    steg(spel, 16.7)
+    if (spel.kulor[0] && spel.kulor[0].vx < 0 && fore > 0) {
+      vxFore = fore
+      vxEfter = spel.kulor[0].vx
+      break
+    }
+  }
+  assert.notStrictEqual(vxEfter, null, 'kulan studsade aldrig tillbaka från väggens sida')
+  const dampning = -vxEfter / vxFore
+  assert.ok(
+    Math.abs(dampning - KONSTANTER.VAGG_SIDA_STUDS) < 0.02,
+    `dämpningen (${dampning.toFixed(3)}) matchade inte VAGG_SIDA_STUDS (${KONSTANTER.VAGG_SIDA_STUDS})`
+  )
+})
+
+test('avslutaSkott körs aldrig i fack-läge (inget skottSlut, pinnar orörda)', () => {
+  const spel = skapaSpel(1)
+  spel.pinnar = [{ id: 99, x: 10, y: 10, orange: false, gron: false, traffad: true }]
+  spel.lage = 'feber'
+  oppnaFack(spel)
+  spel.kulor = [manuellKula(30, HOJD + 20, 0, 5, { id: 1 })]
+
+  const h = steg(spel, 16.7)
+  assert.ok(!h.some((e) => e.typ === 'skottSlut'), 'skottSlut kom trots fack-läge')
+  assert.strictEqual(spel.pinnar.length, 1, 'avslutaSkott rörde spel.pinnar trots fack-läge')
+  assert.strictEqual(spel.pinnar[0].traffad, true, 'avslutaSkott nollställde traffad trots fack-läge')
+})
+
+test('banaKlar och rätt totalpoäng när sista kulan lämnar facket', () => {
+  const spel = skapaSpel(1, 3, 500) // 3 kulor kvar, 500 poäng sen tidigare
+  spel.pinnar = []
+  spel.lage = 'feber'
+  oppnaFack(spel)
+  spel.kulor = [manuellKula(10, HOJD + 20, 0, 5, { id: 1 })] // fack 0 = 10000p
+
+  const h = steg(spel, 16.7)
+  const fackTraff = h.find((e) => e.typ === 'fackTraff')
+  const banaKlar = h.find((e) => e.typ === 'banaKlar')
+  assert.ok(fackTraff, 'inget fackTraff')
+  assert.ok(banaKlar, 'inget banaKlar när sista kulan lämnade facket')
+  assert.strictEqual(banaKlar.bonus, 3 * 1000, 'fel kvarvarande-kulor-bonus')
+  assert.strictEqual(spel.poang, 500 + 10000 + 3000, 'slutpoängen stämmer inte')
+  assert.strictEqual(spel.lage, 'klar')
+})
+
+test('trippel under feberfinalen: flera fackTraff (en per kula) ger oberoende poäng', () => {
+  // Den valda lösningen för kraft+final: fever triggas av FÖRSTA kulan som
+  // träffar sista orange, övriga kulor fortsätter flyga och landar var för
+  // sig i fack — se rapporten för resonemanget.
+  const spel = skapaSpel(1)
+  spel.pinnar = []
+  spel.lage = 'feber'
+  oppnaFack(spel)
+  spel.kulorKvar = 0 // isolera fackens poäng från banaKlar-bonusen, se kommentaren ovan
+  const bredd = BREDD / 5
+  spel.kulor = [
+    manuellKula(bredd * 0.5, HOJD + 20, 0, 5, { id: 1 }), // fack 0: 10000
+    manuellKula(bredd * 2.5, HOJD + 20, 0, 5, { id: 2 }), // fack 2: 100000
+    manuellKula(bredd * 4.5, HOJD + 20, 0, 5, { id: 3 }), // fack 4: 10000
+  ]
+  const poangFore = spel.poang
+
+  const h = steg(spel, 16.7)
+  const traffar = h.filter((e) => e.typ === 'fackTraff')
+  assert.strictEqual(traffar.length, 3, 'väntade tre oberoende fackTraff, en per kula')
+  const index = traffar.map((t) => t.index).sort((a, b) => a - b)
+  assert.deepStrictEqual(index, [0, 2, 4])
+  assert.strictEqual(spel.poang, poangFore + 10000 + 100000 + 10000, 'poängen från de tre facken summerades inte oberoende')
+  assert.strictEqual(spel.kulor.length, 0)
 })
 
 // ------------------------------------------------------------------ summary
