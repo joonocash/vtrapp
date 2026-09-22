@@ -269,8 +269,8 @@ function GameShell({ gameId, player, onExit }) {
       <div
         ref={wrapperRef}
         className={
-          // overflow-y-auto utöver de angivna klasserna: Klickern och
-          // Sandlådan har inte var(--spelbredd)-behandlingen och kan bli
+          // overflow-y-auto utöver de angivna klasserna: spel utan
+          // var(--spelbredd)-behandlingen (t.ex. Happys revir) kan bli
           // högre än en kort liggande skärm — utan skroll skulle innehåll
           // helt enkelt klippas bort och bli oåtkomligt i fullskärm.
           // Påverkar inte spel som redan får plats.
