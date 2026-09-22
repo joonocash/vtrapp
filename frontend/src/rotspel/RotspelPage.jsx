@@ -274,14 +274,28 @@ function GameShell({ gameId, player, onExit }) {
           // högre än en kort liggande skärm — utan skroll skulle innehåll
           // helt enkelt klippas bort och bli oåtkomligt i fullskärm.
           // Påverkar inte spel som redan får plats.
+          //
+          // items/justify sätts som inline style nedan (safe center), inte
+          // som Tailwind-klasser här — se förklaringen vid style-objektet.
           arFullskarm
-            ? 'fixed inset-0 z-50 bg-gray-900 flex flex-col items-center justify-center p-2 overflow-y-auto'
+            ? 'fixed inset-0 z-50 bg-gray-900 flex flex-col p-2 overflow-y-auto'
             : ''
         }
         style={{
           '--spelbredd': arFullskarm
             ? `min(100vw - 1rem, (100vh - 7rem) * ${forhallande})`
             : 'min(100%, 400px)',
+          // "safe center" i stället för Tailwinds justify-center/items-center:
+          // en flexbox som centrerar innehåll som är högre än containern gör
+          // annars den bortcentrerade delen oåtkomlig för scroll i vissa
+          // webbläsare (klassisk centered-overflow-bugg) — Happys revir är
+          // högre än en kort skärm i fullskärm (bräde + topplista + album).
+          // "safe" faller tillbaka till start-justering just när innehållet
+          // inte får plats, annars fungerar centreringen som förut. Satt som
+          // inline style, inte en Tailwind-klass — Tailwind 3.4 genererar
+          // ingen CSS för godtyckliga justify-content/align-items-nyckelord
+          // via bracket-syntax, klassen skulle tyst falla bort.
+          ...(arFullskarm && { justifyContent: 'safe center', alignItems: 'safe center' }),
         }}
       >
         {/* Rubrikraden döljs helt i fullskärm i stället för att bara tappa
