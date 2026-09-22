@@ -148,6 +148,16 @@ export const GAMES = [
     scoreFormat: 'none',
     load: () => import('./Sandladan.jsx'),
   },
+  {
+    id: 'happys-revir',
+    name: 'Happys revir',
+    blurb: 'En Happy per revir, rad och kolumn. Nytt dagligt bräde varje dag.',
+    category: 'pussel',
+    accent: 'text-pink-400',
+    scoreFormat: 'none',
+    reglage: ['ljud', 'skak'],
+    load: () => import('./HappysRevir.jsx'),
+  },
 
   // --- Exempel: spel från GitHub som iframe ---
   // Bygg spelet, lägg de statiska filerna i frontend/public/spel/<id>/
