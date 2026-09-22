@@ -611,7 +611,16 @@ export function mountRevir(root, options = {}) {
     // spelet kan vara högre än skärmen, så se till att rutan syns
     frame(() => { try { el.card.scrollIntoView({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' }) } catch { /* äldre webbläsare */ } })
   }
-  function hideOverlay() { el.overlay.classList.remove('show') }
+  // Stängs resultatrutan/albumbilden efter att sidan skrollat ner till den
+  // (se showOverlay), skrolla tillbaka till brädet — annars blir man kvar
+  // längre ner på sidan och måste skrolla upp för hand för att spela vidare.
+  // wasShown-vakten hindrar att newGame() (som alltid anropar hideOverlay,
+  // även vid första monteringen då ingen ruta någonsin visats) skrollar sidan.
+  function hideOverlay() {
+    const wasShown = el.overlay.classList.contains('show')
+    el.overlay.classList.remove('show')
+    if (wasShown) frame(() => { try { el.boardbox.scrollIntoView({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' }) } catch { /* äldre webbläsare */ } })
+  }
 
   function win() {
     wake(true)
