@@ -25,4 +25,8 @@ export const ALBUM_CAPTIONS = {
   '01-varsol.webp': 'Vårsol och påskliljor',
   '02-toarullen.webp': 'Toarullens beskyddare',
   '03-blicken.webp': 'Den där blicken',
+  '04-kandisen.webp': 'Kändis på hundmässan',
+  '05-smakbiten.webp': 'Väntar på en smakbit',
+  '06-ogonkontakt.webp': 'Ögonkontakt, hundra procent',
+  '07-livvakten.webp': 'Livvakt på jobbet',
 }
