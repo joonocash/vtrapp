@@ -76,6 +76,18 @@ export const GAMES = [
     reglage: ['ljud', 'skak'],
     load: () => import('./HappysRevir.jsx'),
   },
+  {
+    id: 'trassel',
+    name: 'Trassel',
+    blurb: 'Dra ihop prickarna i samma färg. Fyll hela brädet. Banor, dagens bräde och tidsjakt.',
+    category: 'pussel',
+    accent: 'text-cyan-400',
+    // Egna topplistor per läge inne i spelet (trassel-dag-<datum>, trassel-tidsjakt).
+    scoreFormat: 'none',
+    reglage: ['ljud', 'skak'],
+    forhallande: 0.72,
+    load: () => import('./Trassel.jsx'),
+  },
 
   // --- Exempel: spel från GitHub som iframe ---
   // Bygg spelet, lägg de statiska filerna i frontend/public/spel/<id>/
