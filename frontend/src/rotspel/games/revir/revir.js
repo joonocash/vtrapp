@@ -23,6 +23,7 @@ import { findHint } from './hints.js'
 import { COLORS, MODES, NAMES, PENALTY_MS, HINT_COST_MS, IDLE_MS } from './config.js'
 import { SEASONS, TOD_GREET, currentSeason, currentTod, seasonSvg } from './seasons.js'
 import { createAudio } from './audio.js'
+import { skapaEffektniva } from './prestanda.js'
 
 const PAWPATH = '<ellipse cx="12" cy="16" rx="5.2" ry="4.4"/><circle cx="5.5" cy="10" r="2.2"/><circle cx="9.5" cy="6" r="2.2"/><circle cx="14.5" cy="6" r="2.2"/><circle cx="18.5" cy="10" r="2.2"/>'
 const XSVG = '<svg class="x" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2L8 8M8 2L2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'
@@ -32,6 +33,46 @@ const SVGNS = 'http://www.w3.org/2000/svg'
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 const pick = (a) => a[Math.floor(Math.random() * a.length)]
 const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false } }
+
+// Färdiga element att klona i stället för att bygga SVG-markup varje gång en
+// partikel ska skapas. Att sätta innerHTML tvingar webbläsaren att parsa
+// markupen på nytt, och det sker mitt i en animation — cloneNode kopierar ett
+// redan parsat träd. Nyckeln är form plus färg, så det blir en handfull mallar
+// per bräde och sedan bara kloner.
+const mallar = new Map()
+function partikel(klass, inreHtml) {
+  const nyckel = klass + '|' + inreHtml
+  let mall = mallar.get(nyckel)
+  if (!mall) {
+    mall = document.createElement('div')
+    mall.className = klass
+    mall.innerHTML = inreHtml
+    mallar.set(nyckel, mall)
+  }
+  return mall.cloneNode(true)
+}
+
+// Tassen som konfettibit, ritad en gång per färg till en liten canvas. I loopen
+// blir varje bit då ett enda drawImage i stället för tio fyllda och streckade
+// banor — med 90 bitar per bildruta är det skillnaden mellan ~900 och 90
+// ritoperationer. skala är skärmens pixeltäthet, så bilden blir lika skarp som
+// om den ritats direkt.
+function tasspenna(farg, r, skala) {
+  const sida = Math.ceil(r * 3) * 2
+  const cv = document.createElement('canvas')
+  cv.width = cv.height = Math.ceil(sida * skala)
+  const c = cv.getContext('2d')
+  c.setTransform(skala, 0, 0, skala, (sida * skala) / 2, (sida * skala) / 2)
+  c.fillStyle = farg
+  c.strokeStyle = '#1F2E1B'
+  c.lineWidth = 1
+  c.beginPath(); c.ellipse(0, r * 0.4, r, r * 0.8, 0, 0, 7); c.fill(); c.stroke()
+  for (const [dx, dy] of [[-0.9, -0.7], [-0.3, -1.2], [0.3, -1.2], [0.9, -0.7]]) {
+    c.beginPath(); c.arc(dx * r, dy * r, r * 0.35, 0, 7); c.fill(); c.stroke()
+  }
+  cv.sida = sida // storleken i CSS-pixlar, som drawImage ska rita den i
+  return cv
+}
 
 export const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v) } catch { return d } },
@@ -62,7 +103,7 @@ export function localScores() {
 export function mountRevir(root, options = {}) {
   const o = {
     album: null, isMuted: () => false, shake: () => true, scores: localScores(), soundToggle: true,
-    theme: 'auto', seasonOverride: '', onRoundEnd: null, ...options,
+    theme: 'auto', seasonOverride: '', onRoundEnd: null, lagEffekt: undefined, ...options,
   }
   const IMG = o.images
   const ALBUM = o.album && o.album.length ? o.album : [
@@ -85,6 +126,17 @@ export function mountRevir(root, options = {}) {
   const SEASON = currentSeason(new Date(), o.seasonOverride)
   const TOD = currentTod(new Date(), o.seasonOverride)
   const IDLE = TOD === 'kvall' || TOD === 'natt' ? IDLE_MS.evening : IDLE_MS.day
+
+  /* ---------- effektnivå ---------- */
+  // o.lagEffekt tvingar en nivå (används av testerna); annars gissar och mäter
+  // prestanda.js själv. lag() läses vid varje effekt, så en nedgradering mitt i
+  // spelet slår igenom på nästa animation.
+  const niva = skapaEffektniva(o.lagEffekt)
+  const lag = () => niva.lag
+  // Bakgrunden pausas medan promenaden eller konfettin spelas: två canvas-loopar
+  // samtidigt är just det tillfälle då en telefon tappar bildrutor, och det är
+  // också då man tittar på något annat än bakgrunden.
+  let pausaBakgrund = 0
 
   /* ---------- markup ---------- */
   root.classList.add('rv-root')
@@ -188,7 +240,7 @@ export function mountRevir(root, options = {}) {
     el.fxlayer.innerHTML = ''
     el.board.classList.remove('finished')
     // cells: 0 tom, 1 kryss, 2 autokryss, 3 Happy
-    S = { ...puzzle, names, cells: new Array(n * n).fill(0), hearts: 3, t0: 0, endT: 0, penalty: 0, done: false, combo: 0, dogs: 0,
+    S = { ...puzzle, names, cells: new Array(n * n).fill(0), malat: new Array(n * n).fill(null), hearts: 3, t0: 0, endT: 0, penalty: 0, done: false, combo: 0, dogs: 0,
       lastDog: null, lastTap: null, claimed: new Set(), undo: [], stroke: null, xSinceDog: 0, curiousShown: false }
     clearHint(); hideOverlay(); setFace('glad'); wake(true)
     render(true); updateStatus(); renderLeaderboard(); renderAlbum()
@@ -231,6 +283,8 @@ export function mountRevir(root, options = {}) {
   function render(full) {
     const n = S.n
     if (full) {
+      // Nya rutor i DOM:en — det paintCell minns hör till de gamla.
+      S.malat.fill(null)
       el.board.style.gridTemplateColumns = `repeat(${n},1fr)`
       el.board.style.gridTemplateRows = `repeat(${n},1fr)`
       el.board.innerHTML = ''
@@ -244,10 +298,19 @@ export function mountRevir(root, options = {}) {
     }
     for (let i = 0; i < n * n; i++) paintCell(i)
   }
+  // Ritar om en ruta bara när den faktiskt ser annorlunda ut än sist. Att sätta
+  // innerHTML på alla rutor vid varje placering betyder hundra omparsningar på
+  // ett 10×10-bräde, precis i det ögonblick vågen ska börja rulla — det är den
+  // hackigaste bildrutan i hela spelet. S.malat minns vad varje ruta visar.
+  // anim tvingar alltid en omritning, eftersom pop-klassen ska starta om.
   function paintCell(i, anim) {
-    const c = el.board.children[i], v = S.cells[i], y = ((i / S.n) | 0) + 1, x = (i % S.n) + 1, nm = S.names[S.regions[i]]
+    const c = el.board.children[i], v = S.cells[i], claimed = S.claimed.has(S.regions[i])
+    const nyckel = v + (claimed ? 'c' : '')
+    if (!anim && S.malat[i] === nyckel) return
+    S.malat[i] = anim ? null : nyckel
+    const y = ((i / S.n) | 0) + 1, x = (i % S.n) + 1, nm = S.names[S.regions[i]]
     c.classList.toggle('auto', v === 2)
-    c.classList.toggle('claimed', S.claimed.has(S.regions[i]))
+    c.classList.toggle('claimed', claimed)
     if (v >= 3) { c.innerHTML = `<img src="${IMG.glad}" alt="" class="${anim ? 'pop' : ''}">`; c.setAttribute('aria-label', `${nm}, rad ${y}, kolumn ${x}: Happy`) }
     else if (v === 1 || v === 2) { c.innerHTML = XSVG; c.setAttribute('aria-label', `${nm}, rad ${y}, kolumn ${x}: kryss`) }
     else { c.innerHTML = ''; c.setAttribute('aria-label', `${nm}, rad ${y}, kolumn ${x}: tom`) }
@@ -328,7 +391,8 @@ export function mountRevir(root, options = {}) {
     for (let j = 0; j < n * n; j++) {
       if (S.regions[j] !== rg) continue
       const d = Math.hypot(((j / n) | 0) - y, (j % n) - x), c = cells[j]
-      c.classList.remove('glow'); void c.offsetWidth; c.style.animationDelay = Math.round(d * 55) + 'ms'; c.classList.add('glow')
+      c.classList.remove('glow'); void c.offsetWidth
+      c.style.setProperty('--rv-d', Math.round(d * 55) + 'ms'); c.classList.add('glow')
     }
     for (let j = 0; j < n * n; j++) paintCell(j, j === i)
     claimFx(i); floatText(i, nm + '!', 'name')
@@ -342,23 +406,23 @@ export function mountRevir(root, options = {}) {
     if (reduced()) return
     const n = S.n, layer = el.fxlayer, cx = (((i % n) + 0.5) / n) * 100, cy = ((((i / n) | 0) + 0.5) / n) * 100, cellPct = 100 / n
     const rg = S.regions[i], col = COLORS[rg % COLORS.length], cellPx = el.boardbox.clientWidth / n
+    // Färre partiklar på låg nivå. Formen på effekten är densamma, det är
+    // antalet som skiljer — en ring, tassar utåt och årstidens skräp nedåt.
+    const antalTassar = lag() ? 6 : 11, antalSkrap = lag() ? 3 : 7
     const ring = document.createElement('div')
     ring.className = 'rv-ring'; ring.style.left = cx + '%'; ring.style.top = cy + '%'; ring.style.width = ring.style.height = cellPct + '%'
     layer.appendChild(ring); later(() => ring.remove(), 800)
-    for (let k = 0; k < 11; k++) {
-      const a = (k / 11) * Math.PI * 2 + Math.random() * 0.5, dist = cellPx * (1.1 + Math.random() * 1.3)
-      const sp = document.createElement('div'), sz = cellPx * (0.42 + Math.random() * 0.22)
-      sp.className = 'spark'
+    const tassHtml = `<svg viewBox="0 0 24 24"><g fill="${col}" stroke="#1F2E1B" stroke-width="1.4">${PAWPATH}</g></svg>`
+    for (let k = 0; k < antalTassar; k++) {
+      const a = (k / antalTassar) * Math.PI * 2 + Math.random() * 0.5, dist = cellPx * (1.1 + Math.random() * 1.3)
+      const sp = partikel('spark', tassHtml), sz = cellPx * (0.42 + Math.random() * 0.22)
       sp.style.cssText = `left:${cx}%;top:${cy}%;width:${sz}px;height:${sz}px;--dx:${Math.cos(a) * dist}px;--dy:${Math.sin(a) * dist}px;--rot:${(Math.random() - 0.5) * 120}deg;animation-delay:${Math.random() * 60}ms`
-      sp.innerHTML = `<svg viewBox="0 0 24 24"><g fill="${col}" stroke="#1F2E1B" stroke-width="1.4">${PAWPATH}</g></svg>`
       layer.appendChild(sp); later(() => sp.remove(), 1000)
     }
     const se = SEASONS[SEASON]
-    for (let k = 0; k < 7; k++) {
-      const s = document.createElement('div'), sz = cellPx * (0.38 + Math.random() * 0.25)
-      s.className = 'season'
+    for (let k = 0; k < antalSkrap; k++) {
+      const s = partikel('season', seasonSvg(se.shape, pick(se.colors))), sz = cellPx * (0.38 + Math.random() * 0.25)
       s.style.cssText = `left:${cx + (Math.random() - 0.5) * cellPct * 2}%;top:${cy - cellPct * 0.4}%;width:${sz}px;height:${sz}px;--dx:${(Math.random() - 0.5) * cellPx * 2.4}px;--dy:${cellPx * (1.2 + Math.random() * 1.6)}px;--rot:${(Math.random() - 0.5) * 540}deg;animation-delay:${80 + Math.random() * 250}ms`
-      s.innerHTML = seasonSvg(se.shape, pick(se.colors))
       layer.appendChild(s); later(() => s.remove(), 2000)
     }
     const path = document.createElementNS(SVGNS, 'path')
@@ -371,7 +435,11 @@ export function mountRevir(root, options = {}) {
     start(); clearHint()
     if (isSolution(i)) { placeDog(i); return }
     S.combo = 0
+    // Den ledsna bilden skrivs rakt in i rutan, förbi paintCell — då måste det
+    // paintCell minns nollställas, annars kan bilden bli kvar när rutan sedan
+    // ska ritas om till ett kryss den redan visade.
     el.board.children[i].innerHTML = `<img src="${IMG.ledsen}" alt="" class="sad">`
+    S.malat[i] = null
     if (o.shake()) { const b = el.boardbox; b.classList.remove('hurt'); void b.offsetWidth; b.classList.add('hurt') }
     setFace('ledsen', 1400)
     later(() => { if (S.cells[i] < 3) { S.cells[i] = 1; paintCell(i) } }, 750)
@@ -741,17 +809,26 @@ export function mountRevir(root, options = {}) {
     wk.className = 'walker'; wk.style.width = wk.style.height = cellPx * 0.95 + 'px'; wk.innerHTML = `<img src="${IMG.glad}" alt="">`
     el.fxlayer.appendChild(wk)
     const printCol = getComputedStyle(root).getPropertyValue('--wall').trim() || '#1F2E1B'
+    // Ett färdigt tassavtryck att klona per promenad, i stället för att bygga
+    // SVG-markup för varje avtryck medan hunden går.
+    const avtryck = document.createElementNS(SVGNS, 'g')
+    avtryck.setAttribute('fill', printCol)
+    avtryck.setAttribute('fill-opacity', '.38')
+    avtryck.innerHTML = PAWPATH
+    pausaBakgrund++
     let seg = 0, segT0 = performance.now(), walked = 0, nextPrint = 0.2, side = 1, raf = 0, finished = false
     hop(route[0], 0)
     const detach = () => { cancelAnimationFrame(raf); rafs.delete(raf); box.removeEventListener('pointerdown', finish); document.removeEventListener('keydown', finish) }
     function finish() {
       if (finished) return
-      finished = true; detach(); stopWalk = null
-      try { wk.animate([{ opacity: 1 }, { opacity: 0, transform: 'translate(-50%,-50%) scale(.3)' }], { duration: 250, fill: 'forwards' }) } catch { /* ingen WAAPI */ }
+      finished = true; detach(); stopWalk = null; pausaBakgrund--
+      // Bara opaciteten animeras: transform bär hundens position, och att skriva
+      // över den här hade fått honom att hoppa tillbaka till brädets hörn.
+      try { wk.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: 'forwards' }) } catch { /* ingen WAAPI */ }
       later(() => wk.remove(), 260)
       done()
     }
-    stopWalk = () => { finished = true; detach(); stopWalk = null }
+    stopWalk = () => { finished = true; detach(); stopWalk = null; pausaBakgrund-- }
     box.addEventListener('pointerdown', finish); document.addEventListener('keydown', finish)
     const step = (now) => {
       if (finished) return
@@ -759,13 +836,16 @@ export function mountRevir(root, options = {}) {
       const a = pts[seg], b = pts[seg + 1], len = Math.hypot(b.x - a.x, b.y - a.y), t = Math.min(1, (now - segT0) / (len * msPerCell))
       const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t, dist = walked + len * t, ang = Math.atan2(b.y - a.y, b.x - a.x)
       const bob = Math.abs(Math.sin(dist * Math.PI * 2.4)) * cellPx * 0.12
-      wk.style.left = x * cellPx + 'px'; wk.style.top = y * cellPx - bob + 'px'
-      wk.style.transform = `translate(-50%,-50%) scaleX(${b.x < a.x ? -1 : 1})`
+      // Hela placeringen i en transform: left/top per bildruta hade tvingat fram
+      // en layoutberäkning av brädet trettio gånger i sekunden.
+      wk.style.transform = `translate3d(${x * cellPx}px, ${y * cellPx - bob}px, 0) translate(-50%,-50%) scaleX(${b.x < a.x ? -1 : 1})`
       while (nextPrint < dist) {
         const pt = nextPrint - walked
         if (pt > len) break
         const px = a.x + Math.cos(ang) * pt - Math.sin(ang) * side * 0.13, py = a.y + Math.sin(ang) * pt + Math.cos(ang) * side * 0.13
-        svg.insertAdjacentHTML('beforeend', `<g transform="translate(${px} ${py}) rotate(${(ang * 180) / Math.PI + 90}) scale(.012) translate(-12 -13)" fill="${printCol}" fill-opacity=".38">${PAWPATH}</g>`)
+        const g = avtryck.cloneNode(true)
+        g.setAttribute('transform', `translate(${px} ${py}) rotate(${(ang * 180) / Math.PI + 90}) scale(.012) translate(-12 -13)`)
+        svg.appendChild(g)
         side = -side; nextPrint += 0.36
       }
       if (t >= 1) { walked += len; seg++; segT0 = now; hop(route[seg], seg) }
@@ -777,24 +857,45 @@ export function mountRevir(root, options = {}) {
   /* ---------- konfetti: tassar i revir- och årstidsfärger ---------- */
   function confetti() {
     if (reduced()) return
-    const cv = el.fx, ctx = cv.getContext('2d'), dpr = devicePixelRatio || 1
+    const cv = el.fx, ctx = cv.getContext('2d')
+    // Canvasens upplösning kapas: en telefon med dpr 3 ritar annars nio gånger
+    // så många pixlar som en dpr 1-skärm, och konfetti i rörelse är det sista
+    // man ser skillnad på.
+    const dpr = Math.min(devicePixelRatio || 1, lag() ? 1 : 2)
     const W = root.clientWidth, H = root.clientHeight
     cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     const rr = root.getBoundingClientRect(), cr = el.card.getBoundingClientRect()
     const ox = cr.width ? cr.left - rr.left + cr.width / 2 : W / 2, oy = cr.height ? cr.top - rr.top + 40 : H * 0.45
-    const P = [...Array(90)].map(() => ({ x: ox, y: oy, vx: (Math.random() - 0.5) * 14, vy: -Math.random() * 14 - 4, r: 4 + Math.random() * 5,
-      c: Math.random() < 0.5 ? pick(SEASONS[SEASON].colors) : pick(COLORS), a: Math.random() * 6 }))
+    const antal = lag() ? 36 : 90
+    // En penna per färg och storlek, inte per bit: bitarna delar på dem.
+    const pennor = new Map()
+    const penna = (c, r) => {
+      const nyckel = c + '|' + r
+      let p = pennor.get(nyckel)
+      if (!p) { p = tasspenna(c, r, dpr); pennor.set(nyckel, p) }
+      return p
+    }
+    const P = [...Array(antal)].map(() => {
+      const r = Math.round(4 + Math.random() * 5)
+      const c = Math.random() < 0.5 ? pick(SEASONS[SEASON].colors) : pick(COLORS)
+      return { x: ox, y: oy, vx: (Math.random() - 0.5) * 14, vy: -Math.random() * 14 - 4, r,
+        bild: penna(c, r), a: Math.random() * 6 }
+    })
+    pausaBakgrund++
     let f = 0
     const step = () => {
       ctx.clearRect(0, 0, W, H)
-      P.forEach((p) => {
+      for (const p of P) {
         p.vy += 0.35; p.x += p.vx; p.y += p.vy; p.vx *= 0.99; p.a += 0.1
-        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a); ctx.fillStyle = p.c; ctx.strokeStyle = '#1F2E1B'; ctx.lineWidth = 1
-        ctx.beginPath(); ctx.ellipse(0, p.r * 0.4, p.r, p.r * 0.8, 0, 0, 7); ctx.fill(); ctx.stroke()
-        for (const [dx, dy] of [[-0.9, -0.7], [-0.3, -1.2], [0.3, -1.2], [0.9, -0.7]]) { ctx.beginPath(); ctx.arc(dx * p.r, dy * p.r, p.r * 0.35, 0, 7); ctx.fill(); ctx.stroke() }
-        ctx.restore()
-      })
-      if (++f < 130) frame(step); else ctx.clearRect(0, 0, W, H)
+        // setTransform i stället för save/translate/rotate/restore: samma sak,
+        // men utan att lägga och plocka av canvasens tillståndsstack per bit.
+        const co = Math.cos(p.a), si = Math.sin(p.a), d = p.bild.sida
+        ctx.setTransform(co * dpr, si * dpr, -si * dpr, co * dpr, p.x * dpr, p.y * dpr)
+        ctx.drawImage(p.bild, -d / 2, -d / 2, d, d)
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      if (++f < 130) frame(step)
+      else { ctx.clearRect(0, 0, W, H); pausaBakgrund-- }
     }
     frame(step)
   }
@@ -804,21 +905,36 @@ export function mountRevir(root, options = {}) {
     if (reduced()) return
     const cv = el.amb, ctx = cv.getContext('2d')
     let W = 0, H = 0
-    const size = () => { const dpr = devicePixelRatio || 1; W = root.clientWidth; H = root.clientHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0) }
+    // Bakgrunden är suddiga former i rörelse — full pixeltäthet syns inte, men
+    // kostar. Kapad till 1,5 (1 på låg nivå).
+    const size = () => {
+      const dpr = Math.min(devicePixelRatio || 1, lag() ? 1 : 1.5)
+      W = root.clientWidth; H = root.clientHeight
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    }
     size()
     let ro = null
     try { ro = new ResizeObserver(size); ro.observe(root); offs.push(() => ro.disconnect()) } catch { on(window, 'resize', size) }
     const se = SEASONS[SEASON], night = TOD === 'natt' || TOD === 'kvall', fireflies = SEASON === 'sommar' && night
     const pollen = se.shape === 'flower' && !fireflies
-    const count = se.shape === 'snow' ? 34 : fireflies ? 16 : 14
+    const fullt = se.shape === 'snow' ? 34 : fireflies ? 16 : 14
     const mk = (init) => ({ x: Math.random() * W, y: init ? Math.random() * H : pollen ? H + 20 : -20,
       r: se.shape === 'snow' ? 1.5 + Math.random() * 2.5 : 5 + Math.random() * 5,
       vy: fireflies ? (Math.random() - 0.5) * 0.2 : se.shape === 'snow' ? 0.35 + Math.random() * 0.5 : 0.3 + Math.random() * 0.4,
       sw: Math.random() * 6, ss: 0.004 + Math.random() * 0.01, a: Math.random() * 6, va: (Math.random() - 0.5) * 0.03, c: pick(se.colors), ph: Math.random() * 6 })
-    const P = [...Array(count)].map(() => mk(true))
+    const P = [...Array(fullt)].map(() => mk(true))
+    // På låg nivå ritas bara de första i listan. Partiklarna finns kvar och
+    // rör sig, så en nedgradering mitt i syns som att det glesnar, inte som
+    // att allt hoppar till.
+    const synliga = () => (lag() ? Math.ceil(fullt * 0.45) : fullt)
     const draw = (p, t) => {
       ctx.save(); ctx.translate(p.x + Math.sin(p.sw + t * p.ss * 60) * 14, p.y); ctx.rotate(p.a)
-      if (fireflies) { const g = 0.5 + 0.5 * Math.sin(t * 2 + p.ph); ctx.fillStyle = `rgba(255,226,120,${0.25 + 0.6 * g})`; ctx.shadowColor = '#FFE278'; ctx.shadowBlur = 10 * g; ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, 7); ctx.fill() }
+      // shadowBlur är det dyraste canvas har att erbjuda, och på låg nivå får
+      // eldflugorna klara sig med en ljusare kärna i stället för ett sken.
+      if (fireflies) { const g = 0.5 + 0.5 * Math.sin(t * 2 + p.ph); ctx.fillStyle = `rgba(255,226,120,${0.25 + 0.6 * g})`
+        if (!lag()) { ctx.shadowColor = '#FFE278'; ctx.shadowBlur = 10 * g }
+        ctx.beginPath(); ctx.arc(0, 0, lag() ? 3 : 2.4, 0, 7); ctx.fill() }
       else if (se.shape === 'snow') { ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.strokeStyle = 'rgba(80,110,130,.35)'; ctx.beginPath(); ctx.arc(0, 0, p.r, 0, 7); ctx.fill(); ctx.stroke() }
       else if (se.shape === 'leaf') { ctx.globalAlpha = 0.55; ctx.fillStyle = p.c; ctx.beginPath(); ctx.moveTo(0, -p.r); ctx.quadraticCurveTo(p.r * 0.9, 0, 0, p.r); ctx.quadraticCurveTo(-p.r * 0.9, 0, 0, -p.r); ctx.fill() }
       else if (se.shape === 'petal') { ctx.globalAlpha = 0.6; ctx.fillStyle = p.c; ctx.beginPath(); ctx.ellipse(0, 0, p.r * 0.45, p.r * 0.8, 0, 0, 7); ctx.fill() }
@@ -826,18 +942,30 @@ export function mountRevir(root, options = {}) {
       ctx.restore()
     }
     let last = performance.now()
+    let sparat = 0 // upphunnen tid när bakgrunden hoppar över en bildruta
     const loop = (now) => {
-      const dt = Math.min(50, now - last) / 16.7
+      const rutt = Math.min(50, now - last)
       last = now
-      if (!document.hidden) {
-        ctx.clearRect(0, 0, W, H)
-        const t = now / 1000
-        P.forEach((p, k) => {
-          p.y += p.vy * dt * (pollen ? -0.4 : 1); p.a += p.va * dt
-          if (fireflies) { p.x += Math.cos(t * 0.3 + p.ph) * 0.25 * dt; if (p.y < -10) p.y = H + 10; if (p.y > H + 10) p.y = -10 }
-          else if (p.y > H + 20 || p.y < -30) P[k] = mk(false)
-          draw(p, t)
-        })
+      // Loopen går alltid, så den är också spelets mätpunkt för bildrutetid.
+      if (niva.mat(rutt)) size()
+      const dt = (rutt + sparat) / 16.7
+      // Pausad under promenad och konfetti, och när fliken ligger i bakgrunden.
+      // Bilden fryses i stället för att rensas — frusna löv i tre sekunder syns
+      // knappt, löv som plötsligt försvinner gör det.
+      if (pausaBakgrund > 0 || document.hidden) { sparat = 0; frame(loop); return }
+      // 30 fps på låg nivå: halva arbetet, och löv som driver syns inte falla
+      // ojämnare för det.
+      if (lag() && sparat === 0 && rutt < 24) { sparat = rutt; frame(loop); return }
+      sparat = 0
+      ctx.clearRect(0, 0, W, H)
+      const t = now / 1000
+      const antal = synliga()
+      for (let k = 0; k < P.length; k++) {
+        const p = P[k]
+        p.y += p.vy * dt * (pollen ? -0.4 : 1); p.a += p.va * dt
+        if (fireflies) { p.x += Math.cos(t * 0.3 + p.ph) * 0.25 * dt; if (p.y < -10) p.y = H + 10; if (p.y > H + 10) p.y = -10 }
+        else if (p.y > H + 20 || p.y < -30) P[k] = mk(false)
+        if (k < antal) draw(P[k], t)
       }
       frame(loop)
     }

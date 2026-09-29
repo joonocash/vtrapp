@@ -62,6 +62,19 @@ const backendScores = {
   },
 }
 
+// readSettings() läser localStorage och parsar JSON vid varje anrop, och spelet
+// frågar efter ljudinställningen för varje ton — flera per drag, och en per hopp
+// under vinstpromenaden. Värdet cachas därför en kort stund. 250 ms är kortare
+// än det tar att flytta fingret från kryssrutan till brädet, så ett reglage
+// känns fortfarande omedelbart.
+let cache = null
+let cacheTid = 0
+function settings() {
+  const nu = Date.now()
+  if (!cache || nu - cacheTid > 250) { cache = readSettings(); cacheTid = nu }
+  return cache
+}
+
 export default function HappysRevir() {
   const hostRef = useRef(null)
 
@@ -73,8 +86,8 @@ export default function HappysRevir() {
     const game = mountRevir(host, {
       images: { glad, ledsen, nojd },
       album: ALBUM,
-      isMuted: () => !readSettings().ljud,
-      shake: () => readSettings().skak,
+      isMuted: () => !settings().ljud,
+      shake: () => settings().skak,
       scores: backendScores,
       soundToggle: false, // ljudreglaget finns i GameShell
       theme: 'auto',
