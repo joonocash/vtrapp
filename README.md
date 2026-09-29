@@ -121,6 +121,7 @@ Vill du köra appen på en egen server med Tailscale för fjärråtkomst?
 Guiden täcker:
 - Installation på Ubuntu Server (perfekt för TrueNAS Scale VMs)
 - Automatisk uppstart med PM2 och systemd
+- Automatisk deploy när något mergas till `main` (GitHub Actions)
 - Nginx för produktion
 - Tailscale-setup för säker fjärråtkomst
 - Dela appen med vänner över Tailscale

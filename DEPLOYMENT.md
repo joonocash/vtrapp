@@ -224,25 +224,77 @@ Dela ut Tailscale-nätverket till vänner så får de:
 
 ### Uppdatera appen från GitHub
 
+Sker automatiskt när något mergas till `main`, se [Automatisk deploy](#automatisk-deploy-med-github-actions) nedan.
+
+För hand, på servern:
+
 ```bash
 cd ~/vtrapp
-
-# Hämta senaste ändringar
-git pull
-
-# Bygg om frontend
-cd frontend
-npm install
-npm run build
-
-# Starta om backend
-cd ../backend
-npm install --production
-pm2 restart vtrapp-backend
-
-# Starta om nginx
-sudo systemctl restart nginx
+./update.sh          # hämtar main och gör bara det som ändrats
+./update.sh --allt   # allt, t.ex. efter att du ändrat frontend/.env
 ```
+
+`update.sh` bygger frontend i en separat mapp och byter in den först när
+bygget lyckats, så ett trasigt bygge tar aldrig ner sajten. Den commit som
+ligger ute syns på `/version.txt`.
+
+## Automatisk deploy med GitHub Actions
+
+Workflowen i [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml):
+
+- **Pull request**: GitHubs egna servrar kör `npm test` och bygger frontend.
+  Resultatet syns som grön bock eller rött kryss på PR:en.
+- **Merge till `main`**: samma test, och om de går igenom kör runnern på
+  webbservern `./update.sh`. Blir något fel skickar GitHub ett mejl och
+  jobbet blir rött under **Actions**.
+
+Runnern kopplar upp sig *utåt* mot GitHub, så servern behöver inte vara
+nåbar från internet. (Den gamla webhooken på port 3002 fungerade aldrig av
+just den anledningen: GitHub kommer inte åt en server som bara nås via
+Tailscale.)
+
+### Sätt upp runnern (en gång)
+
+1. På GitHub: repot → **Settings → Actions → Runners → New self-hosted runner**,
+   välj **Linux** och **x64**.
+2. På webbservern, som `joono`: kör kommandona som visas där, men lägg till
+   namn och etikett i `config.sh`-raden:
+   ```bash
+   ./config.sh --url https://github.com/joonocash/vtrapp --token <från sidan> \
+     --name webbservern --labels webbservern --unattended
+   ```
+   Kör den inte med `sudo`: runnern ska köra som samma användare som äger
+   `~/vtrapp` och PM2.
+3. Installera den som tjänst så att den överlever omstart:
+   ```bash
+   sudo ./svc.sh install joono
+   sudo ./svc.sh start
+   ```
+4. Ta bort den gamla webhooken:
+   ```bash
+   pm2 delete vtrapp-webhook && pm2 save
+   ```
+5. **Settings → Actions → General → Approval for running fork pull request
+   workflows**: välj *Require approval for all external contributors*.
+   Repot är publikt, och en PR från någon annans fork skulle annars kunna
+   ändra workflowen och köra kod på din server.
+
+Klart när runnern står som **Idle** under Settings → Actions → Runners.
+Merga något, eller tryck **Run workflow** under Actions, och följ jobbet där.
+
+### Om något går fel
+
+- **Rött kryss på PR:en**: något test eller bygget gick sönder. Klicka på
+  krysset för loggen. Merga inte förrän den är grön.
+- **Deployen blev röd**: sajten ligger kvar som den var om det var bygget
+  som gick sönder. Var det backend som inte startar: `pm2 logs vtrapp-backend`.
+  Snabbaste vägen tillbaka är knappen **Revert** på den mergade PR:en och
+  sedan merga revert-PR:en. Då deployas den förra versionen igen.
+- **Jobbet står och väntar**: runnern är inte igång. `sudo ./svc.sh status`
+  i runnermappen.
+- **"Servern har ändringar som inte finns på GitHub"**: någon har ändrat
+  eller committat direkt på servern. Kolla `git status` och
+  `git log origin/main..HEAD` i `~/vtrapp`.
 
 ### Användbara kommandon
 
