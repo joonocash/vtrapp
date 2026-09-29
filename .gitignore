@@ -35,3 +35,8 @@ yarn-error.log*
 .idx/
 # Highscores (rötspel)
 backend/data/
+
+# Tillfälliga byggmappar från update.sh
+frontend/dist-ny/
+frontend/dist-gammal/
+.deploy-pagar

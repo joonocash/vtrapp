@@ -1,0 +1,64 @@
+name: Testa och deploya
+
+# Pull request:  GitHubs egna servrar kör testerna och bygger sajten.
+#                Resultatet syns som en grön bock eller ett rött kryss på PR:en.
+# Merge till main: samma test, och om de går igenom deployar runnern på
+#                webbservern med ./update.sh.
+#
+# Runnern kopplar upp sig utåt mot GitHub, så webbservern behöver inte vara
+# nåbar utifrån. Uppsättning: se "Automatisk deploy" i DEPLOYMENT.md.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: # knapp under Actions för att deploya om för hand
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # En ny push till samma PR avbryter testkörningen som redan pågår.
+  # På main avbryts aldrig något, nästa deploy väntar på sin tur.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Tester och bygge
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Installera beroenden
+        run: npm install --no-audit --no-fund
+      - name: Tester
+        run: npm test
+      - name: Bygg frontend
+        run: npm run build --workspace=frontend
+
+  deploy:
+    name: Deploya till webbservern
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, webbservern]
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-webbservern
+      cancel-in-progress: false
+    steps:
+      - name: Hämta main och bygg om
+        env:
+          # Utan den här dödar runnern alla processer jobbet startat när det
+          # är klart, och då kan PM2 och backend följa med.
+          RUNNER_TRACKING_ID: ""
+        run: |
+          cd ~/vtrapp
+          # Hämtas här och inte bara i update.sh, så att det alltid är den
+          # nya versionen av skriptet som körs.
+          git fetch --quiet origin main
+          git merge --ff-only --quiet origin/main
+          ./update.sh
