@@ -76,7 +76,12 @@
 .rv-root .cell img.pop { animation: rv-pop .55s ease-out; }
 .rv-root .cell img.sad { animation: rv-shake .5s; }
 .rv-root .cell img.hop { animation: rv-hop .5s ease-out; }
-.rv-root .cell.glow { animation: rv-wave .75s ease-out both; z-index: 1; }
+/* Vågen genom reviret. Ljusningen görs med ett vitt lager som tonas in och ut,
+   inte med filter: brightness()/saturate() — ett filter tvingar webbläsaren att
+   rita om hela rutan varje bildruta, medan opacity och transform kan lämnas till
+   grafikkortet. Fördröjningen sätts som --rv-d på rutan och ärvs av lagret. */
+.rv-root .cell.glow { animation: rv-wave .75s ease-out both; animation-delay: var(--rv-d, 0ms); z-index: 1; }
+.rv-root .cell.glow::before { content: ""; position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; animation: rv-flash .75s ease-out both; animation-delay: var(--rv-d, 0ms); }
 .rv-root .walls { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
 .rv-root .hintsvg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
 .rv-root .hint-unit { animation: rv-march .9s linear infinite; }
@@ -92,7 +97,10 @@
 .rv-root .rv-outline { animation: rv-outlineflash 1s ease-out forwards; }
 .rv-root .prints { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .rv-root .prints g { animation: rv-printin .3s ease-out both; }
-.rv-root .walker { position: absolute; z-index: 6; pointer-events: none; transform: translate(-50%,-50%); }
+/* Promenaden flyttar hunden med transform, inte left/top — left/top tvingar fram
+   en ny layoutberäkning av hela brädet varje bildruta. left/top står kvar på 0
+   och JS sätter hela transformen. */
+.rv-root .walker { position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; transform: translate(-50%,-50%); will-change: transform; }
 .rv-root .walker img { width: 100%; height: 100%; border-radius: 50%; border: 2px solid var(--wall); box-shadow: 0 6px 10px rgba(0,0,0,.25); display: block; }
 .rv-root .boardbox.hurt { animation: rv-shake .45s; }
 .rv-root .float { position: absolute; font-weight: 800; color: var(--tongue); font-size: 1.3rem; pointer-events: none; animation: rv-floatup 1s ease-out forwards; z-index: 7; text-shadow: 0 1px 0 #fff; }
@@ -158,7 +166,8 @@
 @keyframes rv-pop { 0% { transform: translateY(-40%) scale(.2) } 55% { transform: translateY(0) scale(1.2,.84) } 75% { transform: scale(.93,1.07) } 100% { transform: scale(1) } }
 @keyframes rv-shake { 0%,100% { transform: translateX(0) } 20% { transform: translateX(-12%) } 40% { transform: translateX(10%) } 60% { transform: translateX(-7%) } 80% { transform: translateX(4%) } }
 @keyframes rv-hop { 0%,100% { transform: translateY(0) } 40% { transform: translateY(-28%) scale(1.08,.95) } 70% { transform: translateY(0) scale(1.1,.9) } }
-@keyframes rv-wave { 0% { transform: none; filter: none } 30% { transform: translateY(-7%) scale(1.07); filter: brightness(1.3) saturate(1.35) } 65% { transform: translateY(1%) scale(.99) } 100% { transform: none; filter: none } }
+@keyframes rv-wave { 0% { transform: none } 30% { transform: translateY(-7%) scale(1.07) } 65% { transform: translateY(1%) scale(.99) } 100% { transform: none } }
+@keyframes rv-flash { 0% { opacity: 0 } 30% { opacity: .38 } 100% { opacity: 0 } }
 @keyframes rv-ringout { 0% { opacity: .95; transform: translate(-50%,-50%) scale(.3) } 100% { opacity: 0; transform: translate(-50%,-50%) scale(3.6) } }
 @keyframes rv-spark { 0% { opacity: 1; transform: translate(-50%,-50%) scale(.3) rotate(0) } 70% { opacity: 1 } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1) rotate(var(--rot)) } }
 @keyframes rv-fall { 0% { opacity: 0; transform: translate(-50%,-50%) rotate(0) } 15% { opacity: 1 } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) } }
