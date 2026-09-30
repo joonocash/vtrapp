@@ -1,0 +1,923 @@
+/* Krossen — Happys godisspel. Alla klasser börjar med kr- så inget läcker
+   ut till resten av sidan. */
+
+.kr-spel {
+  --kr-font: ui-rounded, 'SF Pro Rounded', 'Nunito', 'Varela Round', 'Arial Rounded MT Bold', system-ui, sans-serif;
+  position: relative;
+  width: var(--spelbredd, 400px);
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 8px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, var(--himmel1), var(--himmel2));
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25);
+  font-family: var(--kr-font);
+  color: #1f2937;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.kr-full {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+/* ----------------------------------------------------------- topprad */
+
+.kr-topprad {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.kr-ikonknapp {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--varldmork);
+  font-size: 17px;
+  font-weight: 800;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
+  transition: transform 120ms;
+}
+.kr-ikonknapp:active {
+  transform: scale(0.92);
+}
+.kr-ikonknapp-pa {
+  background: var(--varld);
+  color: #fff;
+}
+
+.kr-toppnamn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.kr-toppvarld {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--rubrik);
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.kr-toppbana {
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--rubrik);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kr-toppvarld,
+.kr-toppbana {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.kr-toppmynt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  font-weight: 800;
+  font-size: 14px;
+  color: #7a4a00;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.15);
+}
+
+/* --------------------------------------------------------------- hud */
+
+.kr-spelplan {
+  position: relative;
+}
+
+.kr-hud {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: stretch;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.kr-mal,
+.kr-poangruta {
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 14px;
+  padding: 5px 7px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.15);
+  min-width: 0;
+}
+
+.kr-mal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: center;
+  gap: 2px 8px;
+}
+.kr-mal-manga .kr-malpost svg,
+.kr-mal-manga .kr-malpost > div {
+  width: 20px !important;
+  height: 20px !important;
+}
+.kr-mal-manga .kr-malantal {
+  font-size: 12px;
+}
+
+.kr-malpost {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.kr-malantal {
+  font-weight: 900;
+  font-size: 14px;
+  color: #1f2937;
+  min-width: 12px;
+}
+.kr-klar .kr-malantal {
+  color: #16a34a;
+}
+.kr-klar svg {
+  opacity: 0.55;
+}
+.kr-malpoang {
+  font-weight: 900;
+  font-size: 13px;
+  color: #1f2937;
+}
+.kr-malpoang::before {
+  content: 'Nå ';
+  font-weight: 700;
+  color: #6b7280;
+}
+
+.kr-drag {
+  width: 62px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fff, #e8eefc);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.18), inset 0 0 0 3px var(--varld);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+}
+.kr-drag-tal {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--varldmork);
+  font-variant-numeric: tabular-nums;
+}
+.kr-drag-text {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #6b7280;
+  letter-spacing: 0.05em;
+}
+.kr-drag-lag {
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.18), inset 0 0 0 3px #ef4444;
+  animation: kr-puls 900ms ease-in-out infinite;
+}
+.kr-drag-lag .kr-drag-tal {
+  color: #dc2626;
+}
+
+.kr-poangruta {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.kr-poangtal {
+  font-weight: 900;
+  font-size: 15px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.kr-matare {
+  position: relative;
+  height: 9px;
+  border-radius: 999px;
+  background: #d8dee9;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  margin: 0 4px 6px;
+}
+.kr-matare-fyll {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffd21f, #ff8a1c, #f03a5f);
+  transition: width 400ms ease-out;
+}
+.kr-matare-stjarna {
+  position: absolute;
+  top: -4px;
+}
+
+/* ------------------------------------------------------------ brädet */
+
+.kr-bradram {
+  padding: 4px;
+}
+
+.kr-bradet {
+  position: relative;
+  width: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+
+.kr-celler,
+.kr-lager,
+.kr-koppellager {
+  position: absolute;
+  inset: 0;
+}
+.kr-lager {
+  overflow: hidden;
+  border-radius: 10px;
+}
+.kr-koppellager {
+  pointer-events: none;
+}
+
+.kr-cell {
+  position: absolute;
+}
+.kr-cell::before {
+  content: '';
+  position: absolute;
+  inset: 1.5%;
+  border-radius: 18%;
+  background: rgba(24, 34, 78, 0.42);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
+}
+.kr-cell-b::before {
+  background: rgba(24, 34, 78, 0.32);
+}
+.kr-lera {
+  position: absolute;
+  inset: 0;
+}
+
+.kr-utgang {
+  position: absolute;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  margin-top: -2px;
+  animation: kr-studs 1.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.kr-bit {
+  position: absolute;
+  will-change: transform;
+}
+.kr-inre {
+  width: 100%;
+  height: 100%;
+  padding: 3%;
+}
+
+.kr-vald {
+  z-index: 3;
+}
+.kr-vald::after {
+  content: '';
+  position: absolute;
+  inset: 2%;
+  border-radius: 20%;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95), 0 0 14px 4px rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}
+.kr-vald .kr-inre {
+  animation: kr-hopp 520ms ease-in-out infinite;
+}
+
+.kr-sp-raket-h .kr-rander,
+.kr-sp-raket-v .kr-rander {
+  animation: kr-skimmer 1.3s ease-in-out infinite;
+}
+.kr-sp-bomb .kr-inre {
+  animation: kr-glod 1.4s ease-in-out infinite;
+}
+.kr-sp-skal .kr-inre {
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.8));
+}
+.kr-skalring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: kr-snurr 3s linear infinite;
+}
+.kr-glimt {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: kr-blink 1.6s ease-in-out infinite;
+}
+.kr-sval {
+  animation: kr-sval 1.6s ease-in-out infinite;
+}
+.kr-armerad .kr-inre {
+  animation: kr-laddad 300ms ease-in-out infinite;
+}
+.kr-vagga {
+  animation: kr-vagga 700ms ease-in-out infinite;
+}
+
+.kr-koppel {
+  position: absolute;
+  padding: 2%;
+}
+
+.kr-canvas {
+  position: absolute;
+  left: -48px;
+  top: -48px;
+  pointer-events: none;
+  z-index: 20;
+}
+.kr-textlager {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 25;
+}
+
+.kr-poang {
+  position: absolute;
+  font-weight: 900;
+  font-size: clamp(12px, 3.6vw, 16px);
+  white-space: nowrap;
+  text-shadow: 0 0 3px #1e1b4b, 0 2px 0 #1e1b4b, 0 0 8px rgba(0, 0, 0, 0.4);
+}
+
+.kr-berom {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  font-family: var(--kr-font);
+  font-weight: 900;
+  font-size: clamp(34px, 11vw, 54px);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  -webkit-text-stroke: 2px #4a1470;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 4px 0 #4a1470) drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+.kr-berom-1 {
+  background-image: linear-gradient(180deg, #fff9c4, #ffd21f 55%, #ff8a1c);
+}
+.kr-berom-2 {
+  background-image: linear-gradient(180deg, #ffe0f0, #ff7eb6 55%, #d6246e);
+}
+.kr-berom-3 {
+  background-image: linear-gradient(180deg, #e0fbff, #6ee7ff 55%, #2f8af0);
+}
+.kr-berom-4 {
+  background-image: linear-gradient(180deg, #fff, #ffd35c 25%, #ff7eb6 50%, #9f7aea 75%, #6ee7ff);
+}
+
+.kr-banner {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  font-weight: 900;
+  white-space: nowrap;
+  text-shadow: 0 0 4px #111827, 0 3px 0 #111827, 0 6px 12px rgba(0, 0, 0, 0.45);
+}
+
+.kr-strimma {
+  position: absolute;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  border-radius: 999px;
+}
+.kr-flygare {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.35));
+}
+.kr-ljus {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95), rgba(255, 245, 200, 0.5) 40%, rgba(255, 255, 255, 0) 70%);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+.kr-tass {
+  position: absolute;
+  z-index: 35;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 4px rgba(0, 0, 0, 0.35));
+}
+
+/* ---------------------------------------------------------- boosters */
+
+.kr-nedre {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.kr-nedre:empty {
+  display: none;
+}
+
+.kr-boosters,
+.kr-startboost {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.kr-startboost {
+  position: relative;
+  padding: 10px 8px 4px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.45);
+  flex-wrap: nowrap;
+}
+.kr-startboost-rubrik {
+  position: absolute;
+  z-index: 1;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--varld);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.kr-booster {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 64px;
+  padding: 5px 8px 4px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff, #eef2ff);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.18);
+  transition: transform 120ms;
+}
+.kr-booster:active {
+  transform: scale(0.94);
+}
+.kr-booster-aktiv {
+  background: linear-gradient(180deg, #fff7c2, #ffd21f);
+  box-shadow: 0 0 0 3px #fff, 0 0 14px rgba(255, 210, 31, 0.9);
+}
+.kr-booster-anvand {
+  opacity: 0.55;
+}
+.kr-booster-ikon {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  font-weight: 900;
+  color: var(--varldmork);
+}
+.kr-booster-plus {
+  font-size: 15px;
+  color: #16a34a;
+}
+.kr-booster-namn {
+  font-size: 10px;
+  font-weight: 800;
+  color: #374151;
+  white-space: nowrap;
+}
+.kr-booster-bricka {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 2px solid #fff;
+}
+
+.kr-lagetext {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.85);
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--varldmork);
+}
+.kr-meddelande {
+  position: absolute;
+  top: -34px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* ---------------------------------------------------------- knappar */
+
+.kr-knapp {
+  font-family: var(--kr-font);
+  font-weight: 900;
+  border-radius: 999px;
+  padding: 10px 20px;
+  color: #fff;
+  background: linear-gradient(180deg, #5ee07a, #1fa045);
+  box-shadow: 0 4px 0 #13702f, 0 6px 12px rgba(0, 0, 0, 0.2);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: transform 100ms;
+}
+.kr-knapp:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #13702f;
+}
+.kr-knapp:disabled {
+  opacity: 0.5;
+  filter: grayscale(0.6);
+}
+.kr-knapp-stor {
+  font-size: 17px;
+  padding: 12px 26px;
+}
+.kr-knapp-sekundar {
+  background: linear-gradient(180deg, #7cc4ff, #2f7fe0);
+  box-shadow: 0 4px 0 #1a4f99, 0 6px 12px rgba(0, 0, 0, 0.2);
+  font-size: 14px;
+}
+.kr-knapp-sekundar:active {
+  box-shadow: 0 1px 0 #1a4f99;
+}
+.kr-knapp-liten {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.kr-knapp-lank {
+  background: none;
+  box-shadow: none;
+  color: #6b7280;
+  text-shadow: none;
+  font-size: 13px;
+  padding: 6px;
+}
+
+/* ----------------------------------------------------------- rutorna */
+
+.kr-ruta-bakgrund {
+  position: absolute;
+  inset: -8px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 20, 50, 0.55);
+  backdrop-filter: blur(2px);
+  animation: kr-tona-in 200ms ease-out;
+}
+.kr-ruta {
+  width: min(88%, 320px);
+  padding: 18px 16px 16px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #fffdf6, #ffeec9);
+  box-shadow: 0 0 0 4px #fff, 0 12px 30px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  animation: kr-ruta-in 360ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.kr-ruta-titel {
+  font-size: 21px;
+  font-weight: 900;
+  color: #7c2d12;
+  line-height: 1.15;
+}
+.kr-ruta-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #57534e;
+  line-height: 1.35;
+}
+.kr-ruta-sma {
+  font-size: 12px;
+  font-weight: 700;
+  color: #78716c;
+}
+.kr-ruta-knappar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.kr-happy {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  margin-top: -52px;
+  background: #fff;
+}
+.kr-happy-liten {
+  width: 70px;
+  height: 70px;
+  margin-top: -44px;
+}
+.kr-happy-hopp {
+  animation: kr-happyhopp 900ms ease-in-out infinite;
+}
+.kr-mallista {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 16px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+}
+.kr-malpost-stor .kr-malantal {
+  font-size: 18px;
+}
+.kr-resultat-stjarnor {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+}
+.kr-rstjarna {
+  transform: scale(0.8);
+  opacity: 0.8;
+}
+.kr-rstjarna:nth-child(2) {
+  margin-bottom: 10px;
+}
+.kr-rstjarna-in {
+  animation: kr-stjarna-in 500ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.kr-resultat-poang {
+  font-size: 20px;
+  font-weight: 900;
+  color: #1f2937;
+}
+.kr-resultat-mynt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 900;
+  color: #a16207;
+}
+
+/* ------------------------------------------------------------ kartan */
+
+.kr-karta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kr-kartrad {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.kr-kartstat {
+  display: flex;
+  gap: 10px;
+  font-weight: 900;
+  color: var(--varldmork);
+}
+.kr-kartstat span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+}
+.kr-kartskroll {
+  height: min(70vh, 560px);
+  overflow-y: auto;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.4);
+  overscroll-behavior: contain;
+}
+.kr-kartinnehall {
+  position: relative;
+  overflow: hidden;
+}
+.kr-varld {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+.kr-varldnamn {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  font-weight: 900;
+  font-size: 15px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+}
+.kr-stig {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.kr-dekor {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0.9;
+}
+.kr-nod {
+  position: absolute;
+  width: 42px;
+  height: 42px;
+  margin: -21px 0 0 -21px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff 0%, var(--nodfarg) 45%, var(--nodmork) 100%);
+  border: 3px solid #fff;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
+  display: grid;
+  place-items: center;
+  z-index: 2;
+  transition: transform 120ms;
+}
+.kr-nod:active {
+  transform: scale(0.92);
+}
+.kr-nodtal {
+  font-weight: 900;
+  font-size: 15px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.kr-nod-boss {
+  width: 54px;
+  height: 54px;
+  margin: -27px 0 0 -27px;
+  border-color: #ffd21f;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25), 0 0 14px rgba(255, 210, 31, 0.8);
+}
+.kr-nod-last {
+  background: radial-gradient(circle at 35% 30%, #eee, #9ca3af 60%, #6b7280);
+  cursor: default;
+}
+.kr-nod-last .kr-nodtal {
+  font-size: 13px;
+}
+.kr-nod-aktuell {
+  animation: kr-nodpuls 1.2s ease-in-out infinite;
+}
+.kr-nodstjarnor {
+  position: absolute;
+  bottom: -13px;
+  display: flex;
+  gap: 0;
+}
+.kr-kartahappy {
+  position: absolute;
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  margin-left: -22px;
+  transition: left 700ms cubic-bezier(0.34, 1.3, 0.64, 1), top 700ms cubic-bezier(0.34, 1.3, 0.64, 1);
+  pointer-events: none;
+}
+.kr-kartahappy img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.35);
+  animation: kr-happyhopp 1s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------- keyframes */
+
+@keyframes kr-puls {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
+}
+@keyframes kr-hopp {
+  0%, 100% { transform: translateY(0) scale(1.06); }
+  50% { transform: translateY(-7%) scale(1.1); }
+}
+@keyframes kr-skimmer {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@keyframes kr-glod {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.5)); }
+  50% { filter: drop-shadow(0 0 7px rgba(255, 255, 255, 1)); }
+}
+@keyframes kr-snurr {
+  to { transform: rotate(360deg); }
+}
+@keyframes kr-blink {
+  0%, 100% { opacity: 0.2; transform: scale(0.6); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+@keyframes kr-sval {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes kr-laddad {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 3px #ff4d4d); }
+  50% { transform: scale(1.12); filter: drop-shadow(0 0 9px #ffdd55); }
+}
+@keyframes kr-vagga {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  25% { transform: translateY(-6%) rotate(-7deg); }
+  75% { transform: translateY(-2%) rotate(7deg); }
+}
+@keyframes kr-studs {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
+}
+@keyframes kr-tona-in {
+  from { opacity: 0; }
+}
+@keyframes kr-ruta-in {
+  from { transform: scale(0.6); opacity: 0; }
+}
+@keyframes kr-stjarna-in {
+  0% { transform: scale(0.2) rotate(-40deg); opacity: 0; }
+  70% { transform: scale(1.35) rotate(8deg); opacity: 1; }
+  100% { transform: scale(1.1) rotate(0); opacity: 1; }
+}
+@keyframes kr-happyhopp {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-8px); }
+  60% { transform: translateY(-8px) rotate(4deg); }
+}
+@keyframes kr-nodpuls {
+  0%, 100% { box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25), 0 0 0 0 rgba(255, 255, 255, 0.8); }
+  50% { box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25), 0 0 0 9px rgba(255, 255, 255, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kr-vald .kr-inre,
+  .kr-sp-bomb .kr-inre,
+  .kr-skalring,
+  .kr-sval,
+  .kr-utgang,
+  .kr-happy-hopp,
+  .kr-kartahappy img,
+  .kr-nod-aktuell {
+    animation: none;
+  }
+}

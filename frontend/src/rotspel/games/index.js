@@ -31,14 +31,13 @@ export const GAMES = [
   {
     id: 'krossen',
     name: 'Krossen',
-    blurb: 'Matcha tre. Fyra ger raket, fem i L ger bomb, fem i rad ger prisma.',
+    blurb: 'Hjälp Happy få godis! Matcha tre. 100 banor på Happys promenad.',
     category: 'pussel',
     accent: 'text-fuchsia-400',
-    scoreLabel: 'poäng',
-    scoreFormat: 'number',
-    higherIsBetter: true,
+    // Banor med egna stjärnor, sparas i webbläsaren. Ingen topplista.
+    scoreFormat: 'none',
     reglage: ['ljud', 'skak', 'hitstop'],
-    forhallande: 1,
+    forhallande: 0.7,
     load: () => import('./Krossen.jsx'),
   },
   {
