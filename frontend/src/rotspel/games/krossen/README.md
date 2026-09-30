@@ -12,13 +12,34 @@ promenad, fem världar à 20 banor och en bossbana sist i varje värld.
 | `pieces.jsx` | All grafik som SVG: godiset, specialpjäserna, hindren och ikonerna. |
 | `fx.js` | Effekterna. Pjäsernas rörelser med Web Animations API, partiklar på en canvas. |
 | `audio.js` | Allt ljud syntas i webbläsaren, plus bakgrundsmusiken. |
-| `store.js` | Det som sparas i webbläsaren: stjärnor, mynt, boosters, sedda tips. |
+| `store.js` | Sparläget: stjärnor, mynt, boosters, sedda tips, dagliga belöningar, vinstsvit, stjärnkistor, och sammanslagningen när två enheter möts. Rena funktioner. |
+| `synk.js` | Pratar med servern: framsteg per spelare, kompisar på kartan, topplistor. |
+| `Dagligt.jsx` | Dagens godis (inloggningsserien, lyckohjulet, dagens bana), stjärnkistan och notisen. |
 | `Spelplan.jsx` | En omgång på en bana: brädet, statusraden, boostrarna, vinst- och förlustrutorna. |
 | `Karta.jsx` | Kartan med stigen. |
 | `KrossenGame.jsx` | Håller ihop allt: vilken bana som spelas, kartan, sparningen. |
 
-Testerna ligger i `frontend/tests/krossen-engine.test.mjs` och körs med
-`npm test` från repots rot.
+Backend: `backend/src/routes/krossen.js` sparar framstegen i
+`backend/data/krossen.json`. Topplistorna per bana (`krossen-bana-<nr>`) och
+för dagens bana (`krossen-dag-<datum>`) går genom den vanliga
+`/api/scores`.
+
+Testerna ligger i `frontend/tests/krossen-engine.test.mjs` och
+`krossen-store.test.mjs` och körs med `npm test` från repots rot.
+
+## Det som får en att komma tillbaka
+
+- **Inloggningsserien** — sju dagar med allt bättre belöningar. Missar man en dag börjar den om.
+- **Lyckohjulet** — ett snurr per dag.
+- **Dagens bana** — samma bräde för alla (datumet är slumpfröet), egen topplista. Första vinsten ger mynt.
+- **Vinstsvit** — vinner man i rad börjar nästa bana med en raket, sedan även en bomb, sedan en godisskål. Förlust eller att lämna banan nollställer.
+- **Stjärnkistan** — var tjugonde stjärna.
+- **Kompisar på kartan** och **topplista per bana** — hämtas från servern.
+
+Framstegen synkas per spelarnamn. Stjärnor och bästa poäng tas från båda
+enheterna. Allt annat tas från den som sparade senast, men datum och
+öppnade kistor går aldrig bakåt, så samma dagliga belöning kan inte hämtas två
+gånger.
 
 ## Pjäserna
 
@@ -30,6 +51,10 @@ Testerna ligger i `frontend/tests/krossen-engine.test.mjs` och körs med
 | 3 grön | tass |
 | 4 blå | fiskkex |
 | 5 lila | munk |
+
+Hinder: lera, lådor (1–3 lager), koppel, ogräs som växer, köttben som ska
+ner till botten, tennisbollar (faller, går inte att matcha, stoppar raketer)
+och väckarklockor (godis som räknar ner — når en noll är banan förlorad).
 
 Specialpjäser: 4 i rad ger raket, 2×2 ger frisbee, 5 i L/T ger bomb (smäller
 två gånger), 5 i rad ger Godisskålen. Alla kombinationer av två specialpjäser
@@ -54,8 +79,10 @@ En bana är en rad i `SPEC` i `levels.js`:
    - `e3` tre köttben
    - `f2:25` 25 ostbitar
    - `raket3` tre raketer
-4. **Lager** — `typ:mönster:nivå` där typ är `lera`, `lada`, `koppel`, `ograss` eller `kott`. Mönstren finns i `MONSTER`.
-5. **Flaggor** — `boss`, `latt`, `tips:<nyckel>`.
+   - `boll10` tio tennisbollar
+   - `klocka5` fem klockor
+4. **Lager** — `typ:mönster:nivå` där typ är `lera`, `lada`, `koppel`, `ograss`, `kott`, `boll` eller `klocka`. Mönstren finns i `MONSTER`.
+5. **Flaggor** — `boss`, `latt`, `tips:<nyckel>`, `bollar` eller `bollar:0.04` (tennisbollar ramlar in, med den chansen), `klockor:<tid>` (godis med klocka kommer in, med `<tid>` drag på sig).
 
 Dragantal och stjärngränser står i `STAMNING` och kommer från provspelning.
 Ändrar du en bana: spela den själv och justera dragen och stjärnorna för hand.

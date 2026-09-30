@@ -17,6 +17,7 @@ import {
   bytFritt,
   gravitation,
   laggUtSpecialer,
+  kanBytas,
 } from '../src/rotspel/games/krossen/engine.js'
 import { BANOR, VARLDAR, BANOR_PER_VARLD } from '../src/rotspel/games/krossen/levels.js'
 
@@ -226,6 +227,58 @@ test('ogräs växer när man inte tar bort något', () => {
   }
 })
 
+// ---------------------------------------------------- bollar och klockor
+
+test('tennisbollen stoppar raketen och tar smällen', () => {
+  const s = brade(['01b23', '12340', '23401'])
+  s.tiles[0].special = 'raket-h'
+  const steg = tom(tassen(s, 0))
+  const r = steg[0]
+  assert.ok(r.rensas.includes(2), 'bollen träffas')
+  assert.ok(!r.rensas.includes(3) && !r.rensas.includes(4), 'raketen stannar vid bollen')
+  assert.equal(r.bollar.length, 1)
+  assert.deepEqual(r.kallor[0].linjer[0], { i: 0, lodrat: false, minus: 0, plus: 2 })
+})
+
+test('tennisbollen faller men går inte att byta', () => {
+  const s = brade(['b12', '345', '012'])
+  assert.equal(kanBytas(s, 0), false)
+  s.tiles[3] = null
+  gravitation(s)
+  assert.equal(s.tiles[3].typ, 'boll', 'bollen föll ner')
+})
+
+test('en matchning bredvid tar bollen', () => {
+  const s = brade(['1b2', '010', '304'])
+  const steg = tom(spelaDrag(s, 7, 4))
+  assert.ok(steg.some((x) => x.typ === 'rensa' && x.bollar.length === 1))
+  assert.equal(s.samlat.boll, 1)
+})
+
+test('klockan tickar per drag och ringer vid noll', () => {
+  const s = brade(['0102', '2041', '3412', '4123'], { mal: [{ typ: 'poang', antal: 1e9 }] })
+  s.tiles[15].klocka = 2
+  tom(spelaDrag(s, 5, 1))
+  const kvar = s.tiles.find((t) => t && t.klocka !== undefined && t.klocka > 0)
+  assert.ok(kvar && kvar.klocka === 1, 'klockan tickade ett steg')
+  assert.equal(s.klockaRingde, null)
+  const drag = hittaDrag(s).find(([a, b]) => s.tiles[a].klocka === undefined && s.tiles[b].klocka === undefined)
+  const steg = tom(spelaDrag(s, drag[0], drag[1]))
+  const tick = steg.find((x) => x.typ === 'klocka')
+  if (s.tiles.some((t) => t && t.klocka === 0)) {
+    assert.ok(tick && tick.ringde !== null)
+    assert.notEqual(s.klockaRingde, null)
+  }
+})
+
+test('en klocka som matchas bort räknas', () => {
+  const s = brade(['000', '123', '234'], { mal: [{ typ: 'klocka', antal: 1 }] })
+  s.tiles[1].klocka = 5
+  tom(tassen(s, 1))
+  assert.equal(s.samlat.klocka, 1)
+  assert.ok(malKlara(s))
+})
+
 // ------------------------------------------------------------ slumpspel
 
 // Riktiga banor med slumpade drag. Inga krascher, inga tomma rutor som
@@ -235,6 +288,7 @@ const kartor = [
   ['#..ll..#', '.llLLll.', '.1.kk.1.', 'l..22..l', 'l..oo..l', '.1....1.', '.llLLll.', '#..ll..#'],
   ['..e..e..', '........', '..3..3..', '.k....k.', '........', '###..###', '........', '........'],
   ['.........', '..o...o..', '.........', '.2.....2.', '....#....', '.2.....2.', '.........', '..o...o..', '.........'],
+  ['..b..t..', '........', '.t....b.', '........', '..bb....', '........', '.t..1...', '........'],
 ]
 let drag = 0
 for (let seed = 1; seed <= 40; seed++) {
@@ -246,6 +300,8 @@ for (let seed = 1; seed <= 40; seed++) {
       farger: 4 + (seed % 3),
       mal: [{ typ: 'poang', antal: 1e9 }],
       kott: karta.join('').includes('e') ? { antal: 4, max: 2 } : null,
+      bollar: karta.join('').includes('b') ? { chans: 0.1, max: 6 } : null,
+      klockor: karta.join('').includes('t') ? { chans: 0.05, max: 3, tid: 12 } : null,
     },
     skapaRng(seed)
   )
@@ -275,7 +331,10 @@ for (let seed = 1; seed <= 40; seed++) {
     assert.ok(hittaTips(s))
   }
   tom(godisregn(s))
-  assert.ok(s.tiles.every((t) => !t || t.typ !== 'bit' || !t.special), 'specialer kvar efter finalen')
+  // Med fyra färger kan kedjorna i finalen skapa nya specialer i det
+  // oändliga; finalen har ett tak, så ett par kan bli kvar. Fler än så
+  // betyder att något inte utlöses.
+  assert.ok(s.tiles.filter((t) => t && t.typ === 'bit' && t.special).length <= 4, 'specialer kvar efter finalen')
   malStatus(s)
 }
 console.log('  ok', drag, 'slumpade drag på', kartor.length, 'kartor')

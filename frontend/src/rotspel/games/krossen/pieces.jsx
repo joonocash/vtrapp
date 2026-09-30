@@ -315,6 +315,21 @@ export function Kott() {
   )
 }
 
+// Tennisbollen: faller som en pjäs men går inte att matcha, och stoppar
+// raketer.
+export function Boll() {
+  return (
+    <g>
+      <ellipse cx="50" cy="88" rx="26" ry="5" fill="#000" opacity=".25" />
+      <circle cx="50" cy="52" r="33" fill="#6b7d10" />
+      <circle cx="50" cy="50" r="33" fill="url(#kr-boll)" />
+      <path d="M22 32 C 40 40, 40 62, 22 70" stroke="#fdfdf2" strokeWidth="5" fill="none" strokeLinecap="round" />
+      <path d="M78 30 C 60 40, 60 62, 78 70" stroke="#fdfdf2" strokeWidth="5" fill="none" strokeLinecap="round" />
+      <ellipse cx="40" cy="30" rx="9" ry="5" transform="rotate(-30 40 30)" fill="#fff" opacity=".45" />
+    </g>
+  )
+}
+
 export function Koppel() {
   return (
     <svg viewBox="0 0 100 100" className="kr-full" aria-hidden="true">
@@ -368,6 +383,13 @@ export function Pjas({ tile }) {
     return (
       <svg viewBox="0 0 100 100" className="kr-full">
         <Kott />
+      </svg>
+    )
+  }
+  if (tile.typ === 'boll') {
+    return (
+      <svg viewBox="0 0 100 100" className="kr-full">
+        <Boll />
       </svg>
     )
   }
@@ -433,6 +455,12 @@ export function MalIkon({ mal, storlek = 28 }) {
     case 'kott':
       inner = <Kott />
       break
+    case 'boll':
+      inner = <Boll />
+      break
+    case 'klocka':
+      inner = <KlockIkon />
+      break
     case 'special':
       if (mal.special === 'skal') inner = <Skal />
       else if (mal.special === 'frisbee') inner = <Frisbee k={4} />
@@ -461,6 +489,20 @@ export function MalIkon({ mal, storlek = 28 }) {
     <svg viewBox="0 0 100 100" width={storlek} height={storlek} aria-hidden="true">
       {inner}
     </svg>
+  )
+}
+
+// Väckarklockan som sitter på pjäser med nedräkning.
+export function KlockIkon() {
+  return (
+    <g>
+      <circle cx="26" cy="22" r="11" fill="#f5b400" stroke="#8a5a00" strokeWidth="3" />
+      <circle cx="74" cy="22" r="11" fill="#f5b400" stroke="#8a5a00" strokeWidth="3" />
+      <circle cx="50" cy="56" r="36" fill="#e5333f" stroke="#7a1018" strokeWidth="4" />
+      <circle cx="50" cy="56" r="27" fill="#fffaf0" />
+      <path d="M50 56 V36 M50 56 L64 64" stroke="#1f2937" strokeWidth="5" strokeLinecap="round" />
+      <path d="M28 92 l8 -10 M72 92 l-8 -10" stroke="#7a1018" strokeWidth="6" strokeLinecap="round" />
+    </g>
   )
 }
 
@@ -522,6 +564,11 @@ export function KrossenDefs() {
           <stop offset="0" stopColor="#b9834d" />
           <stop offset="1" stopColor="#7a4b22" />
         </linearGradient>
+        <radialGradient id="kr-boll" cx=".38" cy=".32" r=".75">
+          <stop offset="0" stopColor="#f6ff9e" />
+          <stop offset=".55" stopColor="#d4ec2c" />
+          <stop offset="1" stopColor="#8fa512" />
+        </radialGradient>
         <radialGradient id="kr-kott" cx=".4" cy=".3" r=".8">
           <stop offset="0" stopColor="#f0a468" />
           <stop offset=".55" stopColor="#c45a27" />

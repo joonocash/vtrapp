@@ -14,6 +14,9 @@
 //                      { id, typ: 'lada', hp }      låda, 1–3 lager
 //                      { id, typ: 'ograss' }        växer om man inte tar bort något
 //                      { id, typ: 'kott' }          köttben som ska ner till botten
+//                      { id, typ: 'boll' }          tennisboll: faller, stoppar raketer
+//                    en bit kan ha klocka: n — den tickar ner ett steg per drag,
+//                    och når den noll är banan förlorad
 //   s.lera[i]        lera under rutan, 0–2 lager
 //   s.koppel[i]      pjäsen i rutan sitter fast
 //
@@ -27,7 +30,7 @@
 export const SIDA_MAX = 9
 
 // Poäng. Bitar gånger kedjenivån, hinder och leverans är fasta.
-export const POANG = { bit: 20, lera: 100, lada: 40, ograss: 40, koppel: 40, kott: 1000 }
+export const POANG = { bit: 20, lera: 100, lada: 40, ograss: 40, koppel: 40, kott: 1000, boll: 60 }
 
 const arRaket = (x) => x === 'raket-h' || x === 'raket-v'
 
@@ -57,12 +60,14 @@ export function skapaRng(seed) {
 //   1 2 3  låda med så många lager
 //   k  pjäs i koppel             K  pjäs i koppel på lera
 //   o  ogräs                     e  köttben
+//   b  tennisboll                t  pjäs med klocka
 export function skapaSpel(bana, rng = Math.random) {
   const rader = bana.karta
   const h = rader.length
   const w = Math.max(...rader.map((r) => r.length))
   const n = w * h
 
+  const klockCeller = []
   const s = {
     w,
     h,
@@ -76,8 +81,11 @@ export function skapaSpel(bana, rng = Math.random) {
     drag: bana.drag,
     poang: 0,
     mal: (bana.mal || []).map((m) => ({ ...m })),
-    samlat: { farg: new Array(6).fill(0), special: { raket: 0, bomb: 0, skal: 0, frisbee: 0 } },
+    samlat: { farg: new Array(6).fill(0), special: { raket: 0, bomb: 0, skal: 0, frisbee: 0 }, boll: 0, klocka: 0 },
     kott: null,
+    bollar: bana.bollar || null,
+    klockor: bana.klockor || null,
+    klockaRingde: null,
     levererade: 0,
     ograsBortDettaDrag: false,
     utgangar: new Set(),
@@ -96,6 +104,8 @@ export function skapaSpel(bana, rng = Math.random) {
       if (ch === 'K') s.lera[i] = 1
       if (ch === 'o') s.tiles[i] = { id: s.nextId++, typ: 'ograss' }
       if (ch === 'e') s.tiles[i] = { id: s.nextId++, typ: 'kott' }
+      if (ch === 'b') s.tiles[i] = { id: s.nextId++, typ: 'boll' }
+      if (ch === 't') klockCeller.push(i)
     }
   }
 
@@ -121,6 +131,8 @@ export function skapaSpel(bana, rng = Math.random) {
   }
 
   fyllStart(s)
+  const tid = (bana.klockor && bana.klockor.tid) || 15
+  for (const i of klockCeller) if (s.tiles[i] && s.tiles[i].typ === 'bit') s.tiles[i].klocka = tid
   return s
 }
 
@@ -207,16 +219,20 @@ export function arGrannar(s, a, b) {
 
 const matchbar = (t) => t && t.typ === 'bit' && !t.armerad
 
-// Kan pjäsen i rutan flyttas av spelaren eller av tyngdkraften?
+// Faller pjäsen i rutan när det blir tomt under den?
 function rorlig(s, i) {
   const t = s.tiles[i]
   if (!t) return false
-  if (t.typ === 'kott') return true
+  if (t.typ === 'kott' || t.typ === 'boll') return true
   return t.typ === 'bit' && !s.koppel[i]
 }
 
+// Kan spelaren flytta den? Tennisbollar faller men går inte att byta.
 export function kanBytas(s, i) {
-  return Boolean(s.mask[i] && rorlig(s, i))
+  const t = s.tiles[i]
+  if (!s.mask[i] || !t) return false
+  if (t.typ === 'kott') return true
+  return t.typ === 'bit' && !s.koppel[i]
 }
 
 // ---------------------------------------------------------------- matchning
@@ -359,14 +375,6 @@ function omrade(s, i, t, ctx, redan) {
   const r = Math.floor(i / w)
   const c = i % w
   const ut = new Set()
-  const rad = (rr) => {
-    if (rr < 0 || rr >= h) return
-    for (let x = 0; x < w; x++) if (s.mask[rr * w + x]) ut.add(rr * w + x)
-  }
-  const kolumn = (cc) => {
-    if (cc < 0 || cc >= w) return
-    for (let y = 0; y < h; y++) if (s.mask[y * w + cc]) ut.add(y * w + cc)
-  }
   const ruta = (mr, mc, radie) => {
     for (let y = mr - radie; y <= mr + radie; y++) {
       for (let x = mc - radie; x <= mc + radie; x++) {
@@ -384,26 +392,54 @@ function omrade(s, i, t, ctx, redan) {
     omrade: null,
     mal: null,
     radie: t.radie || 1,
+    linjer: [],
+  }
+
+  // En raket far åt båda hållen från (rr, cc) tills den når kanten eller en
+  // tennisboll. Bollen tar smällen och stoppar raketen. Hål i brädet flyger
+  // den rakt över. Linjerna sparas så att animationen stannar på samma ställe.
+  const linje = (rr, cc, lodrat) => {
+    if (rr < 0 || rr >= h || cc < 0 || cc >= w) return
+    const start = rr * w + cc
+    const langd = { minus: 0, plus: 0 }
+    if (s.mask[start]) ut.add(start)
+    for (const [riktning, nyckel] of [
+      [-1, 'minus'],
+      [1, 'plus'],
+    ]) {
+      let y = rr
+      let x = cc
+      for (;;) {
+        if (lodrat) y += riktning
+        else x += riktning
+        if (y < 0 || y >= h || x < 0 || x >= w) break
+        langd[nyckel]++
+        const j = y * w + x
+        if (!s.mask[j]) continue
+        ut.add(j)
+        const q = s.tiles[j]
+        if (q && q.typ === 'boll') break
+      }
+    }
+    kalla.linjer.push({ i: start, lodrat, minus: langd.minus, plus: langd.plus })
   }
 
   switch (t.special) {
     case 'raket-h':
-      rad(r)
+      linje(r, c, false)
       break
     case 'raket-v':
-      kolumn(c)
+      linje(r, c, true)
       break
     case 'kors':
-      rad(r)
-      kolumn(c)
+      linje(r, c, false)
+      linje(r, c, true)
       break
     case 'kors3':
-      rad(r - 1)
-      rad(r)
-      rad(r + 1)
-      kolumn(c - 1)
-      kolumn(c)
-      kolumn(c + 1)
+      for (const d of [-1, 0, 1]) {
+        linje(r + d, c, false)
+        linje(r, c + d, true)
+      }
       break
     case 'bomb':
       ruta(r, c, t.radie || 1)
@@ -432,8 +468,8 @@ function omrade(s, i, t, ctx, redan) {
         // frisbeen kan bära med sig en raket eller en bomb
         const mr = Math.floor(m / w)
         const mc = m % w
-        if (t.last === 'raket-h') rad(mr)
-        if (t.last === 'raket-v') kolumn(mc)
+        if (t.last === 'raket-h') linje(mr, mc, false)
+        if (t.last === 'raket-v') linje(mr, mc, true)
         if (t.last === 'bomb') ruta(mr, mc, 1)
       }
       kalla.mal = mal
@@ -476,6 +512,8 @@ function valjMal(s, undvik, fran) {
     let v = 0
     if (t && t.typ === 'lada') v = 60 + t.hp
     else if (t && t.typ === 'ograss') v = 62
+    else if (t && t.typ === 'boll') v = 56
+    else if (t && t.typ === 'bit' && t.klocka) v = 64 - t.klocka
     else if (s.koppel[j]) v = 58
     else if (s.lera[j] > 0 && (!t || t.typ === 'bit')) v = 50 + s.lera[j] * 5
     else if (underKott.has(j) && t && t.typ === 'bit') v = 40
@@ -527,6 +565,7 @@ function tillampa(s, rensas, kallor, kaskad = 1) {
     koppel: [],
     lera: [],
     armerade: [],
+    bollar: [],
     poang: 0,
   }
 
@@ -567,6 +606,13 @@ function tillampa(s, rensas, kallor, kaskad = 1) {
       continue
     }
     if (t.typ === 'kott') continue
+    if (t.typ === 'boll') {
+      s.tiles[i] = null
+      s.samlat.boll++
+      res.bollar.push({ i, id: t.id })
+      res.poang += POANG.boll
+      continue
+    }
 
     // en vanlig bit
     if (s.koppel[i]) {
@@ -586,6 +632,7 @@ function tillampa(s, rensas, kallor, kaskad = 1) {
     s.tiles[i] = null
     res.borta.push({ i, id: t.id, farg: t.farg, special: t.special })
     s.samlat.farg[t.farg]++
+    if (t.klocka) s.samlat.klocka++
     res.poang += POANG.bit * kaskad
     skadaLera(i)
   }
@@ -715,7 +762,18 @@ function inkommande(s, c) {
       return { id: s.nextId++, typ: 'kott' }
     }
   }
-  return nyBit(s, Math.floor(s.rng() * s.farger))
+  const b = s.bollar
+  if (b) {
+    const antal = s.tiles.filter((t) => t && t.typ === 'boll').length
+    if (antal < (b.max || 6) && s.rng() < (b.chans || 0.07)) return { id: s.nextId++, typ: 'boll' }
+  }
+  const bit = nyBit(s, Math.floor(s.rng() * s.farger))
+  const kl = s.klockor
+  if (kl && !s.iFinal) {
+    const antal = s.tiles.filter((t) => t && t.typ === 'bit' && t.klocka).length
+    if (antal < (kl.max || 3) && s.rng() < (kl.chans || 0.04)) bit.klocka = kl.tid || 15
+  }
+  return bit
 }
 
 // Köttben som nått botten lämnas till Happy.
@@ -881,7 +939,7 @@ function* kaskad(s, flyttade = null, kaskadStart = 0) {
       for (const i of g.celler) {
         for (const n of grannar(s, i)) {
           const t = s.tiles[n]
-          if (t && (t.typ === 'lada' || t.typ === 'ograss')) start.add(n)
+          if (t && (t.typ === 'lada' || t.typ === 'ograss' || t.typ === 'boll')) start.add(n)
         }
       }
     }
@@ -1036,9 +1094,16 @@ function* kombo(s, c, o) {
   yield* fall(s)
 }
 
-// Efter draget: ogräset växer om man inte tog bort något, och brädet
-// blandas om det inte finns några drag kvar.
+// Efter draget: klockorna tickar, ogräset växer om man inte tog bort något,
+// och brädet blandas om det inte finns några drag kvar.
 function* efterDrag(s) {
+  if (!malKlara(s)) {
+    const tick = tickaKlockor(s)
+    if (tick) {
+      yield tick
+      if (s.klockaRingde !== null) return
+    }
+  }
   if (!s.ograsBortDettaDrag && !malKlara(s)) {
     const steg = vaxOgras(s)
     if (steg) yield steg
@@ -1047,6 +1112,22 @@ function* efterDrag(s) {
     blandaBradet(s)
     yield { typ: 'blanda' }
   }
+}
+
+// Varje klocka på brädet tickar ett steg. Når någon noll är banan förlorad.
+function tickaKlockor(s) {
+  const celler = []
+  let ringde = null
+  s.tiles.forEach((t, i) => {
+    if (t && t.typ === 'bit' && t.klocka) {
+      t.klocka--
+      celler.push(i)
+      if (t.klocka <= 0 && ringde === null) ringde = i
+    }
+  })
+  if (!celler.length) return null
+  s.klockaRingde = ringde
+  return { typ: 'klocka', celler, ringde }
 }
 
 function vaxOgras(s) {
@@ -1150,6 +1231,7 @@ export function laggUtSpecialer(s, lista) {
 // och sedan smäller allt som ligger på brädet. Som när man vinner i
 // Candy Crush — det är där de flesta stjärnorna kommer ifrån.
 export function* godisregn(s, maxDrag = 25) {
+  s.iFinal = true
   const antal = Math.min(s.drag, maxDrag)
   for (let k = 0; k < antal; k++) {
     const lediga = []
@@ -1167,7 +1249,8 @@ export function* godisregn(s, maxDrag = 25) {
 }
 
 // Alla specialpjäser som ligger kvar smäller, en i taget, våg efter våg.
-export function* slutsmall(s, maxVagor = 8) {
+export function* slutsmall(s, maxVagor = 20) {
+  s.iFinal = true
   for (let vag = 1; vag <= maxVagor; vag++) {
     const kvar = []
     s.tiles.forEach((t, i) => {
@@ -1220,6 +1303,12 @@ export function malStatus(s) {
         break
       case 'special':
         kvar = Math.max(0, m.antal - s.samlat.special[m.special])
+        break
+      case 'boll':
+        kvar = Math.max(0, m.antal - s.samlat.boll)
+        break
+      case 'klocka':
+        kvar = Math.max(0, m.antal - s.samlat.klocka)
         break
     }
     return { ...m, kvar, totalt, klar: kvar === 0 }

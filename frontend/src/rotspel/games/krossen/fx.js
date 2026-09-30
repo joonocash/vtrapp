@@ -355,12 +355,18 @@ export function skapaFx({ bradet, lager, canvas, textlager, w, h }) {
   // Raketen: två glödande huvuden flyger åt var sitt håll längs raden eller
   // kolumnen och drar gnistor efter sig. msPerCell styr hur fort — pjäserna
   // i vägen spricker i samma takt.
-  function raket(i, lodrat, farg, { msPerCell = 26, fordrojning = 0 } = {}) {
+  // minus och plus är hur många rutor raketen hinner åt vardera hållet innan
+  // den tar slut (vid kanten eller en tennisboll). Utan dem far den ut över
+  // hela brädet.
+  function raket(i, lodrat, farg, { msPerCell = 26, fordrojning = 0, minus = null, plus = null } = {}) {
     const { x, y } = mitt(i)
     const p = cell()
     const fart = p / (msPerCell / 1000)
-    const langd = (lodrat ? h : w) * p + p
+    const helt = (lodrat ? h : w) * p + p
+    const langd = Math.max(minus ?? 99, plus ?? 99) >= 99 ? helt : Math.max(minus, plus) * p + p * 0.5
     for (const riktning of [-1, 1]) {
+      const n = riktning < 0 ? minus : plus
+      const stracka = n === null ? helt : n * p + p * 0.4
       lagg({
         typ: 'gnista',
         glod: true,
@@ -370,7 +376,7 @@ export function skapaFx({ bradet, lager, canvas, textlager, w, h }) {
         vy: lodrat ? fart * riktning : 0,
         storlek: p * 0.22,
         farg: '#ffffff',
-        max: langd / fart,
+        max: stracka / fart,
         tona: false,
         fordrojning,
         steg: (q) => {
@@ -392,13 +398,18 @@ export function skapaFx({ bradet, lager, canvas, textlager, w, h }) {
         },
       })
     }
-    // en ljusstrimma längs hela linjen
+    // en ljusstrimma längs den bit av linjen raketen hinner
+    const kol = i % w
+    const rad = Math.floor(i / w)
+    const fore = minus ?? (lodrat ? rad : kol)
+    const efter = plus ?? (lodrat ? h - 1 - rad : w - 1 - kol)
     const strimma = document.createElement('div')
     strimma.className = 'kr-strimma'
     const pos = lodrat
-      ? `left:${((i % w) + 0.5) * (100 / w)}%;top:0;bottom:0;width:${p * 0.5}px;margin-left:${-p * 0.25}px;transform:scaleY(0)`
-      : `top:${(Math.floor(i / w) + 0.5) * (100 / h)}%;left:0;right:0;height:${p * 0.5}px;margin-top:${-p * 0.25}px;transform:scaleX(0)`
+      ? `left:${(kol + 0.5) * (100 / w)}%;top:${(rad - fore) * (100 / h)}%;height:${(fore + efter + 1) * (100 / h)}%;width:${p * 0.5}px;margin-left:${-p * 0.25}px;transform:scaleY(0)`
+      : `top:${(rad + 0.5) * (100 / h)}%;left:${(kol - fore) * (100 / w)}%;width:${(fore + efter + 1) * (100 / w)}%;height:${p * 0.5}px;margin-top:${-p * 0.25}px;transform:scaleX(0)`
     strimma.style.cssText = pos + `;background:linear-gradient(${lodrat ? '90deg' : '0deg'},transparent,${farg}aa,#fff,${farg}aa,transparent)`
+    strimma.style.transformOrigin = lodrat ? `50% ${((fore + 0.5) / (fore + efter + 1)) * 100}%` : `${((fore + 0.5) / (fore + efter + 1)) * 100}% 50%`
     senare(() => {
       textlager.appendChild(strimma)
       strimma.animate(
