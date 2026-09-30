@@ -36,6 +36,9 @@ const setupStyles = () => {
     .ig-catbtn{transition:background .18s,border-color .18s,transform .15s}
     .ig-catbtn:hover{transform:translateY(-2px) scale(1.02)}
     .ig-catbtn:active{transform:scale(.96)}
+    @media(min-width:640px){
+      .ig-kort{border-radius:28px;border:1px solid rgba(255,255,255,.07);box-shadow:0 30px 80px -40px rgba(0,0,0,.9);min-height:calc(var(--app-min-h, 100vh) - 5rem - 2px)!important}
+    }
   `;
   document.head.appendChild(s);
 };
@@ -88,16 +91,21 @@ const fmt        = (s) => `${Math.floor(s/60).toString().padStart(2,"0")}:${(s%6
 const rnd        = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // ─── Layout components OUTSIDE to prevent remount bug ─────────────────────────
+// Glöden ligger absolut inuti spelets egen ruta (inte fixed över hela
+// sidan) så den inte lyser upp sajtens meny.
 const BG = () => (
-  <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:0}}>
+  <div style={{position:"absolute",inset:0,pointerEvents:"none",zIndex:0,overflow:"hidden",borderRadius:"inherit"}}>
     <div style={{position:"absolute",top:-120,right:-120,width:350,height:350,borderRadius:"50%",background:"radial-gradient(circle,rgba(255,34,68,.12),transparent 70%)"}}/>
     <div style={{position:"absolute",bottom:-120,left:-120,width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(0,80,255,.08),transparent 70%)"}}/>
   </div>
 );
+// Fyller höjden som finns kvar mellan sajtens toppbar och bottenmeny
+// (--app-min-h från index.css). Kant-i-kant på mobil, ett rundat kort på
+// större skärmar — se klassen ig-kort.
 const Wrap = ({ children, center, pt=24 }) => (
-  <div className="ig" style={{minHeight:"100vh",width:"100%",background:"linear-gradient(145deg,#080b14 0%,#0d1120 60%,#0f0810 100%)",display:"flex",justifyContent:"center"}}>
+  <div className="ig ig-kort" style={{minHeight:"var(--app-min-h, 100vh)",width:"100%",background:"linear-gradient(145deg,#080b14 0%,#0d1120 60%,#0f0810 100%)",display:"flex",justifyContent:"center",position:"relative"}}>
     <BG/>
-    <div style={{width:"100%",maxWidth:480,minHeight:"100vh",display:"flex",flexDirection:"column",padding:`${pt}px 20px 48px`,position:"relative",zIndex:1,alignItems:center?"center":undefined,textAlign:center?"center":undefined}}>
+    <div style={{width:"100%",maxWidth:480,display:"flex",flexDirection:"column",padding:`${pt}px 20px 48px`,position:"relative",zIndex:1,alignItems:center?"center":undefined,textAlign:center?"center":undefined}}>
       {children}
     </div>
   </div>

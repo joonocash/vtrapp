@@ -280,15 +280,15 @@ export default function ControlPanel({
   if (hidden) return null;
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-5 space-y-4 transition-opacity duration-300">
+    <div className="panel p-4 sm:p-5 space-y-4 transition-opacity duration-300">
       <div>
-        <h2 className="text-gray-100 font-semibold">Cassie</h2>
+        <h2 className="font-display text-xl font-semibold text-white">Cassie</h2>
         <p className="text-xs text-gray-500 mt-0.5">
           Animera en 3D-lastbil längs en riktig rutt — b-roll för skärminspelning.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3">
         <GeocodeInput label="Från" placeholder="t.ex. Göteborg" value={fromLabel} onSelect={onSetFrom} />
         <GeocodeInput label="Till" placeholder="t.ex. Kiruna" value={toLabel} onSelect={onSetTo} />
       </div>

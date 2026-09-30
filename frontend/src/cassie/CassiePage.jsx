@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleMapProvider } from './map/GoogleMapProvider.js';
 import { useRouteAnimation } from './animation/useRouteAnimation.js';
 import ControlPanel from './ui/ControlPanel.jsx';
-import FramingFrame from './ui/FramingFrame.jsx';
+import FramingFrame, { RATIOS } from './ui/FramingFrame.jsx';
 import Countdown from './ui/Countdown.jsx';
 import { parseUrlState, writeUrlState } from './urlState.js';
 import { fetchRoute, fetchSavedRoutes, saveRoute } from './api.js';
@@ -466,12 +466,20 @@ export default function CassiePage() {
       }
     : null;
 
+  // Layout: på dator fyller kartan höjden under toppbaren och panelen står
+  // bredvid med egen scroll. minmax(0,1fr) i stället för 1fr — annars växer
+  // kolumnen till kartans innehållsbredd och trycker ut panelen utanför
+  // skärmen. På mobil följer ramens höjd valt bildformat (max 70 % av
+  // skärmen) i stället för en fast höjd med svarta fält.
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-6">
       <div
         ref={frameRef}
-        className="relative h-[60vh] lg:h-[75vh]"
-        style={{ cursor: presentationActive ? 'none' : placementMode ? 'crosshair' : 'default' }}
+        className="relative aspect-[var(--cassie-ratio)] max-h-[70vh] min-h-[220px] w-full lg:aspect-auto lg:h-[calc(100dvh-var(--topbar-h)-3rem)] lg:max-h-none lg:min-h-[480px]"
+        style={{
+          '--cassie-ratio': String(RATIOS[format] || RATIOS['16x9']),
+          cursor: presentationActive ? 'none' : placementMode ? 'crosshair' : 'default',
+        }}
       >
         <FramingFrame format={format} showGuides={!presentationActive}>
           <div ref={containerRef} className="absolute inset-0" />
@@ -484,6 +492,7 @@ export default function CassiePage() {
         </FramingFrame>
       </div>
 
+      <div className="lg:sticky lg:top-[calc(var(--topbar-h)+1.5rem)] lg:max-h-[calc(100dvh-var(--topbar-h)-3rem)] lg:overflow-y-auto lg:overscroll-contain lg:rounded-2xl">
       <ControlPanel
         hidden={presentationActive}
         fromLabel={fromLabel}
@@ -538,6 +547,7 @@ export default function CassiePage() {
         onSaveRoute={handleSaveRoute}
         onLoadRoute={handleLoadRoute}
       />
+      </div>
     </div>
   );
 }

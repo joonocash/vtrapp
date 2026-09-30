@@ -7,7 +7,9 @@
 //   name          visas på kortet
 //   blurb         en rad under namnet i spelvyn
 //   category      dyker upp som filter automatiskt
-//   accent        tailwind-klass för kortets ikonfärg
+//   accent        tailwind-klass för kortets ikonfärg (reserv om farg saknas)
+//   ikon          emoji som visas på kortet och i spelets rubrik
+//   farg          hex-färg för kortets glöd och ikonruta, t.ex. '#e879f9'
 //   scoreLabel    vad poängen heter, t.ex. 'poäng', 'meter', 'tid'
 //   scoreFormat   'number' | 'time' | 'none'  ('none' = spelet sparar ingen poäng)
 //   higherIsBetter  false för tidsspel (minröj m.m.)
@@ -34,6 +36,8 @@ export const GAMES = [
     blurb: 'Hjälp Happy få godis! Matcha tre. 100 banor på Happys promenad.',
     category: 'pussel',
     accent: 'text-fuchsia-400',
+    ikon: '🦴',
+    farg: '#e879f9',
     // Banor med egna stjärnor, sparas i webbläsaren. Ingen topplista.
     scoreFormat: 'none',
     reglage: ['ljud', 'skak', 'hitstop'],
@@ -46,6 +50,8 @@ export const GAMES = [
     blurb: 'Sikta och släpp kulan. Träffa alla orange pinnar.',
     category: 'arkad',
     accent: 'text-orange-400',
+    ikon: '🎯',
+    farg: '#fb923c',
     scoreLabel: 'poäng',
     scoreFormat: 'number',
     higherIsBetter: true,
@@ -59,6 +65,8 @@ export const GAMES = [
     blurb: 'Lägg ut tre bitar i taget. Fyll en rad eller kolumn så sprängs den.',
     category: 'pussel',
     accent: 'text-cyan-400',
+    ikon: '🧱',
+    farg: '#22d3ee',
     scoreLabel: 'poäng',
     scoreFormat: 'number',
     higherIsBetter: true,
@@ -71,6 +79,8 @@ export const GAMES = [
     blurb: 'En Happy per revir, rad och kolumn. Nytt dagligt bräde varje dag.',
     category: 'pussel',
     accent: 'text-pink-400',
+    ikon: '🐶',
+    farg: '#f472b6',
     scoreFormat: 'none',
     reglage: ['ljud', 'skak'],
     load: () => import('./HappysRevir.jsx'),
@@ -81,6 +91,8 @@ export const GAMES = [
     blurb: 'Dra ihop prickarna i samma färg. Fyll hela brädet. Banor, dagens bräde och tidsjakt.',
     category: 'pussel',
     accent: 'text-cyan-400',
+    ikon: '🧶',
+    farg: '#2dd4bf',
     // Egna topplistor per läge inne i spelet (trassel-dag-<datum>, trassel-tidsjakt).
     scoreFormat: 'none',
     reglage: ['ljud', 'skak'],
@@ -97,6 +109,8 @@ export const GAMES = [
   //   blurb: 'En rad om hur man spelar.',
   //   category: 'arkad',
   //   accent: 'text-blue-400',
+  //   ikon: '🕹️',
+  //   farg: '#60a5fa',
   //   scoreFormat: 'none',
   //   iframe: '/spel/nagot/index.html',
   // },

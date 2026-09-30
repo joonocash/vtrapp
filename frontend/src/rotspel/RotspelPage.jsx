@@ -1,4 +1,5 @@
 import { Component, useState, useMemo, Suspense, lazy, useRef, useEffect } from 'react'
+import { ArrowLeft, Maximize2, X, Trophy, UserRound, RotateCcw } from 'lucide-react'
 import { GAMES, CATEGORIES, getGame } from './games/index.js'
 import {
   usePlayer,
@@ -16,69 +17,140 @@ const REGLAGE = [
   { id: 'hitstop', namn: 'Hit-stop' },
 ]
 
-export default function RotspelPage() {
+// Reservfärger för spel som bara har en accent-klass i registret.
+const ACCENT_FARG = {
+  'text-fuchsia-400': '#e879f9',
+  'text-orange-400': '#fb923c',
+  'text-cyan-400': '#22d3ee',
+  'text-pink-400': '#f472b6',
+  'text-blue-400': '#60a5fa',
+  'text-emerald-400': '#34d399',
+  'text-amber-400': '#fbbf24',
+}
+const spelFarg = (g) => g?.farg || ACCENT_FARG[g?.accent] || '#8e99b1'
+
+function SpelIkon({ game, storlek = 'lg' }) {
+  const farg = spelFarg(game)
+  const klass =
+    storlek === 'lg' ? 'h-14 w-14 rounded-2xl text-[28px]' : 'h-9 w-9 rounded-xl text-lg'
+  return (
+    <span
+      className={`grid shrink-0 place-items-center ${klass}`}
+      style={{
+        background: `linear-gradient(145deg, ${farg}40, ${farg}12)`,
+        boxShadow: `inset 0 0 0 1px ${farg}40, 0 8px 24px -12px ${farg}`,
+      }}
+      aria-hidden="true"
+    >
+      {game.ikon || (
+        <span className="font-display text-base font-semibold" style={{ color: farg }}>
+          {game.name.slice(0, 2)}
+        </span>
+      )}
+    </span>
+  )
+}
+
+// sub/ga kommer från skalet: sub är spel-id:t i adressen (#/rotspel/krossen),
+// ga('krossen') öppnar ett spel. Utan skalet (ga saknas) fungerar sidan som
+// förut med vanlig state.
+export default function RotspelPage({ sub, ga }) {
   const { player, setPlayer, logout } = usePlayer()
   const { bests, refresh } = useMyBests(player)
-  const [activeId, setActiveId] = useState(null)
+  const [lokaltId, setLokaltId] = useState(null)
   const [category, setCategory] = useState('alla')
+  const activeId = ga ? sub || null : lokaltId
+
+  // Öppnades spelet från listan går "tillbaka" bakåt i historiken, så
+  // telefonens bakåtgest och knappen gör samma sak. Kom man via en länk
+  // direkt till spelet byts adressen ut mot listan i stället.
+  const franListan = useRef(false)
+  function oppna(id) {
+    if (!ga) return setLokaltId(id)
+    franListan.current = true
+    ga(id)
+  }
+  function stang() {
+    if (!ga) return setLokaltId(null)
+    if (franListan.current) {
+      franListan.current = false
+      window.history.back()
+    } else {
+      ga('', { ersatt: true })
+    }
+  }
+
+  // Hämta rekorden igen när man kommer tillbaka till listan.
+  const forstaGangen = useRef(true)
+  useEffect(() => {
+    if (forstaGangen.current) {
+      forstaGangen.current = false
+      return
+    }
+    if (!activeId) refresh()
+  }, [activeId, refresh])
 
   if (!player) return <NameGate onSubmit={setPlayer} />
 
   if (activeId) {
-    return (
-      <GameShell
-        gameId={activeId}
-        player={player}
-        onExit={() => {
-          setActiveId(null)
-          refresh()
-        }}
-      />
-    )
+    return <GameShell key={activeId} gameId={activeId} player={player} onExit={stang} />
   }
 
   const visible =
     category === 'alla' ? GAMES : GAMES.filter((g) => g.category === category)
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
-      <div className="flex flex-wrap gap-2 mb-5">
-        {CATEGORIES.map((c) => (
+    <div>
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 sm:mb-6">
+        <div>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            Rötspel
+          </h1>
+          <p className="mt-1 text-sm text-gray-400">
+            Småspel med rekord och topplistor · {GAMES.length} spel
+          </p>
+        </div>
+        <div className="flex items-center gap-1 rounded-full border border-ink-line bg-white/[0.03] py-1 pl-3 pr-1 text-sm">
+          <UserRound className="h-4 w-4 text-gray-500" aria-hidden="true" />
+          <span className="ml-1 text-gray-400">Spelar som</span>
+          <span className="font-medium text-white">{player}</span>
           <button
-            key={c}
-            onClick={() => setCategory(c)}
-            className={`text-xs px-3 py-1.5 rounded-full transition-colors ${
-              category === c
-                ? 'bg-blue-600 text-blue-50'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
+            onClick={logout}
+            className="ml-1 rounded-full px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent-soft"
           >
-            {c}
+            Byt
           </button>
-        ))}
-      </div>
+        </div>
+      </header>
 
-      {visible.length === 0 ? (
-        <p className="text-gray-500 text-sm">Inga spel i den kategorin än.</p>
-      ) : (
-        <div className="grid gap-3 grid-cols-2 sm:[grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]">
-          {visible.map((g) => (
-            <GameCard
-              key={g.id}
-              game={g}
-              best={bests[g.id]}
-              onClick={() => setActiveId(g.id)}
-            />
+      {CATEGORIES.length > 2 && (
+        <div className="utan-scrollbar -mx-4 mb-4 flex gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          {CATEGORIES.map((c) => (
+            <button
+              key={c}
+              onClick={() => setCategory(c)}
+              aria-pressed={category === c}
+              className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm capitalize transition-colors ${
+                category === c
+                  ? 'bg-white text-gray-900'
+                  : 'border border-ink-line bg-white/[0.03] text-gray-400 hover:bg-white/[0.06] hover:text-gray-100'
+              }`}
+            >
+              {c}
+            </button>
           ))}
         </div>
       )}
 
-      <div className="flex items-center justify-between mt-6 pt-3 border-t border-gray-700 text-xs text-gray-500">
-        <span>Inloggad som {player}</span>
-        <button onClick={logout} className="text-blue-400 hover:text-blue-300">
-          Byt spelare
-        </button>
-      </div>
+      {visible.length === 0 ? (
+        <p className="text-sm text-gray-500">Inga spel i den kategorin än.</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {visible.map((g, i) => (
+            <GameCard key={g.id} game={g} best={bests[g.id]} onClick={() => oppna(g.id)} index={i} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -96,9 +168,16 @@ function NameGate({ onSubmit }) {
   }
 
   return (
-    <div className="max-w-sm mx-auto px-4 py-16">
-      <h2 className="text-lg text-gray-100 font-medium mb-1">Vem spelar?</h2>
-      <p className="text-sm text-gray-400 mb-4">
+    <div className="panel mx-auto mt-6 max-w-sm p-6 sm:mt-12">
+      <div className="mb-4 flex -space-x-2" aria-hidden="true">
+        {GAMES.slice(0, 4).map((g) => (
+          <span key={g.id} className="rounded-2xl ring-4 ring-ink-raised">
+            <SpelIkon game={g} storlek="sm" />
+          </span>
+        ))}
+      </div>
+      <h2 className="font-display text-2xl font-semibold text-white">Vem spelar?</h2>
+      <p className="mb-4 mt-1 text-sm text-gray-400">
         Namnet används för dina rekord och topplistan.
       </p>
       <input
@@ -110,12 +189,13 @@ function NameGate({ onSubmit }) {
         onKeyDown={(e) => e.key === 'Enter' && handle()}
         placeholder="joono"
         maxLength={20}
-        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+        autoFocus
+        className="w-full rounded-xl border border-ink-line bg-black/20 px-4 py-3 text-base text-white placeholder-gray-500 outline-none focus:border-accent/60"
       />
-      {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
       <button
         onClick={handle}
-        className="mt-3 w-full bg-blue-600 hover:bg-blue-500 text-blue-50 text-sm font-medium py-2 rounded-lg"
+        className="mt-3 w-full rounded-xl bg-accent py-3 text-sm font-semibold text-white transition-colors hover:bg-accent-strong"
       >
         Kör
       </button>
@@ -123,27 +203,45 @@ function NameGate({ onSubmit }) {
   )
 }
 
-function GameCard({ game, best, onClick }) {
+function GameCard({ game, best, onClick, index }) {
   const hasScore = game.scoreFormat && game.scoreFormat !== 'none'
+  const farg = spelFarg(game)
   return (
     <button
       onClick={onClick}
-      className="text-left bg-gray-800 border border-gray-700 rounded-xl p-4 hover:border-gray-500 hover:bg-gray-750 transition-colors focus:outline-none focus:border-blue-500"
+      style={{ animationDelay: `${index * 40}ms` }}
+      className="group relative animate-fade-up overflow-hidden rounded-2xl border border-ink-line bg-ink-raised p-4 text-left shadow-panel transition-all duration-200 hover:-translate-y-0.5 hover:border-ink-line-strong focus-visible:border-accent sm:p-5"
     >
-      <div
-        className={`w-8 h-8 rounded-lg bg-gray-900 flex items-center justify-center text-sm font-medium ${
-          game.accent || 'text-gray-300'
-        }`}
-      >
-        {game.name.slice(0, 2)}
-      </div>
-      <div className="text-sm text-gray-100 font-medium mt-2.5">{game.name}</div>
-      <div className="text-xs text-gray-500 mt-0.5">
-        {hasScore
-          ? best !== undefined
-            ? `Bästa: ${formatScore(best, game.scoreFormat)}`
-            : 'Inget rekord än'
-          : game.category || ''}
+      <span
+        className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full opacity-[0.16] blur-2xl transition-opacity duration-300 group-hover:opacity-30"
+        style={{ background: farg }}
+        aria-hidden="true"
+      />
+      <div className="relative flex items-start gap-4">
+        <SpelIkon game={game} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="truncate font-display text-lg font-semibold text-white">{game.name}</h3>
+            {game.category && (
+              <span className="shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] capitalize text-gray-400">
+                {game.category}
+              </span>
+            )}
+          </div>
+          {game.blurb && <p className="mt-1 line-clamp-2 text-sm leading-snug text-gray-400">{game.blurb}</p>}
+          {hasScore && (
+            <p className="mt-2.5 flex items-center gap-1.5 text-xs">
+              <Trophy className="h-3.5 w-3.5" style={{ color: best !== undefined ? '#fbbf24' : '#4d5770' }} aria-hidden="true" />
+              {best !== undefined ? (
+                <span className="text-gray-300">
+                  Ditt rekord <span className="font-semibold text-white tabular">{formatScore(best, game.scoreFormat)}</span>
+                </span>
+              ) : (
+                <span className="text-gray-500">Inget rekord än</span>
+              )}
+            </p>
+          )}
+        </div>
       </div>
     </button>
   )
@@ -187,7 +285,7 @@ class SpelFelgrans extends Component {
           </p>
           <button
             onClick={this.props.onExit}
-            className="bg-blue-600 hover:bg-blue-500 text-blue-50 text-sm px-4 py-1.5 rounded-lg"
+            className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-strong"
           >
             Tillbaka till spellistan
           </button>
@@ -232,10 +330,10 @@ function GameShell({ gameId, player, onExit }) {
 
   if (!game) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-10">
-        <p className="text-gray-400 text-sm">Spelet finns inte.</p>
-        <button onClick={onExit} className="text-blue-400 text-sm mt-2">
-          Tillbaka
+      <div className="panel mx-auto max-w-md p-6 text-center">
+        <p className="text-sm text-gray-400">Spelet finns inte.</p>
+        <button onClick={onExit} className="mt-3 text-sm font-medium text-accent">
+          Till spellistan
         </button>
       </div>
     )
@@ -264,10 +362,19 @@ function GameShell({ gameId, player, onExit }) {
   // liggande läge, där höjden är begränsningen — se games/index.js.
   const forhallande = game.forhallande || 1
 
+  // Utanför fullskärm: så brett som får plats (max 440 px), men inte högre än
+  // att spelet ryms under toppbaren/över bottenmenyn på en vanlig skärm.
+  // Golvet på 300 px gör att en liggande telefon hellre scrollar än krymper
+  // spelet till oläslighet.
+  const vanligBredd = `min(100%, 440px, max(300px, (100dvh - 12.5rem) * ${forhallande}))`
+
+  const topp = tracksScore ? entries.slice(0, 10) : []
+
   return (
-    <div className="max-w-3xl mx-auto px-2 sm:px-4 py-5">
+    <div className="mx-auto max-w-3xl">
       <div
         ref={wrapperRef}
+        data-fullskarm={arFullskarm ? '' : undefined}
         className={
           // overflow-y-auto utöver de angivna klasserna: spel utan
           // var(--spelbredd)-behandlingen (t.ex. Happys revir) kan bli
@@ -278,13 +385,13 @@ function GameShell({ gameId, player, onExit }) {
           // items/justify sätts som inline style nedan (safe center), inte
           // som Tailwind-klasser här — se förklaringen vid style-objektet.
           arFullskarm
-            ? 'fixed inset-0 z-50 bg-gray-900 flex flex-col p-2 overflow-y-auto'
+            ? 'fixed inset-0 z-50 bg-ink flex flex-col p-2 overflow-y-auto'
             : ''
         }
         style={{
           '--spelbredd': arFullskarm
             ? `min(100vw - 1rem, (100vh - 7rem) * ${forhallande})`
-            : 'min(100%, 400px)',
+            : vanligBredd,
           // "safe center" i stället för Tailwinds justify-center/items-center:
           // en flexbox som centrerar innehåll som är högre än containern gör
           // annars den bortcentrerade delen oåtkomlig för scroll i vissa
@@ -302,32 +409,36 @@ function GameShell({ gameId, player, onExit }) {
             tillbaka-knappen och blurben — se stäng-knappen nedan för
             förklaringen till varför den flyttar, inte bara byter ikon. */}
         {!arFullskarm && (
-          <div className="flex items-center gap-3 mb-4">
+          <div className="mb-3 flex items-center gap-3 sm:mb-4">
             <button
               onClick={onExit}
-              className="text-gray-400 hover:text-gray-200 text-sm"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-ink-line bg-white/[0.03] text-gray-300 transition-colors hover:bg-white/[0.08] hover:text-white"
               aria-label="Tillbaka till spellistan"
+              title="Alla spel"
             >
-              ← Alla spel
+              <ArrowLeft className="h-[18px] w-[18px]" />
             </button>
+            <SpelIkon game={game} storlek="sm" />
             <div className="min-w-0 flex-1">
-              <div className="text-gray-100 font-medium leading-tight">{game.name}</div>
+              <div className="truncate font-display text-lg font-semibold leading-tight text-white">{game.name}</div>
               {game.blurb && (
-                <div className="text-xs text-gray-500 truncate">{game.blurb}</div>
+                <div className="truncate text-xs text-gray-500">{game.blurb}</div>
               )}
             </div>
             <button
               onClick={vaxlaFullskarm}
-              className="text-gray-400 hover:text-gray-200 text-lg leading-none px-1.5 py-1 flex-shrink-0"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-ink-line bg-white/[0.03] text-gray-300 transition-colors hover:bg-white/[0.08] hover:text-white"
               aria-label="Fullskärm"
               title="Fullskärm"
             >
-              ⛶
+              <Maximize2 className="h-[18px] w-[18px]" />
             </button>
           </div>
         )}
 
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
+        {/* isolate: spelens egna z-index (dialoger, notiser) stannar inne i
+            spelrutan och kan inte hamna ovanpå menyerna när man scrollar. */}
+        <div className="isolate rounded-2xl border border-ink-line bg-gray-800/60 p-3 shadow-panel">
           {game.iframe ? (
             <iframe
               src={game.iframe}
@@ -364,11 +475,11 @@ function GameShell({ gameId, player, onExit }) {
         {arFullskarm && (
           <button
             onClick={vaxlaFullskarm}
-            className="absolute bottom-4 right-4 z-10 w-10 h-10 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-200 text-lg leading-none grid place-items-center"
+            className="absolute bottom-4 right-4 z-10 grid h-11 w-11 place-items-center rounded-full bg-gray-800/85 text-gray-200 ring-1 ring-white/10 backdrop-blur hover:bg-gray-700"
             aria-label="Stäng fullskärm"
             title="Stäng fullskärm"
           >
-            ✕
+            <X className="h-5 w-5" />
           </button>
         )}
       </div>
@@ -379,20 +490,52 @@ function GameShell({ gameId, player, onExit }) {
           CSS-reservlösningen, som bara är en stil på samma wrapper och inte
           skiljer på inne/utanför på det viset. */}
 
+      {/* Idle-spel rapporterar löpande, så resultatrutan med "Igen" vore fel där.
+          Poängen skickas ändå in och topplistan visas som vanligt. Döljs i
+          fullskärm. */}
+      {!arFullskarm && lastScore !== null && !game.idle && (
+        <div
+          className={`mt-3 flex animate-fade-up items-center justify-between gap-3 rounded-2xl border px-4 py-3 ${
+            isRecord ? 'border-amber-400/30 bg-amber-400/[0.07]' : 'border-ink-line bg-ink-raised'
+          }`}
+        >
+          <div className="flex items-center gap-3 text-sm text-gray-200">
+            {isRecord && <Trophy className="h-5 w-5 text-amber-400" aria-hidden="true" />}
+            <span>
+              {isRecord ? 'Nytt personbästa: ' : 'Resultat: '}
+              <span className={`font-semibold tabular ${isRecord ? 'text-amber-300' : 'text-white'}`}>
+                {formatScore(lastScore, game.scoreFormat)}
+              </span>{' '}
+              <span className="text-gray-500">{game.scoreLabel || ''}</span>
+            </span>
+          </div>
+          <button
+            onClick={restart}
+            className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-strong"
+          >
+            <RotateCcw className="h-4 w-4" aria-hidden="true" /> Igen
+          </button>
+        </div>
+      )}
+
       {/* Bara de reglage spelet faktiskt använder. Ett spel utan reglage-fält
           i registret visar ingenting alls här. Döljs i fullskärm. */}
       {!arFullskarm && Array.isArray(game.reglage) && game.reglage.length > 0 && (
-        <div className="flex flex-wrap gap-x-5 gap-y-2 mt-3 px-1">
+        <div className="mt-3 flex flex-wrap gap-1.5">
           {REGLAGE.filter((r) => game.reglage.includes(r.id)).map((r) => (
             <label
               key={r.id}
-              className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none"
+              className={`flex cursor-pointer select-none items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                settings[r.id]
+                  ? 'border-accent/40 bg-accent-soft text-gray-100'
+                  : 'border-ink-line bg-white/[0.02] text-gray-500'
+              }`}
             >
               <input
                 type="checkbox"
                 checked={settings[r.id]}
                 onChange={() => toggle(r.id)}
-                className="accent-blue-500 w-3.5 h-3.5"
+                className="h-3.5 w-3.5 accent-accent"
               />
               {r.namn}
             </label>
@@ -400,48 +543,44 @@ function GameShell({ gameId, player, onExit }) {
         </div>
       )}
 
-      {/* Idle-spel rapporterar löpande, så resultatrutan med "Igen" vore fel där.
-          Poängen skickas ändå in och topplistan visas som vanligt. Döljs i
-          fullskärm. */}
-      {!arFullskarm && lastScore !== null && !game.idle && (
-        <div className="flex items-center justify-between mt-3 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3">
-          <div className="text-sm text-gray-200">
-            {isRecord ? 'Nytt personbästa: ' : 'Resultat: '}
-            <span className={isRecord ? 'text-amber-400 font-medium' : 'font-medium'}>
-              {formatScore(lastScore, game.scoreFormat)}
-            </span>{' '}
-            <span className="text-gray-500">{game.scoreLabel || ''}</span>
-          </div>
-          <button
-            onClick={restart}
-            className="bg-blue-600 hover:bg-blue-500 text-blue-50 text-sm px-4 py-1.5 rounded-lg"
-          >
-            Igen
-          </button>
-        </div>
-      )}
-
       {/* Döljs i fullskärm. */}
-      {!arFullskarm && entries.length > 0 && (
-        <div className="mt-4">
-          <div className="text-xs text-gray-500 mb-2">Topplista</div>
-          <ol className="bg-gray-800 border border-gray-700 rounded-lg divide-y divide-gray-700">
-            {entries.slice(0, 10).map((e, i) => (
-              <li
-                key={e.player}
-                className="flex items-center justify-between px-4 py-2 text-sm"
-              >
-                <span className="text-gray-300">
-                  <span className="text-gray-600 mr-2">{i + 1}</span>
-                  {e.player}
-                </span>
-                <span className="text-gray-400">
-                  {formatScore(e.score, game.scoreFormat)}
-                </span>
-              </li>
-            ))}
+      {!arFullskarm && topp.length > 0 && (
+        <section className="mt-5">
+          <h2 className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.12em] text-gray-500">
+            <Trophy className="h-3.5 w-3.5" aria-hidden="true" /> Topplista
+          </h2>
+          <ol className="divide-y divide-ink-line overflow-hidden rounded-2xl border border-ink-line bg-ink-raised">
+            {topp.map((e, i) => {
+              const jag = e.player === player
+              return (
+                <li
+                  key={e.player}
+                  className={`flex items-center justify-between px-4 py-2.5 text-sm ${jag ? 'bg-accent-soft' : ''}`}
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span
+                      className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-semibold tabular ${
+                        i === 0
+                          ? 'bg-amber-400/20 text-amber-300'
+                          : i === 1
+                          ? 'bg-gray-300/15 text-gray-200'
+                          : i === 2
+                          ? 'bg-orange-400/15 text-orange-300'
+                          : 'text-gray-600'
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className={`truncate ${jag ? 'font-medium text-white' : 'text-gray-300'}`}>{e.player}</span>
+                  </span>
+                  <span className="font-medium text-gray-200 tabular">
+                    {formatScore(e.score, game.scoreFormat)}
+                  </span>
+                </li>
+              )
+            })}
           </ol>
-        </div>
+        </section>
       )}
     </div>
   )

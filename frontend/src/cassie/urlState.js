@@ -132,6 +132,7 @@ export function writeUrlState(state) {
   if (state.boxColor) params.set('boxColor', state.boxColor);
   if (state.route) params.set('r', state.route);
 
-  const url = `${window.location.pathname}?${params.toString()}`;
+  // Hashen (#/cassie) behålls — den styr vilken app som visas.
+  const url = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
   window.history.replaceState(null, '', url);
 }

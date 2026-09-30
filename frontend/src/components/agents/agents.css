@@ -144,6 +144,10 @@
   font-family:var(--ag-display); font-weight:700; letter-spacing:.02em;
   font-size:clamp(9px,2.1vw,17px);
   font-size:clamp(9px,4.1cqw,17px);   /* följer brädets bredd där webbläsaren stödjer det */
+  /* Långa ord krymper i stället för att brytas mitt i ("SIGNA/L") på smala
+     skärmar. --ord-langd sätts per kort i ui.jsx; korta ord och breda
+     bräden påverkas inte (taket 4.1cqw/17px slår till först). */
+  font-size:clamp(8px,min(4.1cqw,calc(20cqw / var(--ord-langd, 5))),17px);
   line-height:1.06; text-transform:uppercase;
   text-align:center; overflow-wrap:anywhere; hyphens:auto;
   transition:transform .12s,background .2s,border-color .2s,color .2s;
