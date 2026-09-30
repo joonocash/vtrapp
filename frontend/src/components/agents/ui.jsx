@@ -61,6 +61,7 @@ export function Board({ words, revealed, solution, canPick, onPick, marks = {}, 
           <button
             key={i}
             className={classes.join(' ')}
+            style={{ '--ord-langd': Math.max(5, String(word).length) }}
             onClick={click}
             disabled={done || !canPick}
           >

@@ -1,7 +1,8 @@
-import { getLineColor } from '../utils/lineColors';
+import { LineBadge } from './DepartureRow';
 
-export function LineFilter({ departures, hiddenLines, onToggleLine }) {
-  // Get unique lines with their transport modes
+// Tryck på en linje för att dölja/visa den. Scrollar i sidled på mobil i
+// stället för att bryta till flera rader och trycka ner listan.
+export function LineFilter({ departures, hiddenLines, onToggleLine, onShowAll }) {
   const uniqueLines = [];
   const seen = new Set();
 
@@ -12,7 +13,7 @@ export function LineFilter({ departures, hiddenLines, onToggleLine }) {
     }
   });
 
-  // Sort lines: numbers first (ascending), then text
+  // Siffror först (stigande), sedan text
   uniqueLines.sort((a, b) => {
     const aNum = parseInt(a.line);
     const bNum = parseInt(b.line);
@@ -24,28 +25,32 @@ export function LineFilter({ departures, hiddenLines, onToggleLine }) {
 
   if (uniqueLines.length <= 1) return null;
 
-  return (
-    <div className="flex flex-wrap gap-2 mb-4">
-      {uniqueLines.map(({ line, transportMode }) => {
-        const color = getLineColor(line, transportMode);
-        const isHidden = hiddenLines.has(line);
+  const nagotDolt = hiddenLines.size > 0;
 
+  return (
+    <div className="utan-scrollbar -mx-4 flex items-center gap-1.5 overflow-x-auto px-4 sm:-mx-5 sm:px-5">
+      {uniqueLines.map(({ line, transportMode }) => {
+        const dold = hiddenLines.has(line);
         return (
           <button
             key={line}
             onClick={() => onToggleLine(line)}
-            className="transition-all duration-150 rounded-md font-bold text-sm px-3 py-1.5 min-w-[40px] text-center"
-            style={{
-              backgroundColor: isHidden ? '#374151' : color.bg,
-              color: isHidden ? '#6b7280' : color.text,
-              opacity: isHidden ? 0.5 : 1,
-              border: isHidden ? '1px solid #4b5563' : '1px solid transparent',
-            }}
+            aria-pressed={!dold}
+            title={dold ? `Visa linje ${line}` : `Dölj linje ${line}`}
+            className="shrink-0 rounded-lg p-0.5 transition-transform active:scale-95"
           >
-            {line}
+            <LineBadge line={line} transportMode={transportMode} size="sm" dimmed={dold} />
           </button>
         );
       })}
+      {nagotDolt && (
+        <button
+          onClick={onShowAll}
+          className="ml-1 shrink-0 rounded-md px-2 py-1 text-xs font-medium text-accent hover:bg-accent-soft"
+        >
+          Visa alla
+        </button>
+      )}
     </div>
   );
 }

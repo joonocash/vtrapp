@@ -1,36 +1,39 @@
 import { useState, useRef, useEffect } from 'react';
+import { Search, X, MapPin } from 'lucide-react';
 import { useStopSearch } from '../hooks/useStopSearch';
 
-export function StopSelector({ currentStop, onStopChange }) {
+export function StopSelector({ onStopChange }) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const { results, searching, search } = useStopSearch();
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Close dropdown when clicking outside
+  // Stäng listan vid klick utanför
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsOpen(false);
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleFocus = () => {
-    // Scroll input to top of viewport on mobile so results aren't hidden by keyboard
-    setTimeout(() => {
-      inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 300);
+    if (query.trim().length >= 2) setIsOpen(true);
+    // På mobil: scrolla upp fältet så träffarna inte hamnar bakom tangentbordet.
+    // Inte på dator — där ligger panelen fast och toppbaren skulle täcka fältet.
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      setTimeout(() => {
+        inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+    }
   };
 
   const handleSearch = (e) => {
     const value = e.target.value;
     setQuery(value);
-
     if (value.trim().length >= 2) {
       search(value);
       setIsOpen(true);
@@ -40,62 +43,87 @@ export function StopSelector({ currentStop, onStopChange }) {
   };
 
   const handleSelectStop = (stop) => {
-    onStopChange({
-      areaId: stop.areaId,
-      name: stop.name
-    });
+    onStopChange({ areaId: stop.areaId, name: stop.name });
     setQuery('');
     setIsOpen(false);
-    // Blur input to dismiss mobile keyboard
-    inputRef.current?.blur();
+    inputRef.current?.blur(); // stänger mobiltangentbordet
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && results.length > 0) handleSelectStop(results[0]);
+    if (e.key === 'Escape') {
+      setIsOpen(false);
+      inputRef.current?.blur();
+    }
   };
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <label className="block text-sm sm:text-lg font-semibold text-white mb-2 sm:mb-3">
+      <label htmlFor="hallplats-sok" className="sr-only">
         Sök hållplats
       </label>
       <div className="relative">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-gray-500" aria-hidden="true" />
         <input
+          id="hallplats-sok"
           ref={inputRef}
-          type="text"
+          type="search"
+          inputMode="search"
+          autoComplete="off"
+          enterKeyHint="search"
           value={query}
           onChange={handleSearch}
           onFocus={handleFocus}
-          placeholder="Skriv namn på hållplats..."
-          className="w-full px-4 sm:px-5 py-3 sm:py-4 pr-12 bg-gray-700 border border-gray-600 text-white placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-base sm:text-lg"
+          onKeyDown={handleKeyDown}
+          placeholder="Byt hållplats…"
+          className="w-full rounded-xl border border-ink-line bg-black/20 py-3 pl-11 pr-11 text-base text-white placeholder-gray-500 outline-none transition-colors focus:border-accent/60 focus:bg-black/30 [&::-webkit-search-cancel-button]:hidden"
         />
-        <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+        <div className="absolute right-3 top-1/2 -translate-y-1/2">
           {searching ? (
-            <div className="animate-spin h-5 w-5 sm:h-6 sm:w-6 border-2 border-blue-400 border-t-transparent rounded-full"></div>
+            <span className="block h-5 w-5 animate-spin rounded-full border-2 border-accent/70 border-t-transparent" />
           ) : (
-            <svg className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+            query && (
+              <button
+                onClick={() => {
+                  setQuery('');
+                  setIsOpen(false);
+                  inputRef.current?.focus();
+                }}
+                className="grid h-7 w-7 place-items-center rounded-full text-gray-500 hover:bg-white/10 hover:text-gray-200"
+                aria-label="Rensa sökningen"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )
           )}
         </div>
       </div>
 
-      {/* Dropdown Results */}
       {isOpen && results.length > 0 && (
-        <div className="absolute z-10 w-full mt-2 bg-gray-700 border border-gray-600 rounded-xl shadow-2xl max-h-60 sm:max-h-96 overflow-y-auto">
+        <ul className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-xl border border-ink-line-strong bg-gray-850/95 p-1 shadow-2xl backdrop-blur-xl sm:max-h-96">
           {results.map((stop) => (
-            <button
-              key={stop.areaId}
-              onClick={() => handleSelectStop(stop)}
-              className="w-full text-left px-4 sm:px-5 py-3 sm:py-4 hover:bg-gray-600 active:bg-gray-500 transition-colors border-b border-gray-600 last:border-b-0 first:rounded-t-xl last:rounded-b-xl"
-            >
-              <div className="font-semibold text-white text-base sm:text-lg">{stop.name}</div>
-              <div className="text-xs sm:text-sm text-gray-300 mt-0.5 sm:mt-1">
-                {Math.round(stop.averageDailyStopTimes)} avgångar/dag
-              </div>
-            </button>
+            <li key={stop.areaId}>
+              <button
+                onClick={() => handleSelectStop(stop)}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-white/[0.06] active:bg-white/10"
+              >
+                <MapPin className="h-4 w-4 shrink-0 text-gray-500" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-white">{stop.name}</span>
+                  {Number.isFinite(stop.averageDailyStopTimes) && (
+                    <span className="block text-xs text-gray-500">
+                      {Math.round(stop.averageDailyStopTimes)} avgångar/dag
+                    </span>
+                  )}
+                </span>
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {isOpen && query.length >= 2 && results.length === 0 && !searching && (
-        <div className="absolute z-10 w-full mt-2 bg-gray-700 border border-gray-600 rounded-xl shadow-2xl p-4 sm:p-6 text-center text-gray-300">
+        <div className="absolute z-30 mt-2 w-full rounded-xl border border-ink-line-strong bg-gray-850/95 p-5 text-center text-sm text-gray-400 shadow-2xl backdrop-blur-xl">
           Inga hållplatser hittades
         </div>
       )}

@@ -1,18 +1,42 @@
-# Västtrafik Avgångstavla
+# vtrapp
 
-En modern webbapplikation som visar avgångar för hållplatser i Göteborg i realtid, med data från Trafiklab.
+En självhostad sajt med avgångar i realtid för hållplatser i Göteborg (data från Trafiklab), två partyspel, en samling rötspel och kartverktyget Cassie.
 
 ![Västtrafik](https://img.shields.io/badge/V%C3%A4sttrafik-API-0071BC)
 ![React](https://img.shields.io/badge/React-18.2.0-61DAFB?logo=react)
 ![Node.js](https://img.shields.io/badge/Node.js-Express-339933?logo=node.js)
 
-## Funktioner
+## Appar
 
-- 🚊 **Realtidsavgångar** - Visar aktuella avgångar med realtidsdata
-- 🔍 **Hållplatssökning** - Sök och byt mellan olika hållplatser
-- 🔄 **Auto-uppdatering** - Avgångar uppdateras automatiskt var 45:e sekund
-- 📱 **Responsiv design** - Fungerar på mobil, tablet och desktop
-- 🎨 **Modern UI** - Snyggt gränssnitt med Västtrafiks färger
+| Adress | App | Kod |
+| --- | --- | --- |
+| `#/avgangar` | Avgångar i realtid, hållplatssök, linjefilter | `frontend/src/components/DeparturesPage.jsx` |
+| `#/agenter` | Agenter – ordspel 5×5, en skärm eller flera enheter | `frontend/src/components/agents/` |
+| `#/imposter` | Imposter Who? – bluffspel runt bordet | `frontend/src/components/ImpostorGame.jsx` |
+| `#/rotspel` | Rötspel – småspel med topplistor (`#/rotspel/<spel-id>`) | `frontend/src/rotspel/` |
+| `#/cassie` | Cassie – 3D-lastbil längs en riktig rutt, b-roll | `frontend/src/cassie/` |
+
+Vilken app som visas ligger i adressens hash, så omladdning, bakåtknapp och
+delade länkar landar rätt. Menyn (toppbar på dator, bottenmeny på mobil)
+byggs från listan i `frontend/src/shell/appar.js` – ny app = ny rad där.
+Nytt rötspel: se [LAGG-TILL-SPEL.md](LAGG-TILL-SPEL.md).
+
+## Design
+
+- Mörkt tema med färgtokens i `frontend/tailwind.config.js` (`ink`, `accent`
+  och en omdefinierad `gray`-skala) och gemensamma klasser i
+  `frontend/src/index.css` (`.panel`, `.tabular` m.fl.).
+- Typsnitt: Inter (text) och Outfit (rubriker), självhostade via
+  `@fontsource-variable`. Ikoner från `lucide-react`.
+- Allt utom Avgångar laddas först när man går till appen, så startsidan
+  hålls lätt.
+
+## Funktioner (Avgångar)
+
+- 🚊 **Realtidsavgångar** - Minuter kvar, förseningar och inställda turer
+- 🔍 **Hållplatssökning** - Vald hållplats och de senaste sparas i webbläsaren
+- 🔄 **Auto-uppdatering** - Var 45:e sekund, eller direkt med uppdatera-knappen
+- 📱 **Responsiv design** - Fungerar på mobil, surfplatta och dator
 - 🔒 **Säker** - API-nyckel skyddad på backend, redo för GitHub
 
 ## Tech Stack
@@ -136,10 +160,9 @@ chmod +x deploy.sh
 
 ## Framtida förbättringar
 
-- [ ] Favoritmarkerade hållplatser (sparas i localStorage)
+- [ ] Favoritmarkerade hållplatser (senaste sökta sparas redan)
 - [ ] Browser notifications för specifika linjer
 - [ ] PWA support för offline-funktionalitet
-- [ ] Dark mode toggle
 - [ ] Historisk förseningsdata och statistik
 
 ## Licens

@@ -23,6 +23,8 @@ aim trainer, minröj.
   blurb: 'En rad om hur man spelar.',
   category: 'arkad',
   accent: 'text-purple-400',
+  ikon: '🐍',          // emoji på kortet och i spelets rubrik
+  farg: '#c084fc',     // kortets glöd och ikonruta
   scoreLabel: 'poäng',
   scoreFormat: 'number',
   higherIsBetter: true,
@@ -31,7 +33,11 @@ aim trainer, minröj.
 ```
 
 Klart. Kortet dyker upp i rutnätet, highscore fungerar, kategorin läggs
-till i filterraden automatiskt.
+till i filterraden automatiskt, och spelet får en egen adress
+(`#/rotspel/mittspel`) som går att länka till.
+
+Saknas `ikon` visas spelets två första bokstäver, och saknas `farg` tas
+färgen från `accent`.
 
 ## Alternativ B — spel från GitHub via iframe
 
@@ -49,6 +55,8 @@ Bäst för större spel eller när du inte orkar porta koden.
   blurb: 'Slå ihop brickor.',
   category: 'pussel',
   accent: 'text-amber-400',
+  ikon: '🔢',
+  farg: '#fbbf24',
   scoreFormat: 'none',
   iframe: '/spel/2048/index.html',
 }

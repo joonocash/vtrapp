@@ -1,124 +1,76 @@
-import React, { useState } from 'react';
-import { DepartureBoard } from './components/DepartureBoard';
-import { StopSelector } from './components/StopSelector';
-import AgentsGame from './components/agents/AgentsGame.jsx';
-import ImpostorGame from './components/ImpostorGame';
-import RotspelPage from './rotspel/RotspelPage.jsx';
-import CassiePage from './cassie/CassiePage.jsx';
-import { useDepartures } from './hooks/useDepartures';
+import { Component, Suspense, useEffect } from 'react';
+import Skal from './shell/Skal.jsx';
+import { useHashRutt } from './shell/useHashRutt.js';
+import { hittaApp, gissaAppUtanHash, STARTAPP, SAJTNAMN } from './shell/appar.js';
 
-function App() {
-  const [activeTab, setActiveTab] = useState('departures'); // 'departures', 'agents', 'imposter', 'rotspel', or 'cassie'
-  const [selectedStop, setSelectedStop] = useState({
-    areaId: '740025695',
-    name: 'Göteborg Ullevi Norra'
-  });
-
-  const { departures, loading, error, lastUpdated, refresh } = useDepartures(selectedStop.areaId);
-
+function Laddar() {
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      {/* Header with Tabs */}
-      <header className="bg-gradient-to-r from-blue-600 to-blue-700 shadow-2xl">
-        <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 max-w-5xl">
-          <h1 className="text-3xl sm:text-5xl font-bold text-white tracking-tight">Västtrafik</h1>
-          <p className="text-blue-100 mt-1 sm:mt-2 text-sm sm:text-lg">Realtidsavgångar • Göteborg</p>
-
-          {/* Tab Navigation */}
-          <div className="flikrad flex flex-nowrap gap-3 sm:gap-4 mt-6 overflow-x-auto -mx-4 px-4 py-1 -my-1 sm:mx-0 sm:px-0">
-            <button
-              onClick={() => setActiveTab('departures')}
-              className={`shrink-0 whitespace-nowrap px-5 sm:px-6 py-3 rounded-lg font-semibold transition-all ${
-                activeTab === 'departures'
-                  ? 'bg-white text-blue-700 shadow-lg'
-                  : 'bg-blue-500 text-white hover:bg-blue-400'
-              }`}
-            >
-              Avgångar
-            </button>
-            <button
-              onClick={() => setActiveTab('agents')}
-              className={`shrink-0 whitespace-nowrap px-5 sm:px-6 py-3 rounded-lg font-semibold transition-all ${
-                activeTab === 'agents'
-                  ? 'bg-white text-blue-700 shadow-lg'
-                  : 'bg-blue-500 text-white hover:bg-blue-400'
-              }`}
-            >
-              Agenter
-            </button>
-            <button
-              onClick={() => setActiveTab('imposter')}
-              className={`shrink-0 whitespace-nowrap px-5 sm:px-6 py-3 rounded-lg font-semibold transition-all ${
-                activeTab === 'imposter'
-                  ? 'bg-white text-blue-700 shadow-lg'
-                  : 'bg-blue-500 text-white hover:bg-blue-400'
-              }`}
-            >
-              Imposter
-            </button>
-            <button
-              onClick={() => setActiveTab('rotspel')}
-              className={`shrink-0 whitespace-nowrap px-5 sm:px-6 py-3 rounded-lg font-semibold transition-all ${
-                activeTab === 'rotspel'
-                  ? 'bg-white text-blue-700 shadow-lg'
-                  : 'bg-blue-500 text-white hover:bg-blue-400'
-              }`}
-            >
-              Rötspel
-            </button>
-            <button
-              onClick={() => setActiveTab('cassie')}
-              className={`shrink-0 whitespace-nowrap px-5 sm:px-6 py-3 rounded-lg font-semibold transition-all ${
-                activeTab === 'cassie'
-                  ? 'bg-white text-blue-700 shadow-lg'
-                  : 'bg-blue-500 text-white hover:bg-blue-400'
-              }`}
-            >
-              Cassie
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="container mx-auto px-3 sm:px-6 py-6 sm:py-10 max-w-5xl">
-        {activeTab === 'departures' ? (
-          <>
-            {/* Stop Selector */}
-            <div className="bg-gray-800 rounded-xl shadow-2xl p-4 sm:p-8 mb-6 sm:mb-8 border border-gray-700">
-              <StopSelector
-                currentStop={selectedStop}
-                onStopChange={setSelectedStop}
-              />
-            </div>
-
-            {/* Departure Board */}
-            <div className="bg-gray-800 rounded-xl shadow-2xl p-3 sm:p-8 border border-gray-700">
-              <DepartureBoard
-                departures={departures}
-                loading={loading}
-                error={error}
-                lastUpdated={lastUpdated}
-                onRetry={refresh}
-                stopName={selectedStop.name}
-              />
-            </div>
-          </>
-        ) : activeTab === 'agents' ? (
-          /* Agents Game */
-          <AgentsGame />
-        ) : activeTab === 'imposter' ? (
-          /* Imposter Game */
-          <ImpostorGame />
-        ) : activeTab === 'rotspel' ? (
-          /* Rötspel */
-          <RotspelPage />
-        ) : (
-          /* Cassie */
-          <CassiePage />
-        )}
-      </main>
+    <div className="grid h-64 place-items-center" role="status" aria-label="Laddar">
+      <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-accent" />
     </div>
   );
 }
 
-export default App;
+// Om en app kastar under rendering ska bara den gå ner, inte menyn — annars
+// går det inte ens att byta flik. (Rötspel har en egen, finare gräns per spel.)
+class AppFelgrans extends Component {
+  state = { fel: null };
+
+  static getDerivedStateFromError(fel) {
+    return { fel };
+  }
+
+  componentDidCatch(fel, info) {
+    console.error('[skal] appen kraschade:', fel, info);
+  }
+
+  componentDidUpdate(forra) {
+    if (this.state.fel && forra.appId !== this.props.appId) this.setState({ fel: null });
+  }
+
+  render() {
+    if (this.state.fel) {
+      return (
+        <div className="panel mx-auto max-w-md p-6 text-center">
+          <p className="font-display text-lg text-white">Något gick fel</p>
+          <p className="mt-1 break-words text-sm text-gray-400">{String(this.state.fel?.message || this.state.fel)}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-strong"
+          >
+            Ladda om
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function App() {
+  const [rutt, ga] = useHashRutt();
+  // Ingen hash alls = gammal länk eller första besöket: gissa (Cassie-länkar
+  // med ?r=… ska till Cassie). Finns en hash men den är tom/okänd: startsidan.
+  const aktiv =
+    (rutt.app && hittaApp(rutt.app)) || (window.location.hash ? STARTAPP : gissaAppUtanHash());
+  const { Komponent } = aktiv;
+
+  useEffect(() => {
+    document.title = `${aktiv.namn} · ${SAJTNAMN}`;
+  }, [aktiv.namn]);
+
+  // Ny app = börja överst, som en ny sida.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [aktiv.id]);
+
+  return (
+    <Skal aktiv={aktiv}>
+      <AppFelgrans appId={aktiv.id}>
+        <Suspense fallback={<Laddar />}>
+          <Komponent sub={rutt.sub} ga={(sokvag, opt) => ga(`${aktiv.id}${sokvag ? `/${sokvag}` : ''}`, opt)} />
+        </Suspense>
+      </AppFelgrans>
+    </Skal>
+  );
+}
