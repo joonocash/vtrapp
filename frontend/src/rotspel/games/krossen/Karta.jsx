@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BANOR, VARLDAR, BANOR_PER_VARLD } from './levels.js'
-import { stjarnorFor, oppen, totaltStjarnor } from './store.js'
-import { Stjarna, Mynt, HAPPY } from './pieces.jsx'
+import { stjarnorFor, oppen, totaltStjarnor, kistStatus, KISTA_VAR } from './store.js'
+import { Stjarna, Mynt, MalIkon, HAPPY } from './pieces.jsx'
 import { skapaRng } from './engine.js'
+import { hamtaTopplista, banaId, spelarfarg } from './synk.js'
+import { Topplista } from './Spelplan.jsx'
+import { KistBild } from './Dagligt.jsx'
 
 // Kartan: Happys promenad genom fem världar. Bana 1 längst ner, stigen
 // slingrar sig uppåt. Tryck på en öppen bana för att spela den direkt.
@@ -12,8 +15,11 @@ const TOPP = 90 // luft ovanför sista banan
 const BOTTEN = 70
 
 const xFor = (nr) => 50 + Math.sin(nr * 0.78) * 30 + Math.sin(nr * 0.23) * 6
+// åt vilket håll mitten av kartan ligger från en bana: +1 höger, -1 vänster
+const mot = (nr) => (xFor(nr) > 50 ? -1 : 1)
 
-export default function Karta({ save, aktuell, hoppFran, onValj, onTillbaka }) {
+export default function Karta({ save, aktuell, hoppFran, kompisar = [], spelare, onValj, onTillbaka, onKista }) {
+  const [vald, setVald] = useState(null)
   const skrollRef = useRef(null)
   const hojd = TOPP + (BANOR.length - 1) * STEG + BOTTEN
   const yFor = (nr) => hojd - BOTTEN - (nr - 1) * STEG
@@ -68,6 +74,7 @@ export default function Karta({ save, aktuell, hoppFran, onValj, onTillbaka }) {
           ← Spela
         </button>
         <div className="kr-kartstat">
+          <KistKnapp save={save} onKista={onKista} />
           <span>
             <Stjarna fylld storlek={16} /> {totaltStjarnor(save)}
           </span>
@@ -122,7 +129,7 @@ export default function Karta({ save, aktuell, hoppFran, onValj, onTillbaka }) {
                 key={b.nr}
                 className={'kr-nod' + (b.boss ? ' kr-nod-boss' : '') + (!oppnad ? ' kr-nod-last' : '') + (b.nr === aktuell ? ' kr-nod-aktuell' : '')}
                 style={{ left: xFor(b.nr) + '%', top: yFor(b.nr), '--nodfarg': v.farg, '--nodmork': v.mork }}
-                onClick={() => oppnad && onValj(b.nr)}
+                onClick={() => oppnad && setVald(b.nr)}
                 disabled={!oppnad}
                 aria-label={`Bana ${b.nr}${oppnad ? '' : ', låst'}${st ? `, ${st} stjärnor` : ''}`}
               >
@@ -138,9 +145,127 @@ export default function Karta({ save, aktuell, hoppFran, onValj, onTillbaka }) {
             )
           })}
 
-          <div className="kr-kartahappy" style={{ left: xFor(happyNr) + '%', top: yFor(happyNr) - 74 }}>
+          <div
+            className="kr-kartahappy"
+            style={{ left: `calc(${xFor(happyNr)}% ${mot(happyNr) > 0 ? '+' : '-'} 50px)`, top: yFor(happyNr) - 24 }}
+          >
             <img src={HAPPY.nojd} alt="Happy" />
           </div>
+
+          {kompisarPaKartan(kompisar, spelare).map((k) => {
+            // mot mitten av kartan, efter Happy om Happy står på samma bana
+            const avstand = (k.nr === happyNr ? 96 : 42) + k.plats * 36
+            return (
+              <div
+                key={k.player}
+                className="kr-kompis"
+                style={{ left: `calc(${xFor(k.nr)}% ${mot(k.nr) > 0 ? '+' : '-'} ${avstand}px)`, top: yFor(k.nr) - 13, '--kompisfarg': k.fler ? '#6b7280' : spelarfarg(k.player) }}
+                title={k.fler ? k.namn.join(', ') : `${k.player} är på bana ${k.nr}`}
+              >
+                <span className="kr-kompis-boll">{k.fler ? '+' + k.fler : k.player.slice(0, 1).toUpperCase()}</span>
+                {!k.fler && <span className="kr-kompis-namn">{k.player}</span>}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {vald !== null && <BanKort nr={vald} save={save} spelare={spelare} onSpela={() => onValj(vald)} onStang={() => setVald(null)} />}
+    </div>
+  )
+}
+
+// Kompisarna står vid banan de är på (den efter deras högsta klarade).
+// Flera på samma bana läggs bredvid varandra, på den sida av stigen där det
+// finns plats.
+// Högst två bubblor per bana, resten samlas i en "+3".
+function kompisarPaKartan(kompisar, spelare) {
+  const perBana = new Map()
+  for (const k of kompisar) {
+    if (k.player === spelare) continue
+    const nr = Math.min(BANOR.length, (k.hogsta || 0) + 1)
+    if (!perBana.has(nr)) perBana.set(nr, [])
+    perBana.get(nr).push(k)
+  }
+  const ut = []
+  for (const [nr, lista] of perBana) {
+    lista.slice(0, 2).forEach((k, plats) => ut.push({ ...k, nr, plats }))
+    if (lista.length > 2) {
+      const rest = lista.slice(2)
+      ut.push({ player: 'fler-' + nr, nr, plats: 2, fler: rest.length, namn: rest.map((k) => k.player) })
+    }
+  }
+  return ut
+}
+
+function KistKnapp({ save, onKista }) {
+  const { redo, mot } = kistStatus(save)
+  return (
+    <button className={'kr-kistknapp' + (redo ? ' kr-kistknapp-redo' : '')} onClick={() => redo && onKista()} title="Stjärnkistan: var tjugonde stjärna fyller den">
+      <KistBild storlek={26} />
+      {redo ? (
+        <span className="kr-kistknapp-text">Öppna!</span>
+      ) : (
+        <span className="kr-kistmatare">
+          <span style={{ width: (mot / KISTA_VAR) * 100 + '%' }} />
+        </span>
+      )}
+    </button>
+  )
+}
+
+// Kortet som kommer upp när man trycker på en bana: målen, ens stjärnor och
+// kompisarnas bästa, och en knapp för att spela.
+function BanKort({ nr, save, spelare, onSpela, onStang }) {
+  const bana = BANOR[nr - 1]
+  const varld = VARLDAR[bana.varld]
+  const st = stjarnorFor(save, nr)
+  const [lista, setLista] = useState(null)
+  useEffect(() => {
+    let levande = true
+    hamtaTopplista(banaId(nr)).then((l) => levande && setLista(l))
+    return () => {
+      levande = false
+    }
+  }, [nr])
+  return (
+    <div className="kr-ruta-bakgrund" onClick={onStang}>
+      <div className="kr-ruta kr-bankort" onClick={(e) => e.stopPropagation()}>
+        <div className="kr-bankort-varld" style={{ color: varld.mork }}>
+          {varld.namn}
+        </div>
+        <div className="kr-ruta-titel">
+          Bana {nr}
+          {bana.boss ? ' · Boss' : ''}
+        </div>
+        <div className="kr-resultat-stjarnor">
+          {[0, 1, 2].map((k) => (
+            <Stjarna key={k} fylld={st > k} storlek={30} />
+          ))}
+        </div>
+        <div className="kr-mallista">
+          {bana.mal.map((m, k) => (
+            <div key={k} className="kr-malpost kr-malpost-stor">
+              {m.typ === 'poang' ? (
+                <span className="kr-malpoang">{m.antal.toLocaleString('sv-SE')}</span>
+              ) : (
+                <>
+                  <MalIkon mal={m} storlek={30} />
+                  {m.antal ? <span className="kr-malantal">{m.antal}</span> : null}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="kr-ruta-sma">{bana.drag} drag</div>
+        <Topplista lista={lista} spelare={spelare} />
+        <div className="kr-ruta-knappar">
+          <button className="kr-knapp kr-knapp-stor" onClick={onSpela}>
+            Spela
+          </button>
+          <button className="kr-knapp kr-knapp-lank" onClick={onStang}>
+            Stäng
+          </button>
         </div>
       </div>
     </div>

@@ -29,13 +29,13 @@
 .kr-topprad {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 6px;
 }
 
 .kr-ikonknapp {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   border-radius: 50%;
   display: grid;
@@ -63,6 +63,9 @@
   line-height: 1.1;
 }
 .kr-toppvarld {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 11px;
   font-weight: 700;
   color: var(--rubrik);
@@ -85,8 +88,8 @@
 .kr-toppmynt {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px 4px 6px;
+  gap: 3px;
+  padding: 4px 8px 4px 5px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.75);
   font-weight: 800;
@@ -831,9 +834,9 @@
 .kr-kartahappy {
   position: absolute;
   z-index: 3;
-  width: 44px;
-  height: 44px;
-  margin-left: -22px;
+  width: 48px;
+  height: 48px;
+  margin-left: -24px;
   transition: left 700ms cubic-bezier(0.34, 1.3, 0.64, 1), top 700ms cubic-bezier(0.34, 1.3, 0.64, 1);
   pointer-events: none;
 }
@@ -920,4 +923,411 @@
   .kr-nod-aktuell {
     animation: none;
   }
+}
+
+/* ------------------------------------------------------------ PR 2 */
+
+/* klockan på godis som räknar ner */
+.kr-klocka {
+  position: absolute;
+  right: 2%;
+  bottom: 2%;
+  min-width: 42%;
+  height: 42%;
+  padding: 0 3%;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, #ff8a8f, #e5333f 60%, #9b1520);
+  border: 2px solid #fff;
+  color: #fff;
+  font-weight: 900;
+  font-size: clamp(10px, 2.8vw, 14px);
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+.kr-klocka::before {
+  content: '';
+  position: absolute;
+  top: -22%;
+  left: 18%;
+  right: 18%;
+  height: 26%;
+  border-radius: 50% 50% 0 0;
+  border: 2px solid #fff;
+  border-bottom: none;
+}
+.kr-klocka-snart {
+  animation: kr-skaller 380ms ease-in-out infinite;
+}
+
+/* topplistor */
+.kr-topplista {
+  width: 100%;
+  list-style: none;
+  margin: 2px 0;
+  padding: 4px 6px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+}
+.kr-topplista li {
+  display: flex;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 8px;
+}
+.kr-topplista-jag {
+  background: #fff1b8;
+  font-weight: 900;
+}
+.kr-topplista-plats {
+  width: 16px;
+  color: #9ca3af;
+  font-weight: 800;
+}
+.kr-topplista-namn {
+  flex: 1;
+  text-align: left;
+  font-weight: 800;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kr-topplista-poang {
+  font-weight: 800;
+  color: #7c2d12;
+  font-variant-numeric: tabular-nums;
+}
+.kr-topplista-tom {
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+/* det dagliga */
+.kr-ikonknapp-lyser {
+  position: relative;
+  animation: kr-puls 1.2s ease-in-out infinite;
+}
+.kr-ikonknapp-lyser::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid #fff;
+}
+.kr-ark {
+  width: min(92%, 340px);
+  max-height: calc(100% - 60px);
+  overflow-y: auto;
+  gap: 10px;
+}
+.kr-sektion {
+  flex-shrink: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.6);
+}
+.kr-sektion-rubrik {
+  font-weight: 900;
+  font-size: 15px;
+  color: #7c2d12;
+}
+.kr-serie {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  width: 100%;
+}
+.kr-seriedag {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0 5px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.12);
+  min-width: 0;
+}
+.kr-seriedag-nr {
+  font-size: 10px;
+  font-weight: 900;
+  color: #9ca3af;
+}
+.kr-seriedag-tagen {
+  opacity: 0.45;
+}
+.kr-seriedag-tagen::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 900;
+  color: #16a34a;
+}
+.kr-seriedag-idag {
+  background: linear-gradient(180deg, #fff7c2, #ffd21f);
+  box-shadow: 0 0 0 2px #f59e0b, 0 2px 0 rgba(0, 0, 0, 0.12);
+}
+.kr-seriedag .kr-booster-ikon,
+.kr-seriedag svg {
+  width: 20px !important;
+  height: 20px !important;
+  font-size: 15px;
+}
+.kr-belonning {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.kr-belonning-mynt {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 900;
+  font-size: 11px;
+  color: #92400e;
+}
+
+/* lyckohjulet */
+.kr-hjul-ram {
+  position: relative;
+  flex-shrink: 0;
+  width: 240px;
+  height: 240px;
+  max-width: 76vw;
+  max-height: 76vw;
+}
+.kr-hjul-pil {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  z-index: 2;
+  width: 0;
+  height: 0;
+  margin-left: -14px;
+  border-left: 14px solid transparent;
+  border-right: 14px solid transparent;
+  border-top: 26px solid #7c2d12;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4));
+}
+.kr-hjul {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 6px solid #fff;
+  box-shadow: 0 0 0 4px #f59e0b, 0 8px 18px rgba(0, 0, 0, 0.3), inset 0 0 18px rgba(0, 0, 0, 0.2);
+}
+.kr-hjul-sektor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.kr-hjul-innehall {
+  position: absolute;
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.85);
+}
+.kr-hjul-nav {
+  position: absolute;
+  inset: 36%;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.kr-hjul-nav img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* stjärnkistan */
+.kr-kista {
+  transform: scale(0.9);
+}
+.kr-kista-oppen {
+  animation: kr-kista-hopp 500ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.kr-kistlock {
+  transform-box: fill-box;
+  transform-origin: 10% 100%;
+  transition: transform 450ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.kr-kista-oppen .kr-kistlock {
+  transform: rotate(-38deg) translate(-4px, -8px);
+}
+.kr-kista-innehall {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.kr-kista-sak {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  font-weight: 800;
+  color: #374151;
+  opacity: 0;
+}
+.kr-kista-innehall-in .kr-kista-sak {
+  animation: kr-ruta-in 380ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.kr-kista-innehall-in .kr-kista-sak {
+  opacity: 1;
+}
+.kr-kistknapp {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+}
+.kr-kistknapp-redo {
+  background: linear-gradient(180deg, #fff7c2, #ffd21f);
+  animation: kr-puls 1s ease-in-out infinite;
+}
+.kr-kistknapp-text {
+  font-weight: 900;
+  font-size: 12px;
+  color: #7c2d12;
+}
+.kr-kistmatare {
+  position: relative;
+  width: 38px;
+  height: 7px;
+  border-radius: 999px;
+  background: #d8dee9;
+  overflow: hidden;
+}
+.kr-kistmatare span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #ffd21f, #ff8a1c);
+}
+
+/* notisen överst */
+.kr-notis {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 60;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fff7c2, #ffd21f);
+  box-shadow: 0 0 0 3px #fff, 0 6px 14px rgba(0, 0, 0, 0.3);
+  font-weight: 900;
+  font-size: 13px;
+  color: #7c2d12;
+  white-space: nowrap;
+  animation: kr-notis 3.2s ease-in-out forwards;
+  pointer-events: none;
+}
+
+/* vinstsviten */
+.kr-svit {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 8px 3px 6px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffcf70, #ff8a1c);
+  color: #fff;
+  font-weight: 900;
+  font-size: 14px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
+}
+.kr-svit-ikon {
+  font-size: 13px;
+}
+
+/* kompisarna på kartan */
+.kr-kompis {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+.kr-kompis-boll {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--kompisfarg);
+  border: 2px solid #fff;
+  color: #fff;
+  font-weight: 900;
+  font-size: 13px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.kr-kompis-namn {
+  margin-top: 1px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 9px;
+  font-weight: 800;
+  color: #374151;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kr-bankort-varld {
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+@keyframes kr-skaller {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-12deg); }
+  75% { transform: rotate(12deg); }
+}
+@keyframes kr-kista-hopp {
+  0% { transform: scale(0.9); }
+  50% { transform: scale(1.15) translateY(-8px); }
+  100% { transform: scale(1); }
+}
+@keyframes kr-notis {
+  0% { transform: translate(-50%, -60px); opacity: 0; }
+  12% { transform: translate(-50%, 0); opacity: 1; }
+  85% { transform: translate(-50%, 0); opacity: 1; }
+  100% { transform: translate(-50%, -60px); opacity: 0; }
 }

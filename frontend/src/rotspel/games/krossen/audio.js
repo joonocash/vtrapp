@@ -205,6 +205,29 @@ export function skapaLjud(arTyst) {
     lagDrag() {
       ton(880, 90, { typ: 'square', vol: 0.03 })
     },
+    // tennisbollen: ett studsigt "pock"
+    boll() {
+      ton(420, 120, { typ: 'sine', vol: 0.14, glid: 180 })
+      brusa(50, { frekvens: 2500, q: 2, vol: 0.06 })
+    },
+    // klockorna tickar — fortare och ljusare ju närmare noll
+    tick(kvar = 9) {
+      const f = kvar <= 3 ? 2000 : 1500
+      ton(f, 35, { typ: 'square', vol: 0.03 })
+      ton(f * 0.75, 35, { typ: 'square', vol: 0.03, fordrojning: 120 })
+    },
+    ring() {
+      for (let k = 0; k < 10; k++) {
+        ton(k % 2 ? 1900 : 2300, 60, { typ: 'square', vol: 0.05, fordrojning: k * 70 })
+      }
+    },
+    hjulTick() {
+      ton(1200, 25, { typ: 'triangle', vol: 0.05 })
+    },
+    kista() {
+      brusa(300, { filter: 'lowpass', frekvens: 600, q: 1, vol: 0.12 })
+      ;[0, 4, 7, 12, 16, 19, 24].forEach((st, k) => ton(hz(st + 7), 300, { typ: 'triangle', vol: 0.07, fordrojning: 250 + k * 60 }))
+    },
   }
 
   // --------------------------------------------------------------- musiken

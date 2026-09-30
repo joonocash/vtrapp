@@ -86,6 +86,8 @@ const TECKEN = {
   koppel: ['k'],
   ograss: ['o'],
   kott: ['e'],
+  boll: ['b'],
+  klocka: ['t'],
 }
 
 function bygg(form, lagerSpec, nr) {
@@ -131,6 +133,8 @@ function tolkaMal(text) {
     else if (del === 'b') mal.push({ typ: 'lada' })
     else if (del === 'o') mal.push({ typ: 'ograss' })
     else if (del === 'k') mal.push({ typ: 'koppel' })
+    else if (/^boll\d+$/.test(del)) mal.push({ typ: 'boll', antal: Number(del.slice(4)) })
+    else if (/^klocka\d+$/.test(del)) mal.push({ typ: 'klocka', antal: Number(del.slice(6)) })
     else if (del.startsWith('e')) {
       const antal = Number(del.slice(1))
       mal.push({ typ: 'kott', antal })
@@ -151,7 +155,9 @@ function tolkaMal(text) {
 // ----------------------------------------------------------------- banorna
 
 // [form, sorter, mål, lager, flaggor]
-// Flaggor: boss, latt (en andningsbana), tips:<nyckel>
+// Flaggor: boss, latt (en andningsbana), tips:<nyckel>,
+//   bollar[:chans]   tennisbollar ramlar in ovanifrån
+//   klockor:<tid>    ibland kommer godis med en klocka som börjar på <tid>
 const SPEC = [
   // --- Trädgården
   ['r7', 4, 'p', '', 'tips:start latt'],
@@ -203,62 +209,62 @@ const SPEC = [
   ['r9', 5, 'b', 'lada:horn:3 lada:mitt', 'tips:lada3'],
   ['ben', 5, 'o', 'ograss:hornUppe ograss:radGap', ''],
   ['r9', 5, 'e3 o', 'ograss:hornUppe', ''],
-  ['ram', 5, 'l', 'lera:allt:2', ''],
+  ['r8', 5, 'boll18', 'boll:glest', 'tips:boll bollar'],
   ['r8', 5, 'p', '', 'latt'],
   ['trappa', 5, 'l', 'lera:allt', ''],
   ['r9', 5, 'o k', 'ograss:mitt koppel:x', ''],
   ['diamant', 5, 'f0:30 f2:30 f4:30 o', 'ograss:ringInre', ''],
   ['r9', 5, 'l b', 'lada:ring:3 lera:ringInre:2', ''],
   ['hus', 5, 'o', 'ograss:botten2', ''],
-  ['r8', 5, 'frisbee4 bomb2 b', 'lada:spridd', ''],
+  ['r8', 5, 'frisbee4 bomb2 b', 'lada:spridd', 'bollar'],
   ['pelare', 5, 'e3 b', 'lada:pelare:2', ''],
   ['r9', 5, 'l o', 'ograss:horn lera:allt', ''],
   ['kors', 6, 'p', '', 'tips:farger6'],
-  ['timglas', 5, 'o k', 'ograss:botten koppel:rad', ''],
+  ['timglas', 5, 'o k', 'ograss:botten koppel:rad', 'bollar:0.04'],
   ['r9', 5, 'l b', 'lada:ringInre:3 lera:ring:2', ''],
-  ['r8', 5, 'e3 k', 'koppel:spridd', ''],
+  ['r8', 5, 'e3 k', 'koppel:spridd', 'bollar:0.05'],
   ['tass', 5, 'o l b', 'ograss:radGap lada:hornUppe:2 lera:allt', 'boss'],
 
   // --- Stranden
   ['r9', 5, 'l', 'lera:allt', 'latt'],
   ['skal', 5, 'e3', '', ''],
   ['hjarta', 6, 'l', 'lera:mitt', ''],
-  ['r9', 5, 'l b', 'lada:radGap lera:botten3', ''],
+  ['r9', 5, 'l', 'klocka:glest lera:allt', 'tips:klocka klockor:16'],
   ['diamant', 5, 'f0:25 f1:25 f2:25 f3:25', '', ''],
   ['tvilling', 5, 'l k', 'koppel:x lera:allt', ''],
   ['r8', 6, 'raket5', '', ''],
   ['ram', 5, 'e4', '', ''],
-  ['r9', 5, 'o b', 'ograss:mitt lada:horn:2', ''],
+  ['r9', 5, 'o b', 'ograss:mitt lada:horn:2', 'klockor:14'],
   ['trappa', 5, 'l', 'lera:allt:2', ''],
   ['r9', 5, 'k', 'koppel:spridd', ''],
-  ['skal', 5, 'l b', 'lada:radGap lera:topp', ''],
+  ['skal', 5, 'l b', 'lada:radGap lera:topp', 'bollar'],
   ['r8', 5, 'p', 'lada:glest:2', ''],
   ['kors', 5, 'e4 o', 'ograss:ringInre', ''],
   ['r9', 6, 'l b', 'lada:ring lera:ringInre:2', ''],
   ['ben', 5, 'f4:30 bomb2 frisbee2', '', ''],
   ['pelare', 5, 'l k', 'koppel:mitt lera:allt', ''],
-  ['r9', 5, 'o l', 'ograss:botten2 lera:topp', ''],
+  ['r9', 5, 'o l', 'ograss:botten2 lera:topp', 'klockor:15'],
   ['hus', 5, 'e3 b', 'lada:pelare:2', ''],
   ['diamant', 5, 'l k b o', 'ograss:ringInre lada:pelare:2 koppel:x lera:allt', 'boss'],
 
   // --- Stan
   ['r9', 5, 'l', 'lera:allt:2', ''],
   ['r9', 5, 'e5', '', ''],
-  ['hjarta', 6, 'l b', 'lada:glest:3 lera:allt', ''],
+  ['hjarta', 6, 'l b', 'lada:glest:3 lera:allt', 'bollar:0.03'],
   ['timglas', 5, 'o k l', 'ograss:hornUppe koppel:rad lera:botten3', ''],
   ['r8', 5, 'p', '', 'latt'],
   ['tass', 5, 'l', 'lera:allt:2', ''],
-  ['r9', 6, 'f1:32 f3:32 f5:32', '', ''],
+  ['r9', 6, 'f1:32 f3:32 f5:32', '', 'klockor:14'],
   ['ram', 5, 'b o', 'lada:ring ograss:horn', ''],
   ['kors', 5, 'e4 k', 'koppel:glest', ''],
   ['r9', 5, 'skal2 bomb3', '', ''],
-  ['diamant', 5, 'l b', 'lada:mitt:3 lera:allt', ''],
+  ['diamant', 5, 'l b', 'lada:mitt:3 lera:allt', 'bollar'],
   ['pelare', 5, 'o e3', 'ograss:hornUppe ograss:radGap', ''],
-  ['r9', 6, 'l k', 'koppel:x lera:ring:2', ''],
+  ['r9', 6, 'l k', 'koppel:x lera:ring:2', 'klockor:18'],
   ['skal', 5, 'b', 'lada:botten2:3 lada:radGap:2', ''],
   ['r8', 5, 'p', '', 'latt'],
   ['hjarta', 5, 'e4 l', 'lera:botten3', ''],
-  ['r9', 5, 'o b l', 'ograss:ringInre lada:ring:2 lera:kant', ''],
+  ['r9', 5, 'o b l', 'ograss:ringInre lada:ring:2 lera:kant', 'klockor:18'],
   ['ben', 5, 'l k', 'koppel:hornUppe lera:allt:2', ''],
   ['tvilling', 5, 'e2 o l', 'ograss:hornUppe lera:botten2', ''],
   ['tass', 6, 'l b o k', 'ograss:radGap lada:hornUppe:3 koppel:ringInre lera:allt', 'boss'],
@@ -312,58 +318,58 @@ export const STAMNING = {
   43: [37, 10000, 31000, 46000],
   44: [42, 2000, 6000, 9500],
   45: [24, 6000, 24000, 40000],
-  46: [38, 13000, 33000, 42000],
+  46: [18, 3500, 9500, 15000],
   47: [20, 8500, 22000, 33000],
   48: [20, 9000, 25000, 30000],
   49: [17, 4000, 14500, 30000],
   50: [18, 3250, 9000, 13500],
   51: [26, 5500, 17500, 23000],
   52: [20, 3750, 11500, 15500],
-  53: [21, 3500, 12500, 22000],
+  53: [23, 4250, 13000, 17500],
   54: [33, 6500, 17000, 22000],
   55: [23, 9000, 26000, 42000],
   56: [22, 6000, 8000, 11000],
-  57: [28, 2250, 7500, 18500],
+  57: [33, 2250, 10500, 17500],
   58: [19, 5500, 17500, 31000],
-  59: [24, 4750, 17000, 24000],
+  59: [29, 5500, 15000, 22000],
   60: [20, 7000, 16500, 24000],
   61: [29, 10000, 31000, 39000],
   62: [18, 3750, 9500, 12000],
   63: [12, 1500, 4000, 6000],
-  64: [15, 5000, 19500, 24000],
+  64: [19, 10000, 28000, 37000],
   65: [13, 2500, 7000, 11500],
   66: [29, 7000, 17000, 20000],
   67: [23, 2250, 5500, 7500],
   68: [26, 4750, 13500, 17000],
-  69: [26, 6500, 19500, 37000],
+  69: [26, 7000, 23000, 29000],
   70: [27, 13000, 34000, 44000],
   71: [18, 5500, 17500, 29000],
-  72: [15, 3000, 8500, 12000],
+  72: [22, 3250, 11000, 13000],
   73: [24, 13500, 19500, 26000],
   74: [23, 5000, 16500, 22000],
   75: [18, 3000, 9500, 11500],
   76: [34, 2250, 8500, 11000],
   77: [30, 8500, 19500, 25000],
-  78: [21, 5500, 17500, 27000],
+  78: [24, 6500, 21000, 27000],
   79: [21, 5000, 14000, 18500],
   80: [23, 6500, 16000, 20000],
   81: [25, 17000, 42000, 54000],
   82: [23, 9000, 28000, 34000],
-  83: [31, 4750, 11000, 13000],
+  83: [34, 4500, 13000, 14000],
   84: [26, 4750, 14500, 20000],
   85: [20, 8500, 22000, 33000],
   86: [32, 10500, 30000, 38000],
-  87: [22, 3750, 9500, 12500],
+  87: [24, 3250, 9000, 11500],
   88: [31, 4250, 12000, 16000],
   89: [22, 7000, 17500, 24000],
   90: [23, 6500, 19000, 29000],
-  91: [24, 7000, 17000, 22000],
+  91: [30, 6500, 15000, 19000],
   92: [31, 6500, 18500, 25000],
-  93: [27, 4750, 12500, 19000],
+  93: [32, 6000, 14000, 16500],
   94: [26, 3250, 12000, 14000],
   95: [20, 8500, 22000, 33000],
   96: [27, 4750, 14500, 18500],
-  97: [30, 8000, 22000, 29000],
+  97: [29, 9000, 21000, 27000],
   98: [35, 8000, 19000, 20000],
   99: [41, 5500, 15500, 18000],
   100: [45, 7000, 17000, 18500],
@@ -386,6 +392,11 @@ export const TIPS = {
   ograss: { titel: 'Ogräs', text: 'Ogräset växer ett steg varje drag du inte rensar bort något av det.' },
   lada3: { titel: 'Trälådor', text: 'Trälådor tål tre smällar.' },
   farger6: { titel: 'Alla sex', text: 'Nu är alla sex sorters godis med. Det blir svårare att hitta matchningar.' },
+  boll: { titel: 'Tennisbollar', text: 'Bollar går inte att matcha. Matcha precis bredvid dem, eller skjut på dem. De stoppar raketer!' },
+  klocka: {
+    titel: 'Väckarklockor',
+    text: 'Godis med en klocka räknar ner för varje drag. Ta bort det innan klockan ringer, annars vaknar Happy!',
+  },
 }
 
 // Standardvärden när en bana inte är provspelad än.
@@ -398,6 +409,9 @@ export const BANOR = SPEC.map(([form, farger, malText, lager, flaggor], k) => {
   const tips = flagga.find((f) => f.startsWith('tips:'))
   const [drag, en, tva, tre] = STAMNING[nr] || [STANDARD_DRAG, 0, 0, 0]
   for (const m of mal) if (m.typ === 'poang') m.antal = en
+  const bollFlagga = flagga.find((f) => f === 'bollar' || f.startsWith('bollar:'))
+  const klockFlagga = flagga.find((f) => f.startsWith('klockor:'))
+  const klockTid = klockFlagga ? Number(klockFlagga.slice(8)) : 15
   return {
     nr,
     varld: Math.floor(k / BANOR_PER_VARLD),
@@ -411,7 +425,21 @@ export const BANOR = SPEC.map(([form, farger, malText, lager, flaggor], k) => {
     boss: flagga.includes('boss'),
     latt: flagga.includes('latt'),
     tips: tips ? tips.slice(5) : null,
+    bollar: bollFlagga ? { chans: bollFlagga.includes(':') ? Number(bollFlagga.slice(7)) : 0.07, max: 6 } : null,
+    klockor: klockFlagga || lager.includes('klocka') ? { chans: 0.05, max: 3, tid: klockTid } : null,
   }
 })
 
 export const ANTAL_BANOR = BANOR.length
+
+// Dagens bana: samma för alla i dag. Den lånar karta och mål från en av
+// banorna efter Trädgården, och brädet slumpas med dagens datum som frö så
+// att alla börjar med exakt samma pjäser.
+export function dagensBana(dag) {
+  let fro = 0
+  for (const ch of 'krossen-' + dag) fro = (fro * 31 + ch.charCodeAt(0)) >>> 0
+  const rng = skapaRng(fro)
+  const kandidater = BANOR.filter((b) => b.nr > BANOR_PER_VARLD && !b.mal.every((m) => m.typ === 'poang'))
+  const bas = kandidater[Math.floor(rng() * kandidater.length)]
+  return { ...bas, dagens: true, dag, fro, tips: null, boss: false, bas: bas.nr }
+}

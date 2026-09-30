@@ -19,11 +19,13 @@ import {
   blandaBradet,
   laggUtSpecialer,
   stjarnorFor,
+  skapaRng,
 } from './engine.js'
 import { skapaFx } from './fx.js'
 import { Pjas, Koppel, Lera, MalIkon, Stjarna, Mynt, FARGER, HAPPY } from './pieces.jsx'
 import { VARLDAR, TIPS, SORTER } from './levels.js'
-import { BOOSTERS, BOOSTER_FRAN, EXTRA_DRAG, anvandBooster, belonning } from './store.js'
+import { BOOSTERS, BOOSTER_FRAN, EXTRA_DRAG, anvandBooster, belonning, dagensKlar, DAGENS_BELONNING } from './store.js'
+import { skickaPoang, hamtaTopplista } from './synk.js'
 import { readSettings } from '../../useSettings.js'
 
 // En spelomgång på en bana: brädet, statusraden, boostrarna och rutorna
@@ -49,9 +51,31 @@ function ta(s) {
   }
 }
 
-export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, onVinst, onKarta, onNasta, onIgen }) {
+export default function Spelplan({
+  bana,
+  save,
+  setSave,
+  ljud,
+  fullskarmSparrad,
+  svitBoost = [],
+  topplistaId = null,
+  spelare = null,
+  onVinst,
+  onForlust,
+  onStartad,
+  onKarta,
+  onNasta,
+  onIgen,
+}) {
   const sRef = useRef(null)
-  if (sRef.current === null) sRef.current = skapaSpel(bana)
+  const svitCeller = useRef([])
+  // Vinstsviten gäller som den var när banan började, även om den bryts.
+  const [svitVidStart] = useState(svitBoost)
+  if (sRef.current === null) {
+    // Dagens bana slumpas med dagens frö, så alla får samma bräde.
+    sRef.current = skapaSpel(bana, bana.fro ? skapaRng(bana.fro) : Math.random)
+    if (svitBoost.length) svitCeller.current = laggUtSpecialer(sRef.current, svitBoost)
+  }
   const s = sRef.current
   const varld = VARLDAR[bana.varld]
 
@@ -66,6 +90,8 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
   const [startAnvand, setStartAnvand] = useState({})
   const [extraKop, setExtraKop] = useState(0)
   const [resultat, setResultat] = useState(null)
+  const [forlustOrsak, setForlustOrsak] = useState('drag')
+  const [topplista, setTopplista] = useState(null)
   const [meddelande, setMeddelande] = useState(null)
 
   const bradRef = useRef(null)
@@ -108,9 +134,18 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
     fx.setInstallningar(readSettings())
     fxRef.current = fx
     fx.senare(() => {
-      if (bana.boss) fx.banner('Bossbana!', { farg: '#ff6b8a', storlek: 1.1, ms: 1500 })
+      if (bana.dagens) fx.banner('Dagens bana', { farg: '#ffe066', storlek: 1.1, ms: 1300 })
+      else if (bana.boss) fx.banner('Bossbana!', { farg: '#ff6b8a', storlek: 1.1, ms: 1500 })
       else fx.banner('Bana ' + bana.nr, { ms: 1100 })
     }, 250)
+    if (svitCeller.current.length) {
+      // vinstsvitens specialpjäser ligger redan på brädet — visa var
+      fx.senare(() => {
+        fx.banner('Vinstsvit! ×' + svitVidStart.length, { farg: '#ffb347', storlek: 0.9, ms: 1200 })
+        ljud.special()
+        for (const i of svitCeller.current) fx.visaNy(visatRef.current.tiles[i]?.id, '#ffb347')
+      }, 1500)
+    }
     const glimtar = setInterval(() => {
       if (busy.current || document.hidden) return
       const v = visatRef.current.tiles.filter((t) => t && t.typ === 'bit')
@@ -224,18 +259,9 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
         case 'raket-v':
         case 'kors':
         case 'kors3': {
-          const [kr, kc] = rc(k.i)
-          const linjer = []
-          if (k.special === 'raket-h') linjer.push([false, k.i])
-          else if (k.special === 'raket-v') linjer.push([true, k.i])
-          else {
-            const d = k.special === 'kors3' ? [-1, 0, 1] : [0]
-            for (const x of d) {
-              if (kr + x >= 0 && kr + x < sRef.current.h) linjer.push([false, (kr + x) * w + kc])
-              if (kc + x >= 0 && kc + x < w) linjer.push([true, kr * w + kc + x])
-            }
-          }
-          for (const [lodrat, i] of linjer) fx.raket(i, lodrat, farg, { fordrojning: start })
+          // motorn säger exakt hur långt varje raket hinner (tennisbollar
+          // stoppar dem), så animationen stannar på samma ställe
+          for (const l of k.linjer || []) fx.raket(l.i, l.lodrat, farg, { fordrojning: start, minus: l.minus, plus: l.plus })
           fx.senare(() => ljud.raket(), start)
           for (const j of k.omrade) satt(j, start + avst(k.i, j).man * 26)
           break
@@ -277,7 +303,8 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
             const ank = start + n * 90 + flyg
             satt(m, ank)
             if (k.last === 'raket-h' || k.last === 'raket-v') {
-              fx.raket(m, k.last === 'raket-v', farg, { fordrojning: ank })
+              const l = (k.linjer || []).find((x) => x.i === m)
+              fx.raket(m, k.last === 'raket-v', farg, { fordrojning: ank, minus: l?.minus ?? null, plus: l?.plus ?? null })
               fx.senare(() => ljud.raket(), ank)
             }
             if (k.last === 'bomb') {
@@ -321,6 +348,12 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
       fx.popp(o.id, o.i, '#2b7431', t)
       fx.ograss(o.i, t)
       fx.senare(() => ljud.ograss(), t)
+    }
+    for (const b of steg.bollar || []) {
+      const t = tider.get(b.i) ?? 0
+      slut = Math.max(slut, t)
+      fx.popp(b.id, b.i, '#d4ec2c', t, { kraft: 1.3 })
+      fx.senare(() => ljud.boll(), t)
     }
     for (const i of steg.koppel) {
       const t = tider.get(i) ?? 0
@@ -434,6 +467,26 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
         await fx.vila(430)
         break
       }
+      case 'klocka': {
+        visa()
+        const V = visatRef.current
+        for (const i of steg.celler) {
+          const t = V.tiles[i]
+          if (t && t.klocka <= 3) fx.pulsera(t.id, 1.2, 260)
+        }
+        if (steg.ringde !== null) {
+          const id = V.tiles[steg.ringde]?.id
+          ljud.ring()
+          fx.skaka(9, 600)
+          for (let k = 0; k < 4; k++) fx.senare(() => fx.pulsera(id, 1.5, 200), k * 220)
+          fx.banner('Klockan ringde!', { farg: '#ff6b6b', storlek: 1.1, ms: 1400 })
+          await fx.vila(1100)
+        } else {
+          ljud.tick(Math.min(...steg.celler.map((i) => V.tiles[i]?.klocka ?? 9)))
+          await fx.vila(160)
+        }
+        break
+      }
       case 'blanda':
         fx.banner('Blandar om', { farg: '#e2e8f0', storlek: 0.8, ms: 900 })
         await fx.vila(450)
@@ -476,6 +529,7 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
   async function efterDrag() {
     const st = sRef.current
     if (!levande.current) return
+    if (st.klockaRingde !== null) return forlora('klocka')
     if (!arPoangbana(st) && malKlara(st)) return vinna()
     if (st.drag <= 0) {
       if (arPoangbana(st)) {
@@ -515,18 +569,34 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
       visa()
     }
     const stjarnor = Math.max(1, stjarnorFor(st.poang, bana.stjarnor))
-    const mynt = belonning(saveRef.current, bana.nr, stjarnor)
+    const mynt = bana.dagens
+      ? dagensKlar(saveRef.current, bana.dag)
+        ? 0
+        : DAGENS_BELONNING
+      : belonning(saveRef.current, bana.nr, stjarnor)
     setResultat({ stjarnor, poang: st.poang, mynt })
     byt('vunnen')
     busy.current = false
     ljud.vinst()
     fx.konfetti()
     onVinst({ stjarnor, poang: st.poang })
+    if (topplistaId && spelare) {
+      skickaPoang(topplistaId, spelare, st.poang)
+        .then(() => hamtaTopplista(topplistaId))
+        .then((lista) => levande.current && setTopplista(lista))
+    }
   }
 
-  function forlora() {
+  function startaSpel() {
+    byt('spel')
+    if (onStartad) onStartad()
+  }
+
+  function forlora(orsak = 'drag') {
+    setForlustOrsak(orsak)
     byt('forlorad')
     ljud.forlust()
+    if (onForlust) onForlust(orsak)
   }
 
   function kopExtraDrag() {
@@ -559,7 +629,7 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
       })
       return
     }
-    if (fasRef.current === 'start') byt('spel')
+    if (fasRef.current === 'start') startaSpel()
     kor(spelaDrag(st, a, b))
   }
 
@@ -674,7 +744,7 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
       if (!st.tiles[i]) return
       if (!forsokAnvanda('tass')) return
       setLage(null)
-      if (fasRef.current === 'start') byt('spel')
+      if (fasRef.current === 'start') startaSpel()
       tassEffekt(i)
       return
     }
@@ -692,7 +762,7 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
       const a = bytForst
       setBytForst(null)
       setLage(null)
-      if (fasRef.current === 'start') byt('spel')
+      if (fasRef.current === 'start') startaSpel()
       kor(bytFritt(st, a, i))
       return
     }
@@ -847,6 +917,7 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
                 >
                   <div className="kr-inre">
                     <Pjas tile={t} />
+                    {t.klocka > 0 && <div className={'kr-klocka' + (t.klocka <= 3 ? ' kr-klocka-snart' : '')}>{t.klocka}</div>}
                   </div>
                 </div>
               ) : null
@@ -935,7 +1006,7 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
             +5 drag · <Mynt storlek={16} /> {EXTRA_DRAG.pris[Math.min(extraKop, 2)]}
           </button>
           <div className="kr-ruta-sma">Du har {save.mynt} mynt</div>
-          <button className="kr-knapp kr-knapp-lank" onClick={forlora}>
+          <button className="kr-knapp kr-knapp-lank" onClick={() => forlora('drag')}>
             Ge upp
           </button>
         </Ruta>
@@ -944,8 +1015,10 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
       {fas === 'forlorad' && (
         <Ruta>
           <img src={HAPPY.ledsen} alt="" className="kr-happy" />
-          <div className="kr-ruta-titel">Happy blev utan godis</div>
-          {!poangbana && <MalLista mal={visat.mal} />}
+          <div className="kr-ruta-titel">{forlustOrsak === 'klocka' ? 'Klockan ringde!' : 'Happy blev utan godis'}</div>
+          {forlustOrsak === 'klocka' && <p className="kr-ruta-text">Happy vaknade av väckarklockan. Ta bort godis med klocka innan tiden går ut.</p>}
+          {svitVidStart.length > 0 && <p className="kr-ruta-text">Vinstsviten är bruten.</p>}
+          {!poangbana && forlustOrsak !== 'klocka' && <MalLista mal={visat.mal} />}
           {poangbana && <p className="kr-ruta-text">Du fick {visat.poang.toLocaleString('sv-SE')} av {bana.stjarnor[0].toLocaleString('sv-SE')} poäng.</p>}
           <div className="kr-ruta-knappar">
             <button className="kr-knapp kr-knapp-stor" onClick={onIgen}>
@@ -961,19 +1034,22 @@ export default function Spelplan({ bana, save, setSave, ljud, fullskarmSparrad, 
       {fas === 'vunnen' && resultat && (
         <Ruta>
           <img src={HAPPY.glad} alt="" className="kr-happy kr-happy-hopp" />
-          <div className="kr-ruta-titel">{bana.boss ? 'Bossen besegrad!' : 'Happy fick godis!'}</div>
+          <div className="kr-ruta-titel">{bana.dagens ? 'Dagens bana klar!' : bana.boss ? 'Bossen besegrad!' : 'Happy fick godis!'}</div>
           <div className="kr-resultat-stjarnor">
             {[0, 1, 2].map((k) => (
               <ResultatStjarna key={k} fylld={resultat.stjarnor > k} fordrojning={400 + k * 380} onVisa={() => resultat.stjarnor > k && ljud.stjarna(k)} />
             ))}
           </div>
           <div className="kr-resultat-poang">{resultat.poang.toLocaleString('sv-SE')} poäng</div>
-          <div className="kr-resultat-mynt">
-            <Mynt storlek={18} /> +{resultat.mynt}
-          </div>
+          {resultat.mynt > 0 && (
+            <div className="kr-resultat-mynt">
+              <Mynt storlek={18} /> +{resultat.mynt}
+            </div>
+          )}
+          {topplistaId && <Topplista lista={topplista} spelare={spelare} />}
           <div className="kr-ruta-knappar">
             <button className="kr-knapp kr-knapp-stor" onClick={onNasta}>
-              Nästa bana
+              {bana.dagens ? 'Till banorna' : 'Nästa bana'}
             </button>
             <button className="kr-knapp kr-knapp-sekundar" onClick={onIgen}>
               Igen
@@ -1012,6 +1088,27 @@ function matarskala(grans) {
     return 1
   }
   return { punkter, lage }
+}
+
+// Topp fem för banan, med spelarens egen rad markerad. Ligger man utanför
+// topp fem visas ens egen placering sist.
+export function Topplista({ lista, spelare, antal = 5 }) {
+  if (lista === null) return <div className="kr-topplista kr-topplista-tom">Hämtar topplistan …</div>
+  if (!lista.length) return null
+  const min = lista.findIndex((e) => e.player === spelare)
+  const visas = lista.slice(0, antal).map((e, k) => ({ ...e, plats: k + 1 }))
+  if (min >= antal) visas.push({ ...lista[min], plats: min + 1 })
+  return (
+    <ol className="kr-topplista">
+      {visas.map((e) => (
+        <li key={e.player} className={e.player === spelare ? 'kr-topplista-jag' : ''}>
+          <span className="kr-topplista-plats">{e.plats}</span>
+          <span className="kr-topplista-namn">{e.player}</span>
+          <span className="kr-topplista-poang">{e.score.toLocaleString('sv-SE')}</span>
+        </li>
+      ))}
+    </ol>
+  )
 }
 
 function Ruta({ children }) {
@@ -1056,7 +1153,7 @@ function BoosterKnapp({ typ, save, onClick, aktiv, anvand }) {
   )
 }
 
-function BoosterIkon({ typ }) {
+export function BoosterIkon({ typ }) {
   if (typ === 'plus3') return <span className="kr-booster-ikon kr-booster-plus">+3</span>
   if (typ === 'raketbomb') return <MalIkon mal={{ typ: 'special', special: 'raket' }} storlek={26} />
   if (typ === 'skal') return <MalIkon mal={{ typ: 'special', special: 'skal' }} storlek={26} />
