@@ -1,9 +1,10 @@
 name: Testa och deploya
 
-# Pull request:  GitHubs egna servrar kör testerna och bygger sajten.
+# Pull request:  GitHubs egna servrar kör testerna, bygger sajten och spelar
+#                Krossen i en webbläsare.
 #                Resultatet syns som en grön bock eller ett rött kryss på PR:en.
-# Merge till main: samma test, och om de går igenom deployar runnern på
-#                webbservern med ./update.sh.
+# Merge till main: samma test (utom webbläsartestet), och om de går igenom
+#                deployar runnern på webbservern med ./update.sh.
 #
 # Runnern kopplar upp sig utåt mot GitHub, så webbservern behöver inte vara
 # nåbar utifrån. Uppsättning: se "Automatisk deploy" i DEPLOYMENT.md.
@@ -27,7 +28,7 @@ jobs:
   test:
     name: Tester och bygge
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,6 +40,16 @@ jobs:
         run: npm test
       - name: Bygg frontend
         run: npm run build --workspace=frontend
+      # Krossen spelas i en riktig webbläsare och glitchdetektorn kollar
+      # brädet efter varje drag (frontend/tests/krossen.browser.mjs). Tar
+      # runt fem minuter, så bara på pull requests: deployen efter en merge
+      # ska inte behöva vänta på ett test som redan gått igenom på PR:en.
+      - name: Installera Chromium
+        if: github.event_name == 'pull_request'
+        run: npx playwright install --with-deps chromium
+      - name: Krossen i webbläsaren
+        if: github.event_name == 'pull_request'
+        run: npm run test:browser
 
   deploy:
     name: Deploya till webbservern

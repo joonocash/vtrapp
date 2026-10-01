@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BANOR, VARLDAR, BANOR_PER_VARLD } from './levels.js'
-import { stjarnorFor, oppen, totaltStjarnor, kistStatus, KISTA_VAR } from './store.js'
-import { Stjarna, Mynt, MalIkon, HAPPY } from './pieces.jsx'
+import { BANOR, VARLDAR, BANOR_PER_VARLD, OANDLIG_VARLD } from './levels.js'
+import { stjarnorFor, oppen, totaltStjarnor, kistStatus, KISTA_VAR, SVAR_BONUS } from './store.js'
+import { Stjarna, Mynt, MalIkon } from './pieces.jsx'
+import { HappyBild } from './happy.jsx'
+import { SkalKnapp } from './Samling.jsx'
 import { skapaRng } from './engine.js'
 import { hamtaTopplista, banaId, spelarfarg } from './synk.js'
 import { Topplista } from './Spelplan.jsx'
 import { KistBild } from './Dagligt.jsx'
 
-// Kartan: Happys promenad genom fem världar. Bana 1 längst ner, stigen
-// slingrar sig uppåt. Tryck på en öppen bana för att spela den direkt.
+// Kartan: Happys promenad genom tio världar. Bana 1 längst ner, stigen
+// slingrar sig uppåt, och överst väntar den oändliga promenaden. Kartan är
+// också navet för albumet, garderoben, skålen och statistiken.
 
 const STEG = 74 // pixlar mellan två banor på höjden
 const TOPP = 90 // luft ovanför sista banan
@@ -18,10 +21,27 @@ const xFor = (nr) => 50 + Math.sin(nr * 0.78) * 30 + Math.sin(nr * 0.23) * 6
 // åt vilket håll mitten av kartan ligger från en bana: +1 höger, -1 vänster
 const mot = (nr) => (xFor(nr) > 50 ? -1 : 1)
 
-export default function Karta({ save, aktuell, hoppFran, kompisar = [], spelare, onValj, onTillbaka, onKista }) {
+export default function Karta({
+  save,
+  aktuell,
+  hoppFran,
+  kompisar = [],
+  spelare,
+  albumNya = 0,
+  onValj,
+  onTillbaka,
+  onKista,
+  onOandlig,
+  onAlbum,
+  onGarderob,
+  onStatistik,
+  onSkal,
+}) {
   const [vald, setVald] = useState(null)
   const skrollRef = useRef(null)
-  const hojd = TOPP + (BANOR.length - 1) * STEG + BOTTEN
+  // en plats extra överst för den oändliga promenaden
+  const hojd = TOPP + BANOR.length * STEG + BOTTEN
+  const oandligOppen = stjarnorFor(save, BANOR.length) > 0
   const yFor = (nr) => hojd - BOTTEN - (nr - 1) * STEG
   const [happyNr, setHappyNr] = useState(hoppFran || aktuell)
 
@@ -45,7 +65,10 @@ export default function Karta({ save, aktuell, hoppFran, kompisar = [], spelare,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hoppFran, aktuell])
 
-  const stig = useMemo(() => BANOR.map((b) => `${xFor(b.nr)},${yFor(b.nr)}`).join(' '), [hojd]) // eslint-disable-line react-hooks/exhaustive-deps
+  const stig = useMemo(
+    () => [...BANOR.map((b) => b.nr), BANOR.length + 1].map((nr) => `${xFor(nr)},${yFor(nr)}`).join(' '),
+    [hojd] // eslint-disable-line react-hooks/exhaustive-deps
+  )
 
   const dekor = useMemo(() => {
     const ut = []
@@ -83,28 +106,62 @@ export default function Karta({ save, aktuell, hoppFran, kompisar = [], spelare,
           </span>
         </div>
       </div>
+      <div className="kr-kartnav">
+        <button className="kr-navknapp" onClick={onAlbum}>
+          <span className="kr-navikon">📷</span>
+          Album
+          {albumNya > 0 && <span className="kr-booster-bricka">{albumNya}</span>}
+        </button>
+        <button className="kr-navknapp" onClick={onGarderob}>
+          <span className="kr-navikon">🎩</span>
+          Garderob
+        </button>
+        <button className="kr-navknapp" onClick={onStatistik}>
+          <span className="kr-navikon">📊</span>
+          Statistik
+        </button>
+        <SkalKnapp godis={save.godis || 0} onClick={onSkal} />
+      </div>
 
       <div className="kr-kartskroll" ref={skrollRef}>
         <div className="kr-kartinnehall" style={{ height: hojd }}>
+          <div
+            className="kr-varld"
+            style={{ top: 0, height: yFor(BANOR.length) - STEG / 2, background: `linear-gradient(180deg, ${OANDLIG_VARLD.himmel[0]}, ${OANDLIG_VARLD.himmel[1]})` }}
+          >
+            <div className="kr-varldnamn" style={{ color: OANDLIG_VARLD.mork }}>
+              ∞ {OANDLIG_VARLD.namn}
+            </div>
+          </div>
           {VARLDAR.map((v, k) => {
-            const topp = k === VARLDAR.length - 1 ? 0 : yFor((k + 1) * BANOR_PER_VARLD) - STEG / 2
+            const topp = yFor((k + 1) * BANOR_PER_VARLD) - STEG / 2
             const botten = k === 0 ? hojd : yFor(k * BANOR_PER_VARLD + 1) + STEG / 2
             return (
               <div
                 key={v.namn}
                 className="kr-varld"
                 style={{ top: topp, height: botten - topp, background: `linear-gradient(180deg, ${v.himmel[0]}, ${v.himmel[1]})` }}
-              >
-                <div className="kr-varldnamn" style={{ color: v.mork }}>
-                  {k + 1}. {v.namn}
-                </div>
-              </div>
+              />
             )
           })}
 
           {dekor.map((d, k) => (
             <Dekor key={k} {...d} />
           ))}
+
+          {/* världens namn ovanpå dekoren, på motsatt sida mot världens sista bana */}
+          {VARLDAR.map((v, k) => {
+            const sista = (k + 1) * BANOR_PER_VARLD
+            return (
+              <div
+                key={v.namn}
+                className={'kr-varldnamn' + (xFor(sista) < 50 ? ' kr-varldnamn-hoger' : '')}
+                style={{ top: yFor(sista) - STEG / 2 + 10, color: v.mork }}
+              >
+                {k + 1}. {v.namn}
+              </div>
+            )
+          })}
 
           <svg className="kr-stig" width="100%" height={hojd} viewBox={`0 0 100 ${hojd}`} preserveAspectRatio="none" aria-hidden="true">
             <polyline points={stig} fill="none" stroke="rgba(60,40,20,.35)" strokeWidth="9" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
@@ -127,13 +184,20 @@ export default function Karta({ save, aktuell, hoppFran, kompisar = [], spelare,
             return (
               <button
                 key={b.nr}
-                className={'kr-nod' + (b.boss ? ' kr-nod-boss' : '') + (!oppnad ? ' kr-nod-last' : '') + (b.nr === aktuell ? ' kr-nod-aktuell' : '')}
+                className={
+                  'kr-nod' +
+                  (b.boss ? ' kr-nod-boss' : '') +
+                  (b.svarighet === 1 ? ' kr-nod-svar' : b.svarighet === 2 && !b.boss ? ' kr-nod-supersvar' : '') +
+                  (!oppnad ? ' kr-nod-last' : '') +
+                  (b.nr === aktuell ? ' kr-nod-aktuell' : '')
+                }
                 style={{ left: xFor(b.nr) + '%', top: yFor(b.nr), '--nodfarg': v.farg, '--nodmork': v.mork }}
                 onClick={() => oppnad && setVald(b.nr)}
                 disabled={!oppnad}
                 aria-label={`Bana ${b.nr}${oppnad ? '' : ', låst'}${st ? `, ${st} stjärnor` : ''}`}
               >
                 <span className="kr-nodtal">{oppnad ? b.nr : '🔒'}</span>
+                {b.svarighet > 0 && oppnad && <span className="kr-nodsvar">{b.svarighet === 2 ? '💀' : '!'}</span>}
                 {st > 0 && (
                   <span className="kr-nodstjarnor">
                     {[0, 1, 2].map((k) => (
@@ -145,11 +209,22 @@ export default function Karta({ save, aktuell, hoppFran, kompisar = [], spelare,
             )
           })}
 
+          <button
+            className={'kr-nod kr-nod-oandlig' + (!oandligOppen ? ' kr-nod-last' : '')}
+            style={{ left: xFor(BANOR.length + 1) + '%', top: yFor(BANOR.length + 1) }}
+            onClick={() => oandligOppen && onOandlig()}
+            disabled={!oandligOppen}
+            aria-label={oandligOppen ? 'Oändliga promenaden' : 'Oändliga promenaden, låst'}
+          >
+            <span className="kr-nodtal">{oandligOppen ? '∞' : '🔒'}</span>
+            {oandligOppen && <span className="kr-nod-oandlig-text">{save.oandlig ? `${save.oandlig} klarade` : 'Börja!'}</span>}
+          </button>
+
           <div
             className="kr-kartahappy"
             style={{ left: `calc(${xFor(happyNr)}% ${mot(happyNr) > 0 ? '+' : '-'} 50px)`, top: yFor(happyNr) - 24 }}
           >
-            <img src={HAPPY.nojd} alt="Happy" />
+            <HappyBild storlek={48} ramBredd={4} />
           </div>
 
           {kompisarPaKartan(kompisar, spelare).map((k) => {
@@ -238,6 +313,12 @@ function BanKort({ nr, save, spelare, onSpela, onStang }) {
           Bana {nr}
           {bana.boss ? ' · Boss' : ''}
         </div>
+        {bana.svarighet > 0 && (
+          <div className={'kr-svarmarke kr-svarmarke-' + bana.svarighet}>
+            {bana.svarighet === 2 ? 'Supersvår' : 'Svår'}
+            {!st && ` · +${SVAR_BONUS[bana.svarighet]} mynt extra`}
+          </div>
+        )}
         <div className="kr-resultat-stjarnor">
           {[0, 1, 2].map((k) => (
             <Stjarna key={k} fylld={st > k} storlek={30} />
@@ -328,6 +409,90 @@ function Dekor({ varld, x, y, s, typ }) {
         <svg viewBox="0 0 50 30" width="50" height="30">
           <path d="M0 22 Q12 12 25 22 T50 22 V30 H0 Z" fill="#4fb8e8" opacity=".8" />
           <path d="M0 26 Q12 18 25 26 T50 26" stroke="#fff" strokeWidth="2" fill="none" />
+        </svg>
+      )
+  } else if (varld === 5) {
+    // Snön: granar med snö och snögubbar
+    svg =
+      typ === 0 ? (
+        <svg viewBox="0 0 40 56" width="40" height="56">
+          <rect x="17" y="40" width="6" height="14" fill="#6b4b2a" />
+          <path d="M20 2 L36 30 H27 L36 44 H4 L13 30 H4 Z" fill="#2f6e4f" />
+          <path d="M20 2 L28 16 L20 13 L12 16 Z M10 30 L20 26 L30 30 L27 33 L13 33 Z" fill="#fff" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 36 50" width="36" height="50">
+          <circle cx="18" cy="36" r="12" fill="#fff" stroke="#cfe3f5" strokeWidth="2" />
+          <circle cx="18" cy="17" r="9" fill="#fff" stroke="#cfe3f5" strokeWidth="2" />
+          <path d="M18 17 l7 2 -7 1 z" fill="#ff8a1c" />
+          <circle cx="15" cy="14" r="1.4" fill="#1f2937" />
+          <circle cx="21" cy="14" r="1.4" fill="#1f2937" />
+          <rect x="10" y="4" width="16" height="5" fill="#1f2937" />
+          <rect x="13" y="-2" width="10" height="7" fill="#1f2937" />
+        </svg>
+      )
+  } else if (varld === 6) {
+    // Hundutställningen: rosetter och pokaler
+    svg =
+      typ === 0 ? (
+        <svg viewBox="0 0 40 50" width="40" height="50">
+          <path d="M14 26 L8 48 L16 42 L20 50 L22 28 Z M26 26 L32 48 L24 42 L20 50 L18 28 Z" fill="#2f8af0" />
+          <circle cx="20" cy="18" r="15" fill="#ffd21f" stroke="#b98400" strokeWidth="2" />
+          <circle cx="20" cy="18" r="8" fill="#fff6c2" />
+          <text x="20" y="22" textAnchor="middle" fontSize="11" fontWeight="900" fill="#b98400">1</text>
+        </svg>
+      ) : (
+        <svg viewBox="0 0 40 50" width="40" height="50">
+          <path d="M8 6 H32 V16 Q32 30 20 30 Q8 30 8 16 Z" fill="url(#kr-guld)" stroke="#9a5b00" strokeWidth="2" />
+          <path d="M8 10 Q0 10 2 18 Q4 24 10 22 M32 10 Q40 10 38 18 Q36 24 30 22" stroke="#9a5b00" strokeWidth="2.5" fill="none" />
+          <rect x="17" y="30" width="6" height="8" fill="#c99a1a" />
+          <rect x="10" y="38" width="20" height="8" rx="2" fill="#7a4d22" />
+        </svg>
+      )
+  } else if (varld === 7) {
+    // Veterinären: plåster och kors
+    svg =
+      typ === 0 ? (
+        <svg viewBox="0 0 40 40" width="40" height="40">
+          <rect x="4" y="4" width="32" height="32" rx="8" fill="#fff" stroke="#bfe3dc" strokeWidth="2" />
+          <path d="M16 10 H24 V16 H30 V24 H24 V30 H16 V24 H10 V16 H16 Z" fill="#e5333f" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 50 26" width="50" height="26">
+          <rect x="2" y="4" width="46" height="18" rx="9" fill="#f6c99a" transform="rotate(-12 25 13)" />
+          <rect x="17" y="6" width="16" height="14" rx="2" fill="#f9dcbf" transform="rotate(-12 25 13)" />
+        </svg>
+      )
+  } else if (varld === 8) {
+    // Stugan: stockar och lyktor
+    svg =
+      typ === 0 ? (
+        <svg viewBox="0 0 50 50" width="50" height="50">
+          <path d="M4 24 L25 6 L46 24 Z" fill="#7a2e12" />
+          <rect x="8" y="24" width="34" height="24" fill="#a86e36" />
+          <path d="M8 30 H42 M8 36 H42 M8 42 H42" stroke="#7a4d22" strokeWidth="1.5" />
+          <rect x="20" y="32" width="10" height="16" fill="#5a3616" />
+          <rect x="11" y="28" width="7" height="7" fill="#ffe28a" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 50 22" width="50" height="22">
+          <rect x="2" y="4" width="40" height="14" rx="7" fill="#8a5a2b" />
+          <ellipse cx="42" cy="11" rx="6" ry="7" fill="#d9a066" stroke="#8a5a2b" strokeWidth="2" />
+          <circle cx="42" cy="11" r="3" fill="none" stroke="#8a5a2b" strokeWidth="1" />
+        </svg>
+      )
+  } else if (varld === 9) {
+    // Rymden: planeter och stjärnor
+    svg =
+      typ === 0 ? (
+        <svg viewBox="0 0 50 40" width="50" height="40">
+          <circle cx="25" cy="20" r="13" fill="#ff8a5c" />
+          <ellipse cx="25" cy="20" rx="23" ry="6" fill="none" stroke="#ffd35c" strokeWidth="3" transform="rotate(-15 25 20)" />
+          <circle cx="20" cy="15" r="3" fill="#ffb08f" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 30 30" width="30" height="30">
+          <path d="M15 1 l3.5 9.5 10 .5 -8 6 3 10 -8.5 -6 -8.5 6 3 -10 -8 -6 10 -.5 z" fill="#fff6c2" />
         </svg>
       )
   } else {

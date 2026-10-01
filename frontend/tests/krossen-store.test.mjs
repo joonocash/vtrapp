@@ -22,6 +22,16 @@ import {
   KISTA_VAR,
   sammanfoga,
   anvandBooster,
+  belonning,
+  laggTillFoto,
+  albumNya,
+  albumSett,
+  kopKlader,
+  taPa,
+  skalLage,
+  registreraGodis,
+  registreraStat,
+  registreraOandlig,
 } from '../src/rotspel/games/krossen/store.js'
 import { dagensBana, BANOR } from '../src/rotspel/games/krossen/levels.js'
 import { skapaSpel, skapaRng } from '../src/rotspel/games/krossen/engine.js'
@@ -172,6 +182,76 @@ test('boosters: först förrådet, sedan mynt, annars nej', () => {
   s = anvandBooster(s, 'tass')
   assert.equal(s.mynt, 10)
   assert.equal(anvandBooster(s, 'tass'), null)
+})
+
+test('svåra banor ger extra mynt första gången', () => {
+  const s = komplettera(null)
+  assert.equal(belonning(s, 5, 2, 1) - belonning(s, 5, 2, 0), 20)
+  assert.equal(belonning(s, 5, 2, 2) - belonning(s, 5, 2, 0), 40)
+  const vunnen = registreraVinst(s, 5, 2, 1000, 2)
+  assert.equal(belonning(vunnen, 5, 2, 2), 5, 'omspelning ger ingen bonus')
+})
+
+test('albumet: nya foton räknas tills man tittat', () => {
+  let s = komplettera(null)
+  assert.equal(albumNya(s, 37), 0)
+  s = laggTillFoto(laggTillFoto(s))
+  assert.equal(s.album, 3)
+  assert.equal(albumNya(s, 37), 2)
+  s = albumSett(s, 37)
+  assert.equal(albumNya(s, 37), 0)
+})
+
+test('garderoben: köp kostar mynt, tas på direkt och kan tas av', () => {
+  const sak = { id: 'krona', plats: 'huvud', pris: 100 }
+  let s = komplettera({ mynt: 150 })
+  s = kopKlader(s, sak)
+  assert.equal(s.mynt, 50)
+  assert.equal(s.garderob.pa.huvud, 'krona')
+  assert.equal(kopKlader(komplettera({ mynt: 10 }), sak), null)
+  s = taPa(s, sak)
+  assert.equal(s.garderob.pa.huvud, null)
+  s = taPa(s, sak)
+  assert.equal(s.garderob.pa.huvud, 'krona')
+  assert.equal(kopKlader(s, sak), s, 'köper inte två gånger')
+})
+
+test('godisskålen: nivåer och belöningar, en gång var', () => {
+  assert.deepEqual(skalLage(0), { niva: 0, fyllt: 0, krav: 300 })
+  assert.equal(skalLage(300).niva, 1)
+  assert.equal(skalLage(300 + 450).niva, 2)
+  let s = komplettera(null)
+  const m0 = s.mynt
+  let r = registreraGodis(s, 800)
+  assert.equal(r.nivaer.length, 2)
+  assert.ok(r.save.mynt > m0)
+  r = registreraGodis(r.save, 10)
+  assert.equal(r.nivaer.length, 0, 'inga dubbla belöningar')
+})
+
+test('statistiken summerar och håller rekord', () => {
+  let s = komplettera(null)
+  const sm = { farg: [5, 0, 0, 0, 0, 0], special: { raket: 2 }, storstaKedja: 4, storstaDrag: 30, hopp: 1, paket: 2, hinder: 7 }
+  s = registreraStat(s, sm, true)
+  s = registreraStat(s, { ...sm, storstaKedja: 2, storstaDrag: 10 }, false)
+  assert.equal(s.stat.farg[0], 10)
+  assert.equal(s.stat.special.raket, 4)
+  assert.equal(s.stat.storstaKedja, 4)
+  assert.equal(s.stat.storstaDrag, 30)
+  assert.equal(s.stat.vunna, 1)
+  assert.equal(s.stat.forlorade, 1)
+  assert.equal(s.stat.hinder, 14)
+})
+
+test('synken slår ihop album, garderob, skål och oändliga promenaden', () => {
+  const a = komplettera({ album: 4, godis: 900, oandlig: 3, garderob: { agda: ['krona'], pa: { huvud: 'krona' } }, uppdaterad: 1 })
+  const b = komplettera({ album: 2, godis: 400, oandlig: 7, garderob: { agda: ['fluga'], pa: { hals: 'fluga' } }, uppdaterad: 2 })
+  const ihop = sammanfoga(a, b)
+  assert.equal(ihop.album, 4)
+  assert.equal(ihop.godis, 900)
+  assert.equal(ihop.oandlig, 7)
+  assert.deepEqual(ihop.garderob.agda.sort(), ['fluga', 'krona'])
+  assert.equal(registreraOandlig(ihop, 5).oandlig, 7)
 })
 
 console.log(`krossen-store: ${ok} tester gick igenom`)

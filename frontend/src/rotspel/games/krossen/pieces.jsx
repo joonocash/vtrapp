@@ -5,11 +5,10 @@
 // gång i <KrossenDefs /> och pekas ut med id, så det blir billigt att rita
 // 81 pjäser samtidigt.
 
-import happyGlad from '../revir/img/happy-glad.webp'
-import happyNojd from '../revir/img/happy-nojd.webp'
-import happyLedsen from '../revir/img/happy-ledsen.webp'
+import { HappyBild, HAPPY } from './happy.jsx'
+import { HAPPY_MATT } from './engine.js'
 
-export const HAPPY = { glad: happyGlad, nojd: happyNojd, ledsen: happyLedsen }
+export { HAPPY }
 
 // Sex sorters godis. Både färg och form skiljer sig, så de går att hålla
 // isär även för den som har svårt för färger.
@@ -360,6 +359,67 @@ export function Lera({ niva }) {
   )
 }
 
+// Överraskningspaketet: en presentask i godisets färg, med godisets form
+// på framsidan så att den går att känna igen även utan färgen.
+function Paket({ k }) {
+  const f = FARGER[k]
+  return (
+    <g>
+      <rect x="14" y="40" width="72" height="52" rx="6" fill={f.mork} />
+      <rect x="14" y="38" width="72" height="50" rx="6" fill={`url(#kr-g${k})`} stroke={f.mork} strokeWidth="2" />
+      <rect x="8" y="26" width="84" height="18" rx="5" fill={f.bas} stroke={f.mork} strokeWidth="2" />
+      <rect x="44" y="26" width="12" height="62" fill="#fff6c2" stroke="#d9b84a" strokeWidth="1.2" />
+      <path d="M50 26 C 36 6, 18 14, 30 24 Z M50 26 C 64 6, 82 14, 70 24 Z" fill="#fff6c2" stroke="#d9b84a" strokeWidth="2" strokeLinejoin="round" />
+      <g fill="#fff" opacity=".92" transform="translate(29 66) scale(.2) translate(-50 -50)">
+        <Form k={k} />
+      </g>
+      <text x="71" y="76" textAnchor="middle" fontSize="22" fontWeight="900" fill="#fff" stroke={f.mork} strokeWidth="1.5" paintOrder="stroke">
+        ?
+      </text>
+      <path d="M20 44 Q24 40 32 40" stroke="#fff" strokeWidth="3" fill="none" opacity=".6" strokeLinecap="round" />
+    </g>
+  )
+}
+
+// Happy som pjäs: fotot inne i en ring i godisets färg (han matchas som den
+// färgen), med godisets form i hörnet och magen som en mätare runt om.
+function HappyPjas({ tile }) {
+  const f = FARGER[tile.farg]
+  const andel = Math.min(1, (tile.mage || 0) / HAPPY_MATT)
+  const omkrets = 2 * Math.PI * 46
+  const full = andel >= 1
+  return (
+    <div className={'kr-happypjas' + (full ? ' kr-happypjas-full' : '')}>
+      <svg viewBox="0 0 100 100" className="kr-full">
+        <circle cx="50" cy="50" r="49" fill={f.mork} />
+        <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="7" />
+        <circle
+          cx="50"
+          cy="50"
+          r="46"
+          fill="none"
+          stroke={full ? '#ffe066' : f.ljus}
+          strokeWidth="7"
+          strokeLinecap="round"
+          strokeDasharray={`${omkrets * andel} ${omkrets}`}
+          transform="rotate(-90 50 50)"
+        />
+      </svg>
+      <div className="kr-happypjas-bild">
+        <HappyBild storlek="100%" ram={f.bas} ramBredd={7} />
+      </div>
+      <div className="kr-happypjas-farg">
+        <svg viewBox="0 0 100 100" className="kr-full">
+          <circle cx="50" cy="50" r="48" fill="#fff" />
+          <g transform="translate(50 50) scale(.78) translate(-50 -50)">
+            <Godis k={tile.farg} />
+          </g>
+        </svg>
+      </div>
+    </div>
+  )
+}
+
 // ------------------------------------------------------------------ pjäsen
 
 // Allt som kan ligga i en ruta. tile kommer direkt från motorn.
@@ -395,6 +455,14 @@ export function Pjas({ tile }) {
   }
   const k = tile.farg
   const s = tile.special
+  if (tile.happy) return <HappyPjas tile={tile} />
+  if (tile.paket) {
+    return (
+      <svg viewBox="0 0 100 100" className="kr-full">
+        <Paket k={k} />
+      </svg>
+    )
+  }
   if (s === 'skal') {
     return (
       <svg viewBox="0 0 100 100" className="kr-full">
@@ -460,6 +528,11 @@ export function MalIkon({ mal, storlek = 28 }) {
       break
     case 'klocka':
       inner = <KlockIkon />
+      break
+    case 'hopp':
+      return <HappyBild storlek={storlek} ramBredd={3} />
+    case 'paket':
+      inner = <Paket k={5} />
       break
     case 'special':
       if (mal.special === 'skal') inner = <Skal />

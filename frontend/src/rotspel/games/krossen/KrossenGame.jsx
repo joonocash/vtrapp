@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Spelplan from './Spelplan.jsx'
 import Karta from './Karta.jsx'
 import { Dagligt, Hjul, Kista, Notis } from './Dagligt.jsx'
-import { BANOR, VARLDAR, ANTAL_BANOR, dagensBana } from './levels.js'
+import { Album, Garderob, Skal, Statistik, ALBUM } from './Samling.jsx'
+import { setKlader, HappyDefs } from './happy.jsx'
+import { ANTAL_BANOR, dagensBana, banaNr, varldFor } from './levels.js'
 import {
   ladda,
   spara,
@@ -21,6 +23,15 @@ import {
   oppnaKista,
   sammanfoga,
   beskrivBelonning,
+  stjarnorFor,
+  registreraOandlig,
+  laggTillFoto,
+  albumNya,
+  albumSett,
+  kopKlader,
+  taPa,
+  registreraGodis,
+  registreraStat,
 } from './store.js'
 import { spelarnamn, hamtaFramsteg, skickaFramsteg, hamtaSpelare, banaId, dagensId } from './synk.js'
 import { skapaLjud } from './audio.js'
@@ -28,13 +39,22 @@ import { KrossenDefs, Mynt } from './pieces.jsx'
 import { readSettings } from '../../useSettings.js'
 import './krossen.css'
 
-// Krossen — hjälp Happy få godis. Hundra banor på Happys promenad.
+// Krossen — hjälp Happy få godis. Tvåhundra banor på Happys promenad och
+// sedan den oändliga promenaden.
 //
 // Spelet öppnar direkt i nästa bana man inte klarat (rötspelens husregel:
 // inget ska stå i vägen när man klickar in). Kartan och det dagliga når man
 // med knappar i toppraden.
 
 const SYNK_FORDROJNING = 1500
+
+// Nästa bana att spela: den första oklarade, eller nästa på den oändliga
+// promenaden om alla tvåhundra är klara.
+function nastaBana(s) {
+  const hogsta = Math.min(ANTAL_BANOR, hogstaOppna(s, ANTAL_BANOR))
+  if (hogsta === ANTAL_BANOR && stjarnorFor(s, ANTAL_BANOR) > 0) return ANTAL_BANOR + (s.oandlig || 0) + 1
+  return hogsta
+}
 
 export default function KrossenGame({ fullskarmSparrad }) {
   const [save, setSaveRa] = useState(ladda)
@@ -58,19 +78,24 @@ export default function KrossenGame({ fullskarmSparrad }) {
 
   const [vy, setVy] = useState('spel')
   const [lage, setLage] = useState('bana') // 'bana' eller 'dagens'
-  const [nr, setNr] = useState(() => Math.min(ANTAL_BANOR, hogstaOppna(ladda(), ANTAL_BANOR)))
+  const [nr, setNr] = useState(() => nastaBana(ladda()))
   const [omgang, setOmgang] = useState(0)
   const [hoppFran, setHoppFran] = useState(null)
   const [panel, setPanel] = useState(null) // 'dagligt', 'hjul', 'kista', 'lamna'
   const [kistInnehall, setKistInnehall] = useState(null)
-  const [notis, setNotis] = useState(null)
+  const [notiser, setNotiser] = useState([])
+  const notis = notiser[0] || null
+  const setNotis = useCallback((text) => text && setNotiser((n) => [...n, text]), [])
   const [kompisar, setKompisar] = useState([])
   const [synkKlar, setSynkKlar] = useState(false)
   const startad = useRef(false)
 
   const dagens = useMemo(() => dagensBana(idag), [idag])
-  const bana = lage === 'dagens' ? dagens : BANOR[nr - 1]
-  const varld = VARLDAR[bana.varld]
+  const bana = lage === 'dagens' ? dagens : banaNr(nr)
+  const varld = varldFor(bana)
+
+  // kläderna Happy har på sig följer med överallt
+  setKlader(save.garderob.pa)
 
   // ------------------------------------------------------------ uppstart
 
@@ -88,7 +113,7 @@ export default function KrossenGame({ fullskarmSparrad }) {
         // Har man kommit längre på en annan enhet ska spelet öppna där —
         // så länge man inte redan hunnit börja på banan här.
         if (!startad.current) {
-          const hogsta = Math.min(ANTAL_BANOR, hogstaOppna(ihop, ANTAL_BANOR))
+          const hogsta = nastaBana(ihop)
           setNr((n) => {
             if (hogsta > n) setOmgang((x) => x + 1)
             return Math.max(n, hogsta)
@@ -108,7 +133,7 @@ export default function KrossenGame({ fullskarmSparrad }) {
     return () => {
       levande = false
     }
-  }, [spelare, idag, setSave, ljud])
+  }, [spelare, idag, setSave, ljud, setNotis])
 
   // Spara lokalt direkt, till servern en stund efter senaste ändringen.
   useEffect(() => {
@@ -148,23 +173,42 @@ export default function KrossenGame({ fullskarmSparrad }) {
     setVy('spel')
   }
 
-  function vunnen({ stjarnor, poang }) {
-    if (lage === 'dagens') setSave((s) => registreraDagens(s, idag, poang))
-    else setSave((s) => registreraVinst(s, nr, stjarnor, poang))
-    startad.current = false
+  // Godis, statistik och paketmynt räknas efter varje bana, vunnen eller inte.
+  function efterBana(s, sm, vann) {
+    let ny = registreraStat(s, sm, vann)
+    ny = { ...ny, mynt: ny.mynt + (sm.paketMynt || 0) }
+    const g = registreraGodis(ny, sm.godis || 0)
+    for (const n of g.nivaer) setNotis(`Happys skål: nivå ${n.niva + 1}! ${beskrivBelonning(n.belonning)}`)
+    return g.save
   }
 
-  function forlorad() {
-    if (lage === 'bana') setSave(brytSvit)
+  // Returnerar det som ska visas i vinstrutan utöver stjärnorna.
+  function vunnen({ stjarnor, poang, sammanfattning }) {
+    const s0 = saveRef.current
+    const forsta = !s0.stjarnor[nr]
+    let ny
+    if (lage === 'dagens') ny = registreraDagens(s0, idag, poang)
+    else ny = registreraVinst(s0, nr, stjarnor, poang, bana.svarighet || 0)
+    if (bana.oandlig) ny = registreraOandlig(ny, bana.oandlig)
+    // varje boss låser upp ett nytt foto i albumet första gången
+    let foto = null
+    if (lage === 'bana' && bana.boss && forsta && (ny.album || 1) < ALBUM.length) {
+      ny = laggTillFoto(ny)
+      foto = ALBUM[ny.album - 1]
+    }
+    ny = efterBana(ny, sammanfattning, true)
+    setSave(ny)
+    startad.current = false
+    return { foto }
+  }
+
+  function forlorad(orsak, sammanfattning) {
+    setSave((s) => efterBana(lage === 'bana' ? brytSvit(s) : s, sammanfattning, false))
     startad.current = false
   }
 
   function nasta() {
-    if (lage === 'dagens') return spela(Math.min(ANTAL_BANOR, hogstaOppna(saveRef.current, ANTAL_BANOR)))
-    if (nr >= ANTAL_BANOR) {
-      setHoppFran(null)
-      return oppnaKarta()
-    }
+    if (lage === 'dagens') return spela(nastaBana(saveRef.current))
     spela(nr + 1)
   }
 
@@ -196,19 +240,34 @@ export default function KrossenGame({ fullskarmSparrad }) {
   // Från vinstrutan: visa Happy som skuttar vidare till nästa bana.
   function tillKartanEfterVinst() {
     ljud.klick()
-    setHoppFran(lage === 'bana' ? nr : null)
+    setHoppFran(lage === 'bana' && nr <= ANTAL_BANOR ? nr : null)
     oppnaKarta()
   }
 
+  // Varje stjärnkista har också ett nytt foto till albumet.
   function oppnaKistan() {
     const r = oppnaKista(saveRef.current)
     if (!r) return
-    setSave(r.save)
-    setKistInnehall(r.innehall)
+    let ny = r.save
+    let foto = null
+    if ((ny.album || 1) < ALBUM.length) {
+      ny = laggTillFoto(ny)
+      foto = ALBUM[ny.album - 1]
+    }
+    setSave(ny)
+    setKistInnehall({ innehall: r.innehall, foto })
     setPanel('kista')
   }
 
-  const aktuell = Math.min(ANTAL_BANOR, hogstaOppna(save, ANTAL_BANOR))
+  function oppnaPanel(namn) {
+    ljud.klick()
+    if (namn === 'album') setSave((s) => albumSett(s, ALBUM.length))
+    setPanel(namn)
+  }
+
+  // Kartans markör står på nästa bana att spela; efter sista banan på den
+  // oändliga promenaden, som ligger en plats ovanför.
+  const aktuell = Math.min(ANTAL_BANOR + 1, nastaBana(save))
   const dagligtLyser = kanSnurra(save, idag) || !dagensKlar(save, idag)
   const svit = save.svit || 0
 
@@ -224,15 +283,25 @@ export default function KrossenGame({ fullskarmSparrad }) {
       }}
     >
       <KrossenDefs />
-      {notis && <Notis text={notis} onKlar={() => setNotis(null)} />}
+      <HappyDefs />
+      {notis && <Notis key={notis + notiser.length} text={notis} onKlar={() => setNotiser((n) => n.slice(1))} />}
 
       {vy === 'karta' ? (
         <Karta
           save={save}
-          aktuell={hoppFran ? Math.min(ANTAL_BANOR, hoppFran + 1) : aktuell}
+          aktuell={hoppFran ? Math.min(ANTAL_BANOR + 1, hoppFran + 1) : aktuell}
           hoppFran={hoppFran}
           kompisar={kompisar}
           spelare={spelare}
+          albumNya={albumNya(save, ALBUM.length)}
+          onOandlig={() => {
+            ljud.klick()
+            spela(ANTAL_BANOR + (saveRef.current.oandlig || 0) + 1)
+          }}
+          onAlbum={() => oppnaPanel('album')}
+          onGarderob={() => oppnaPanel('garderob')}
+          onStatistik={() => oppnaPanel('statistik')}
+          onSkal={() => oppnaPanel('skal')}
           onValj={(n) => {
             ljud.klick()
             if (oppen(save, n)) spela(n)
@@ -253,7 +322,9 @@ export default function KrossenGame({ fullskarmSparrad }) {
             </button>
             <div className="kr-toppnamn">
               <span className="kr-toppvarld">{lage === 'dagens' ? 'Samma för alla' : varld.namn}</span>
-              <span className="kr-toppbana">{lage === 'dagens' ? 'Dagens bana' : `Bana ${bana.nr}${bana.boss ? ' · Boss' : ''}`}</span>
+              <span className="kr-toppbana">
+                {lage === 'dagens' ? 'Dagens bana' : bana.oandlig ? `Promenad ${bana.oandlig}` : `Bana ${bana.nr}${bana.boss ? ' · Boss' : ''}`}
+              </span>
             </div>
             {svit > 0 && lage === 'bana' && (
               <div className="kr-svit" title={`Vinstsvit: ${svit} vunna i rad. Förlorar du börjar den om.`}>
@@ -335,7 +406,8 @@ export default function KrossenGame({ fullskarmSparrad }) {
       {panel === 'hjul' && <Hjul ljud={ljud} onVinst={(k) => setSave((s) => taHjul(s, idag, k))} onStang={() => setPanel('dagligt')} />}
       {panel === 'kista' && kistInnehall && (
         <Kista
-          innehall={kistInnehall}
+          innehall={kistInnehall.innehall}
+          foto={kistInnehall.foto}
           ljud={ljud}
           onStang={() => {
             setPanel(null)
@@ -343,6 +415,26 @@ export default function KrossenGame({ fullskarmSparrad }) {
           }}
         />
       )}
+      {panel === 'album' && <Album upplasta={save.album || 1} onStang={() => setPanel(null)} />}
+      {panel === 'garderob' && (
+        <Garderob
+          save={save}
+          onKop={(sak) => {
+            const ny = kopKlader(saveRef.current, sak)
+            if (!ny) return false
+            setSave(ny)
+            ljud.mynt()
+            return true
+          }}
+          onTaPa={(sak) => {
+            ljud.klick()
+            setSave((s) => taPa(s, sak))
+          }}
+          onStang={() => setPanel(null)}
+        />
+      )}
+      {panel === 'statistik' && <Statistik save={save} onStang={() => setPanel(null)} />}
+      {panel === 'skal' && <Skal godis={save.godis || 0} onStang={() => setPanel(null)} />}
       {panel === 'lamna' && (
         <div className="kr-ruta-bakgrund">
           <div className="kr-ruta">

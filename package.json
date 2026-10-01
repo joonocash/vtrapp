@@ -12,10 +12,12 @@
     "dev:backend": "npm run dev --workspace=backend",
     "dev:frontend": "npm run dev --workspace=frontend",
     "install:all": "npm install && npm install --workspace=backend && npm install --workspace=frontend",
-    "test": "for f in frontend/tests/*.test.mjs; do echo \"== $f\"; node \"$f\" || exit 1; done"
+    "test": "for f in frontend/tests/*.test.mjs; do echo \"== $f\"; node \"$f\" || exit 1; done",
+    "test:browser": "node frontend/tests/krossen.browser.mjs"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "playwright": "^1.56.0"
   },
   "keywords": ["västtrafik", "göteborg", "departure", "transport"],
   "author": "",

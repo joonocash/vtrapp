@@ -18,8 +18,15 @@ import {
   gravitation,
   laggUtSpecialer,
   kanBytas,
+  hittaHappy,
+  happyRedo,
+  kanLanda,
+  happyHopp,
+  HAPPY_MATT,
+  planteraMonster,
+  HAR_MONSTER,
 } from '../src/rotspel/games/krossen/engine.js'
-import { BANOR, VARLDAR, BANOR_PER_VARLD } from '../src/rotspel/games/krossen/levels.js'
+import { BANOR, VARLDAR, BANOR_PER_VARLD, ANTAL_BANOR, oandligBana } from '../src/rotspel/games/krossen/levels.js'
 
 // Lägger ut ett bräde för hand. Siffror är färger, # hål, B låda,
 // o ogräs, e köttben. Slumpen fyller på med pjäser som inte finns i rader.
@@ -279,6 +286,80 @@ test('en klocka som matchas bort räknas', () => {
   assert.ok(malKlara(s))
 })
 
+// --------------------------------------------------------------- Happy
+
+test('Happy äter hela gruppen, byter färg och blir kvar', () => {
+  const s2 = brade(['0102', '2041', '3412', '4123'])
+  Object.assign(s2.tiles[0], { happy: true, mage: 0 })
+  // byt in en nolla så att rad 0 blir 000 med Happy i
+  tom(spelaDrag(s2, 5, 1))
+  assert.ok(hittaHappy(s2) >= 0, 'Happy finns kvar')
+  const h = s2.tiles[hittaHappy(s2)]
+  assert.ok(h.mage >= 2, 'åt resten av gruppen, mage ' + h.mage)
+  assert.notEqual(h.farg, 0, 'bytte färg')
+})
+
+test('Happy hoppar med full mage, smäller 3×3 och landar', () => {
+  const s = brade(['01234', '12340', '23401', '34012', '40123'], { mal: [{ typ: 'hopp', antal: 1 }] })
+  Object.assign(s.tiles[0], { happy: true, mage: HAPPY_MATT })
+  assert.ok(happyRedo(s, 0))
+  assert.ok(kanLanda(s, 12))
+  const fore = s.poang
+  const steg = tom(happyHopp(s, 0, 12))
+  assert.equal(steg[0].typ, 'hopp')
+  const r = steg.find((x) => x.typ === 'rensa')
+  assert.ok(r.rensas.length === 9, '3×3')
+  assert.ok(steg.some((x) => x.typ === 'landa'))
+  assert.equal(s.tiles.filter((t) => t && t.happy).length, 1)
+  assert.equal(s.tiles[hittaHappy(s)].mage, 0)
+  assert.ok(s.poang > fore)
+  assert.ok(malKlara(s))
+})
+
+test('specialpjäser landar aldrig på Happy', () => {
+  const s = brade(['00001', '12340', '23401'])
+  Object.assign(s.tiles[1], { happy: true, mage: 0 })
+  const g = hittaGrupper(s, [1, 6])
+  assert.equal(g[0].special, 'raket-h')
+  assert.notEqual(g[0].plats, 1)
+})
+
+// --------------------------------------------------------------- paket
+
+test('ett paket blir en överraskning när det smäller', () => {
+  const utfall = new Set()
+  for (let seed = 1; seed <= 60; seed++) {
+    const s = brade(['000', '123', '234'], { mal: [{ typ: 'paket', antal: 1 }] })
+    s.rng = skapaRng(seed)
+    s.tiles[1].paket = true
+    const dragFore = s.drag
+    const steg = tom(tassen(s, 1))
+    const p = steg[0].paket[0]
+    assert.ok(p, 'paketet öppnades')
+    utfall.add(p.utfall)
+    if (p.utfall === 'drag') assert.equal(s.drag, dragFore + 3)
+    if (p.utfall === 'mynt') assert.equal(s.paketMynt, 25)
+    assert.ok(malKlara(s))
+  }
+  assert.ok(utfall.size >= 5, 'flera sorters överraskningar: ' + [...utfall])
+})
+
+// ---------------------------------------------------------- handledning
+
+test('inplanterade mönster ger rätt specialpjäs', () => {
+  for (const typ of HAR_MONSTER) {
+    for (let seed = 1; seed <= 15; seed++) {
+      const s = skapaSpel({ karta: ['........', '........', '........', '........', '........', '........', '........', '........'], drag: 20, farger: 5, mal: [{ typ: 'poang', antal: 1 }] }, skapaRng(seed))
+      const drag = planteraMonster(s, typ)
+      assert.ok(drag, typ + ': fick plats')
+      assert.equal(hittaGrupper(s).length, 0, typ + ': inga färdiga matchningar')
+      const steg = tom(spelaDrag(s, drag[0], drag[1]))
+      const forsta = steg.find((x) => x.typ === 'rensa')
+      assert.ok(forsta.nya.some((n) => (n.special.startsWith('raket') ? 'raket' : n.special) === typ), typ + ': blev ' + forsta.nya.map((n) => n.special))
+    }
+  }
+})
+
 // ------------------------------------------------------------ slumpspel
 
 // Riktiga banor med slumpade drag. Inga krascher, inga tomma rutor som
@@ -289,6 +370,7 @@ const kartor = [
   ['..e..e..', '........', '..3..3..', '.k....k.', '........', '###..###', '........', '........'],
   ['.........', '..o...o..', '.........', '.2.....2.', '....#....', '.2.....2.', '.........', '..o...o..', '.........'],
   ['..b..t..', '........', '.t....b.', '........', '..bb....', '........', '.t..1...', '........'],
+  ['..q..q..', '...h....', '.k....k.', '..q.....', '...ll...', '...ll...', '.q....q.', '........'],
 ]
 let drag = 0
 for (let seed = 1; seed <= 40; seed++) {
@@ -302,6 +384,8 @@ for (let seed = 1; seed <= 40; seed++) {
       kott: karta.join('').includes('e') ? { antal: 4, max: 2 } : null,
       bollar: karta.join('').includes('b') ? { chans: 0.1, max: 6 } : null,
       klockor: karta.join('').includes('t') ? { chans: 0.05, max: 3, tid: 12 } : null,
+      happy: karta.join('').includes('h'),
+      paket: karta.join('').includes('q') ? { chans: 0.06, max: 3 } : null,
     },
     skapaRng(seed)
   )
@@ -329,6 +413,14 @@ for (let seed = 1; seed <= 40; seed++) {
     })
     assert.ok(s.lera.every((x) => x >= 0))
     assert.ok(hittaTips(s))
+    const hi = hittaHappy(s)
+    if (karta.join('').includes('h')) assert.ok(hi >= 0, 'Happy försvann')
+    if (hi >= 0 && happyRedo(s, hi)) {
+      const mal = s.tiles.map((t, i) => i).filter((i) => kanLanda(s, i))
+      tom(happyHopp(s, hi, mal[Math.floor(rng() * mal.length)]))
+      assert.equal(s.tiles.filter((t) => t && t.happy).length, 1, 'en Happy efter hoppet')
+      assert.equal(hittaGrupper(s).length, 0, 'matchning kvar efter hopp')
+    }
   }
   tom(godisregn(s))
   // Med fyra färger kan kedjorna i finalen skapa nya specialer i det
@@ -360,8 +452,26 @@ test('alla hundra banor går att bygga och spela', () => {
       if (['lera', 'lada', 'ograss', 'koppel'].includes(m.typ)) assert.ok(m.kvar > 0, namn + ': målet ' + m.typ + ' finns inte på kartan')
     }
     if (b.kott) assert.ok(s.utgangar.size > 0, namn + ': köttben utan utgång')
+    if (b.mal.some((m) => m.typ === 'hopp')) assert.ok(b.happy && hittaHappy(s) >= 0, namn + ': hopp-mål utan Happy')
+    if (b.happy) assert.ok(hittaHappy(s) >= 0, namn + ': Happy fick ingen plats')
+    if (b.mal.some((m) => m.typ === 'paket')) assert.ok(b.paket, namn + ': paket-mål utan paket')
   }
   assert.equal(BANOR.filter((b) => b.boss).length, VARLDAR.length)
+})
+
+test('oändliga promenaden: samma nummer ger samma bana, och den går att spela', () => {
+  for (let nr = ANTAL_BANOR + 1; nr <= ANTAL_BANOR + 60; nr++) {
+    const a = oandligBana(nr)
+    const b = oandligBana(nr)
+    assert.deepEqual(a.karta, b.karta)
+    assert.equal(a.drag, b.drag)
+    assert.ok(a.drag >= 10)
+    const s = skapaSpel(a, skapaRng(nr))
+    assert.equal(hittaGrupper(s).length, 0)
+    assert.ok(harDrag(s))
+    for (const m of malStatus(s)) if (['lera', 'lada', 'ograss', 'koppel'].includes(m.typ)) assert.ok(m.kvar > 0, 'bana ' + nr)
+  }
+  assert.ok(oandligBana(ANTAL_BANOR + 100).drag <= oandligBana(ANTAL_BANOR + 1).drag * 1.3)
 })
 
 console.log(`krossen: ${ok + 1} tester gick igenom`)
