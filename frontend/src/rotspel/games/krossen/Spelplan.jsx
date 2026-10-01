@@ -117,6 +117,9 @@ export default function Spelplan({
     const v = ta(sRef.current)
     visatRef.current = v
     flushSync(() => setVisat(v))
+    // Efter att React ritat om är pjäserna som skulle bort borta. Det som
+    // finns kvar ska stå still på sin plats.
+    fxRef.current?.stada()
   }, [])
 
   // ------------------------------------------------------------ uppsättning
@@ -211,13 +214,29 @@ export default function Spelplan({
     const idVid = (i) => V.tiles[i]?.id
     const fargVid = (i) => V.tiles[i]?.farg
 
-    // 1. nya specialpjäser: gruppen dras ihop först
+    // 1. nya specialpjäser: gruppen dras ihop först.
+    //
+    // Bara pjäser som faktiskt försvinner får dras in. Ett godis i koppel
+    // ingår i gruppen men blir kvar på brädet — det är bara kopplet som går
+    // sönder. Drogs det också in hängde det sedan kvar krympt ovanpå
+    // specialpjäsen, och dess egen ruta såg tom ut.
+    const forsvinner = new Set(steg.borta.map((b) => b.i))
     const samlade = new Set()
     if (steg.nya.length) {
       for (const n of steg.nya) {
-        n.celler.forEach((c) => samlade.add(c))
-        fx.samla(n.celler, n.i, idVid)
+        const dras = n.celler.filter((c) => forsvinner.has(c))
+        dras.forEach((c) => samlade.add(c))
+        fx.samla(dras, n.i, idVid)
+        for (const c of n.celler) if (!forsvinner.has(c)) fx.rycka(idVid(c), c, n.i)
       }
+      await fx.vila(170)
+    }
+
+    // två specialpjäser byttes med varandra: den ena glider in i den andra
+    if (steg.sammanslagen) {
+      const { fran, till } = steg.sammanslagen
+      samlade.add(fran)
+      fx.samla([fran], till, idVid)
       await fx.vila(170)
     }
 
@@ -442,6 +461,7 @@ export default function Spelplan({
           fx.pulsera(visatRef.current.tiles[steg.celler[0]]?.id, 1.35, 220)
         } else {
           if (steg.kombobeskrivning) fx.banner(steg.kombobeskrivning, { farg: '#ffe066', ms: 1200 })
+          if (steg.bort) fx.popp(steg.bort.id, steg.bort.i, '#ff9ecb', 0, { kraft: 1.4 })
           ljud.skal()
           steg.celler.forEach((j, n) => {
             fx.stral(steg.fran, j, '#ffe9ff', { fordrojning: n * 45 })
