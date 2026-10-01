@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { HJUL, SERIE, kanSnurra, dagensKlar, snurra, beskrivBelonning, DAGENS_BELONNING } from './store.js'
 import { hamtaTopplista, dagensId } from './synk.js'
 import { Mynt, HAPPY } from './pieces.jsx'
+import { HappyBild } from './happy.jsx'
 import { BoosterIkon, Topplista } from './Spelplan.jsx'
 
 // Det dagliga: inloggningsserien, lyckohjulet och dagens bana, samlat i en
@@ -39,7 +40,9 @@ export function Dagligt({ save, idag, spelare, onSnurra, onDagens, onStang }) {
   return (
     <div className="kr-ruta-bakgrund" onClick={onStang}>
       <div className="kr-ruta kr-ark" onClick={(e) => e.stopPropagation()}>
-        <img src={HAPPY.glad} alt="" className="kr-happy kr-happy-liten" />
+        <div className="kr-happyram kr-happyram-liten">
+          <HappyBild humor="glad" storlek={70} ramBredd={5} />
+        </div>
         <div className="kr-ruta-titel">Dagens godis</div>
 
         <div className="kr-sektion">
@@ -169,7 +172,7 @@ export function Hjul({ ljud, onVinst, onStang }) {
 }
 
 // Stjärnkistan öppnas. Innehållet är redan bestämt av den som öppnade den.
-export function Kista({ innehall, ljud, onStang }) {
+export function Kista({ innehall, foto = null, ljud, onStang }) {
   const [oppen, setOppen] = useState(false)
   useEffect(() => {
     const t = setTimeout(() => {
@@ -193,6 +196,12 @@ export function Kista({ innehall, ljud, onStang }) {
             </div>
           ))}
         </div>
+        {foto && (
+          <div className={'kr-resultat-foto' + (oppen ? '' : ' kr-dold')}>
+            <img src={foto.src} alt="" />
+            <span>Nytt foto i albumet: {foto.text}</span>
+          </div>
+        )}
         <button className="kr-knapp kr-knapp-stor" onClick={onStang}>
           Toppen!
         </button>

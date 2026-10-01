@@ -33,8 +33,29 @@ const tom = () => ({
   svit: 0,
   kistor: 0,
   dagligt: { serie: 0, inloggad: null, hjul: null, dagens: null, dagensPoang: 0 },
+  oandlig: 0,
+  album: 1,
+  albumSett: 1,
+  garderob: { agda: [], pa: { huvud: null, hals: null, ogon: null } },
+  godis: 0,
+  skalNiva: 0,
+  stat: tomStat(),
   uppdaterad: 0,
 })
+
+function tomStat() {
+  return {
+    farg: [0, 0, 0, 0, 0, 0],
+    special: { raket: 0, bomb: 0, skal: 0, frisbee: 0 },
+    storstaKedja: 0,
+    storstaDrag: 0,
+    vunna: 0,
+    forlorade: 0,
+    hopp: 0,
+    paket: 0,
+    hinder: 0,
+  }
+}
 
 // Gör ett sparläge komplett: fält som tillkommit sedan det sparades får
 // sina startvärden.
@@ -46,6 +67,11 @@ export function komplettera(s) {
     ...s,
     boosters: { ...t.boosters, ...(s.boosters || {}) },
     dagligt: { ...t.dagligt, ...(s.dagligt || {}) },
+    garderob: {
+      agda: (s.garderob && s.garderob.agda) || [],
+      pa: { ...t.garderob.pa, ...((s.garderob && s.garderob.pa) || {}) },
+    },
+    stat: { ...tomStat(), ...(s.stat || {}), special: { ...tomStat().special, ...((s.stat && s.stat.special) || {}) } },
     stjarnor: s.stjarnor || {},
     poang: s.poang || {},
     sett: s.sett || {},
@@ -89,15 +115,18 @@ export function totaltStjarnor(s) {
 
 // Belöning i mynt för en vunnen bana. Första gången ger mest, fler stjärnor
 // än förra gången ger lite till, en omspelning ger en slant.
-export function belonning(s, nr, stjarnor) {
+// Svåra banor ger extra första gången: +20 för svår, +40 för supersvår.
+export const SVAR_BONUS = [0, 20, 40]
+
+export function belonning(s, nr, stjarnor, svarighet = 0) {
   const forut = stjarnorFor(s, nr)
-  if (!forut) return 20 + stjarnor * 10
+  if (!forut) return 20 + stjarnor * 10 + SVAR_BONUS[svarighet]
   if (stjarnor > forut) return (stjarnor - forut) * 10
   return 5
 }
 
-export function registreraVinst(s, nr, stjarnor, poang) {
-  const mynt = belonning(s, nr, stjarnor)
+export function registreraVinst(s, nr, stjarnor, poang, svarighet = 0) {
+  const mynt = belonning(s, nr, stjarnor, svarighet)
   return {
     ...s,
     stjarnor: { ...s.stjarnor, [nr]: Math.max(stjarnorFor(s, nr), stjarnor) },
@@ -237,6 +266,92 @@ export function oppnaKista(s, rng = Math.random) {
   return { save, innehall }
 }
 
+// ------------------------------------------------------ oändliga promenaden
+
+export const registreraOandlig = (s, n) => ({ ...s, oandlig: Math.max(s.oandlig || 0, n) })
+
+// ----------------------------------------------------------- Happys album
+
+// album är hur många foton som är upplåsta (de tas i filnamnsordning),
+// albumSett hur många spelaren har tittat på. Bossar och stjärnkistor låser
+// upp ett nytt foto var.
+export const laggTillFoto = (s) => ({ ...s, album: (s.album || 1) + 1 })
+export const albumNya = (s, max) => Math.max(0, Math.min(s.album, max) - (s.albumSett || 0))
+export const albumSett = (s, max) => ({ ...s, albumSett: Math.min(s.album, max) })
+
+// ------------------------------------------------------------ garderoben
+
+export function kopKlader(s, sak) {
+  if (s.garderob.agda.includes(sak.id)) return s
+  if (s.mynt < sak.pris) return null
+  return {
+    ...s,
+    mynt: s.mynt - sak.pris,
+    garderob: { agda: [...s.garderob.agda, sak.id], pa: { ...s.garderob.pa, [sak.plats]: sak.id } },
+  }
+}
+
+export function taPa(s, sak) {
+  if (!s.garderob.agda.includes(sak.id)) return s
+  const pa = s.garderob.pa[sak.plats] === sak.id ? null : sak.id
+  return { ...s, garderob: { ...s.garderob, pa: { ...s.garderob.pa, [sak.plats]: pa } } }
+}
+
+// ----------------------------------------------------- Happys godisskål
+
+// Allt godis man samlar fyller skålen. Varje nivå kräver lite mer än förra.
+export const skalKrav = (niva) => 300 + niva * 150
+export function skalLage(godis) {
+  let niva = 0
+  let kvar = godis
+  while (kvar >= skalKrav(niva)) {
+    kvar -= skalKrav(niva)
+    niva++
+  }
+  return { niva, fyllt: kvar, krav: skalKrav(niva) }
+}
+
+const SKAL_BOOSTERS = ['tass', 'byt', 'blanda', 'plus3', 'raketbomb', 'skal']
+export const skalBelonning = (niva) => ({ mynt: 40 + niva * 10, booster: SKAL_BOOSTERS[niva % SKAL_BOOSTERS.length] })
+
+// Lägger till godis och delar ut belöningar för nya nivåer. Returnerar
+// { save, nivaer: [{ niva, belonning }] }.
+export function registreraGodis(s, antal) {
+  let save = { ...s, godis: (s.godis || 0) + antal }
+  const { niva } = skalLage(save.godis)
+  const nivaer = []
+  for (let n = (s.skalNiva || 0) + 1; n <= niva; n++) {
+    const b = skalBelonning(n)
+    save = geBelonning(save, b)
+    nivaer.push({ niva: n, belonning: b })
+  }
+  save.skalNiva = Math.max(save.skalNiva || 0, niva)
+  return { save, nivaer }
+}
+
+// ------------------------------------------------------------ statistik
+
+// sammanfattning kommer från spelplanen när en bana tar slut.
+export function registreraStat(s, sammanfattning, vann) {
+  const st = { ...tomStat(), ...(s.stat || {}) }
+  const sm = sammanfattning
+  return {
+    ...s,
+    stat: {
+      ...st,
+      farg: st.farg.map((x, k) => x + (sm.farg[k] || 0)),
+      special: Object.fromEntries(Object.keys(st.special).map((k) => [k, (st.special[k] || 0) + (sm.special[k] || 0)])),
+      storstaKedja: Math.max(st.storstaKedja, sm.storstaKedja || 0),
+      storstaDrag: Math.max(st.storstaDrag, sm.storstaDrag || 0),
+      vunna: st.vunna + (vann ? 1 : 0),
+      forlorade: st.forlorade + (vann ? 0 : 1),
+      hopp: st.hopp + (sm.hopp || 0),
+      paket: st.paket + (sm.paket || 0),
+      hinder: st.hinder + (sm.hinder || 0),
+    },
+  }
+}
+
 // ------------------------------------------------------------- synk
 
 // Slår ihop två sparlägen, t.ex. från telefonen och datorn. Stjärnor och
@@ -265,5 +380,14 @@ export function sammanfoga(a, b) {
     sett: { ...gammal.sett, ...ny.sett },
     kistor: Math.max(ny.kistor || 0, gammal.kistor || 0),
     dagligt,
+    oandlig: Math.max(ny.oandlig || 0, gammal.oandlig || 0),
+    album: Math.max(ny.album || 1, gammal.album || 1),
+    albumSett: Math.max(ny.albumSett || 1, gammal.albumSett || 1),
+    godis: Math.max(ny.godis || 0, gammal.godis || 0),
+    skalNiva: Math.max(ny.skalNiva || 0, gammal.skalNiva || 0),
+    garderob: {
+      agda: [...new Set([...(gammal.garderob?.agda || []), ...(ny.garderob?.agda || [])])],
+      pa: { ...(gammal.garderob?.pa || {}), ...(ny.garderob?.pa || {}) },
+    },
   })
 }

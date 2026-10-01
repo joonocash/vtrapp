@@ -221,6 +221,22 @@ export function skapaLjud(arTyst) {
         ton(k % 2 ? 1900 : 2300, 60, { typ: 'square', vol: 0.05, fordrojning: k * 70 })
       }
     },
+    paket() {
+      brusa(260, { frekvens: 2400, svep: 6000, q: 2, vol: 0.07 })
+      ;[0, 4, 7, 12].forEach((st, k) => ton(hz(st + 12), 160, { typ: 'triangle', vol: 0.06, fordrojning: 90 + k * 50 }))
+    },
+    samla(k = 0) {
+      ton(hz(SKALA[k % SKALA.length] + 12), 70, { typ: 'sine', vol: 0.05 })
+    },
+    hopp() {
+      ton(220, 300, { typ: 'sine', vol: 0.12, glid: 880 })
+      brusa(300, { frekvens: 500, svep: 2400, q: 1.5, vol: 0.08 })
+      ton(660, 160, { typ: 'triangle', vol: 0.06, fordrojning: 260, glid: 330 })
+    },
+    varning() {
+      ton(740, 110, { typ: 'square', vol: 0.05 })
+      ton(740, 110, { typ: 'square', vol: 0.05, fordrojning: 160 })
+    },
     hjulTick() {
       ton(1200, 25, { typ: 'triangle', vol: 0.05 })
     },

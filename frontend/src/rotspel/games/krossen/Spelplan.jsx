@@ -20,11 +20,19 @@ import {
   laggUtSpecialer,
   stjarnorFor,
   skapaRng,
+  hittaHappy,
+  happyRedo,
+  kanLanda,
+  happyHopp,
+  planteraMonster,
+  HAR_MONSTER,
+  HAPPY_MATT,
 } from './engine.js'
 import { skapaFx } from './fx.js'
-import { Pjas, Koppel, Lera, MalIkon, Stjarna, Mynt, FARGER, HAPPY } from './pieces.jsx'
-import { VARLDAR, TIPS, SORTER } from './levels.js'
-import { BOOSTERS, BOOSTER_FRAN, EXTRA_DRAG, anvandBooster, belonning, dagensKlar, DAGENS_BELONNING } from './store.js'
+import { Pjas, Koppel, Lera, MalIkon, Stjarna, Mynt, FARGER } from './pieces.jsx'
+import { HappyBild } from './happy.jsx'
+import { TIPS, SORTER, varldFor } from './levels.js'
+import { BOOSTERS, BOOSTER_FRAN, EXTRA_DRAG, anvandBooster, belonning, dagensKlar, DAGENS_BELONNING, SVAR_BONUS } from './store.js'
 import { skickaPoang, hamtaTopplista } from './synk.js'
 import { readSettings } from '../../useSettings.js'
 
@@ -69,15 +77,25 @@ export default function Spelplan({
 }) {
   const sRef = useRef(null)
   const svitCeller = useRef([])
+  const handStart = useRef(null)
   // Vinstsviten gäller som den var när banan började, även om den bryts.
   const [svitVidStart] = useState(svitBoost)
   if (sRef.current === null) {
     // Dagens bana slumpas med dagens frö, så alla får samma bräde.
     sRef.current = skapaSpel(bana, bana.fro ? skapaRng(bana.fro) : Math.random)
     if (svitBoost.length) svitCeller.current = laggUtSpecialer(sRef.current, svitBoost)
+    // Handledning första gången: på banan där en specialpjäs introduceras
+    // målas mönstret in så att handen kan visa exakt draget som ger den, och
+    // på de allra första banorna visar handen ett bra drag.
+    const forstaGangen = !save.stjarnor[bana.nr] && !bana.dagens && !bana.oandlig
+    if (forstaGangen && HAR_MONSTER.includes(bana.tips)) handStart.current = planteraMonster(sRef.current, bana.tips)
+    if (forstaGangen && !handStart.current && bana.nr <= 3) {
+      const t = hittaTips(sRef.current)
+      if (t) handStart.current = [t.a, t.b]
+    }
   }
   const s = sRef.current
-  const varld = VARLDAR[bana.varld]
+  const varld = varldFor(bana)
 
   const [visat, setVisat] = useState(() => ta(s))
   const visatRef = useRef(visat)
@@ -93,6 +111,15 @@ export default function Spelplan({
   const [forlustOrsak, setForlustOrsak] = useState('drag')
   const [topplista, setTopplista] = useState(null)
   const [meddelande, setMeddelande] = useState(null)
+  const [hand, setHand] = useState(null)
+  const handDrag = useRef(0)
+  const flygRef = useRef(null)
+  const spelplanRef = useRef(null)
+  const happyKlon = useRef(null)
+  const varnat = useRef({})
+  // statistik för den här banan
+  const rekord = useRef({ storstaKedja: 0, storstaDrag: 0, hinder: 0 })
+  const dragetsBitar = useRef(0)
 
   const bradRef = useRef(null)
   const lagerRef = useRef(null)
@@ -139,6 +166,9 @@ export default function Spelplan({
     fx.senare(() => {
       if (bana.dagens) fx.banner('Dagens bana', { farg: '#ffe066', storlek: 1.1, ms: 1300 })
       else if (bana.boss) fx.banner('Bossbana!', { farg: '#ff6b8a', storlek: 1.1, ms: 1500 })
+      else if (bana.svarighet === 2) fx.banner('Supersvår!', { farg: '#ff5c5c', storlek: 1.1, ms: 1500 })
+      else if (bana.svarighet === 1) fx.banner('Svår bana!', { farg: '#c792ff', storlek: 1.05, ms: 1400 })
+      else if (bana.oandlig) fx.banner('Promenad ' + bana.oandlig, { farg: '#ffb347', ms: 1200 })
       else fx.banner('Bana ' + bana.nr, { ms: 1100 })
     }, 250)
     if (svitCeller.current.length) {
@@ -176,6 +206,7 @@ export default function Spelplan({
       upptagen: () => busy.current,
       fas: () => fasRef.current,
       visa: () => visa(),
+      hand: () => handDrag.current,
     }
   }, [visa])
 
@@ -185,6 +216,7 @@ export default function Spelplan({
     if (tipsTimer.current) clearTimeout(tipsTimer.current)
     tipsTimer.current = null
     fxRef.current?.slutaVagga()
+    setHand(null)
   }, [])
 
   const schemalaggTips = useCallback(() => {
@@ -196,13 +228,23 @@ export default function Spelplan({
       if (!t) return
       const ids = t.celler.map((i) => visatRef.current.tiles[i]?.id).filter(Boolean)
       fxRef.current?.vagga(ids)
+      // på de första tio banorna visar handen också hur
+      if (bana.nr <= 10 && !bana.dagens) setHand([t.a, t.b])
     }, TIPS_EFTER_MS)
-  }, [avbrytTips])
+  }, [avbrytTips, bana])
 
   useEffect(() => {
     if (!tips) schemalaggTips()
     return avbrytTips
   }, [tips, schemalaggTips, avbrytTips])
+
+  // Handledningen: handen visas när tipsrutan är stängd och spelet väntar.
+  useEffect(() => {
+    if (!tips && handStart.current && fasRef.current === 'start') {
+      const t = setTimeout(() => levande.current && setHand(handStart.current), 700)
+      return () => clearTimeout(t)
+    }
+  }, [tips])
 
   // --------------------------------------------------------- stegen animeras
 
@@ -238,6 +280,20 @@ export default function Spelplan({
       samlade.add(fran)
       fx.samla([fran], till, idVid)
       await fx.vila(170)
+    }
+
+    // statistik
+    if (!steg.sekvens && fasRef.current !== 'regn') rekord.current.storstaKedja = Math.max(rekord.current.storstaKedja, steg.kaskad)
+    dragetsBitar.current += steg.borta.length
+    rekord.current.hinder +=
+      steg.lador.filter((l) => l.hp <= 0).length + steg.ograss.length + steg.koppel.length + (steg.bollar || []).length + steg.lera.length
+
+    // Happy hoppade hit: en stor smäll som sprider sig utåt
+    if (steg.hopp) {
+      ljud.bomb(true)
+      fx.ring(steg.hopp.till, 3.2, '#ffe066', { bredd: 7, ms: 480 })
+      fx.ring(steg.hopp.till, 2.2, '#ffffff', { bredd: 4, ms: 380 })
+      fx.skaka(9, 380)
     }
 
     // 2. ljud och beröm
@@ -342,9 +398,33 @@ export default function Spelplan({
           for (const j of k.omrade) satt(j, start)
       }
     }
+    if (steg.hopp) for (const j of steg.rensas) tider.set(j, avst(steg.hopp.till, j).cheb * 60)
     for (const j of steg.rensas) if (!tider.has(j)) tider.set(j, 0)
 
     if (harSmall) await fx.hitstop(60)
+
+    // godis och hinder som räknas mot ett mål flyger upp till målrutan
+    {
+      const mal = visatRef.current.mal
+      const index = (pred) => mal.findIndex((m) => !m.klar && pred(m))
+      const flyg = []
+      const lagg = (i, k) => k >= 0 && flyg.push({ i, mal: k, t: tider.get(i) ?? 0 })
+      for (const b of steg.borta) {
+        if (!b.special) lagg(b.i, index((m) => m.typ === 'farg' && m.farg === b.farg))
+        if (b.klocka) lagg(b.i, index((m) => m.typ === 'klocka'))
+      }
+      for (const l of steg.lera) lagg(l.i, index((m) => m.typ === 'lera'))
+      for (const l of steg.lador) if (l.hp <= 0) lagg(l.i, index((m) => m.typ === 'lada'))
+      for (const o of steg.ograss) lagg(o.i, index((m) => m.typ === 'ograss'))
+      for (const i of steg.koppel) lagg(i, index((m) => m.typ === 'koppel'))
+      for (const b of steg.bollar || []) lagg(b.i, index((m) => m.typ === 'boll'))
+      for (const p of steg.paket || []) lagg(p.i, index((m) => m.typ === 'paket'))
+      for (const k of steg.kallor) {
+        const typ = (k.orig || k.special || '').startsWith('raket') ? 'raket' : k.orig || k.special
+        lagg(k.i, index((m) => m.typ === 'special' && m.special === typ))
+      }
+      flygTillMal(flyg)
+    }
 
     // 4. varje ruta får sin effekt vid sin tid
     let slut = 0
@@ -403,7 +483,29 @@ export default function Spelplan({
     await fx.vila(slut + (steg.sekvens ? 200 : 260))
     if (!levande.current) return
 
+    const fore = visatRef.current
     visa()
+
+    // Happy åt: magen fylls, och är han mätt säger han till
+    for (const m of steg.matad || []) {
+      fx.pulsera(m.id, 1.22, 280)
+      const var_ = fore.tiles.find((t) => t && t.id === m.id)
+      if (m.mage >= HAPPY_MATT && (!var_ || var_.mage < HAPPY_MATT)) {
+        ljud.vov()
+        fx.banner('Happy är mätt! Tryck på honom', { farg: '#ffe066', storlek: 0.72, ms: 1600 })
+      }
+    }
+
+    // överraskningspaketen visar vad de innehöll
+    if (steg.paket?.length) {
+      ljud.paket()
+      const text = { raket: 'Raket!', bomb: 'Bomb!', frisbee: 'Frisbee!', skal: 'Godisskål!', drag: '+3 drag', mynt: '+25 mynt', boll: 'Tennisboll …' }
+      for (const pk of steg.paket) {
+        if (pk.nyId) fx.visaNy(pk.nyId, pk.utfall === 'boll' ? '#d4ec2c' : '#ffe066')
+        fx.poang(pk.i, text[pk.utfall] || '', pk.utfall === 'boll' ? '#ffd0d0' : pk.utfall === 'drag' ? '#8ef0a8' : '#ffe066')
+        if (pk.utfall === 'drag') fx.banner('+3 drag!', { farg: '#8ef0a8', storlek: 0.8, ms: 900 })
+      }
+    }
 
     if (steg.nya.length) {
       ljud.special()
@@ -446,6 +548,10 @@ export default function Spelplan({
           }
           fx.poang(l.i, 'Mums!', '#ffe066')
           fx.splittra(l.i, '#f0a468', { antal: 10 })
+        }
+        {
+          const k = visatRef.current.mal.findIndex((m) => m.typ === 'kott' && !m.klar)
+          if (k >= 0) flygTillMal(steg.celler.map((l) => ({ i: l.i, mal: k, t: 0 })))
         }
         ljud.vov()
         await fx.vila(480)
@@ -507,6 +613,21 @@ export default function Spelplan({
         }
         break
       }
+      case 'hopp': {
+        ljud.hopp()
+        happyKlon.current = await fx.hopp(steg.fran, steg.till, steg.id)
+        break
+      }
+      case 'landa': {
+        happyKlon.current?.remove()
+        happyKlon.current = null
+        visa()
+        fx.pulsera(steg.id, 1.35, 300)
+        const k = visatRef.current.mal.findIndex((m) => m.typ === 'hopp' && !m.klar)
+        if (k >= 0) flygTillMal([{ i: steg.i, mal: k, t: 0 }])
+        await fx.vila(160)
+        break
+      }
       case 'blanda':
         fx.banner('Blandar om', { farg: '#e2e8f0', storlek: 0.8, ms: 900 })
         await fx.vila(450)
@@ -532,6 +653,7 @@ export default function Spelplan({
     if (fullskarmSparrad) fullskarmSparrad.current = true
     avbrytTips()
     beromNiva.current = 0
+    dragetsBitar.current = 0
     fxRef.current?.setInstallningar(readSettings())
     try {
       for (const steg of gen) {
@@ -542,7 +664,10 @@ export default function Spelplan({
     } finally {
       busy.current = false
       if (fullskarmSparrad) fullskarmSparrad.current = false
+      happyKlon.current?.remove()
+      happyKlon.current = null
     }
+    rekord.current.storstaDrag = Math.max(rekord.current.storstaDrag, dragetsBitar.current)
     await efterDrag()
   }
 
@@ -569,6 +694,33 @@ export default function Spelplan({
       return
     }
     if (st.drag <= 5) ljud.lagDrag()
+    // Varna en gång när det börjar bli tajt — men inte om banan bara hade
+    // så få drag från början.
+    const fx = fxRef.current
+    // Lite längre ner och en stund efter draget, så att den inte krockar med
+    // berömmet från en kedja.
+    if (st.drag === 5 && bana.drag > 8 && !varnat.current[5]) {
+      varnat.current[5] = true
+      fx?.senare(() => {
+        fx.banner('5 drag kvar!', { farg: '#ff9d5c', storlek: 0.95, ms: 1400, nere: true })
+        ljud.varning()
+      }, 350)
+    } else if (st.drag === 1 && !varnat.current[1]) {
+      varnat.current[1] = true
+      fx?.senare(() => {
+        fx.banner('Sista draget!', { farg: '#ff5c5c', storlek: 0.95, ms: 1400, nere: true })
+        ljud.varning()
+      }, 350)
+    }
+    // handledningen på de första banorna fortsätter ett par drag till
+    handDrag.current++
+    if (handStart.current && bana.nr <= 3 && handDrag.current < 3) {
+      setTimeout(() => {
+        if (!levande.current || busy.current || fasRef.current !== 'spel') return
+        const t = hittaTips(sRef.current)
+        if (t) setHand([t.a, t.b])
+      }, 900)
+    }
     schemalaggTips()
   }
 
@@ -589,17 +741,25 @@ export default function Spelplan({
       visa()
     }
     const stjarnor = Math.max(1, stjarnorFor(st.poang, bana.stjarnor))
+    const forsta = !saveRef.current.stjarnor[bana.nr]
     const mynt = bana.dagens
       ? dagensKlar(saveRef.current, bana.dag)
         ? 0
         : DAGENS_BELONNING
-      : belonning(saveRef.current, bana.nr, stjarnor)
-    setResultat({ stjarnor, poang: st.poang, mynt })
+      : belonning(saveRef.current, bana.nr, stjarnor, bana.svarighet || 0)
+    const extra = onVinst({ stjarnor, poang: st.poang, sammanfattning: sammanfattning() }) || {}
+    setResultat({
+      stjarnor,
+      poang: st.poang,
+      mynt: mynt + st.paketMynt,
+      svarBonus: forsta && !bana.dagens ? SVAR_BONUS[bana.svarighet || 0] : 0,
+      paketMynt: st.paketMynt,
+      ...extra,
+    })
     byt('vunnen')
     busy.current = false
     ljud.vinst()
     fx.konfetti()
-    onVinst({ stjarnor, poang: st.poang })
     if (topplistaId && spelare) {
       skickaPoang(topplistaId, spelare, st.poang)
         .then(() => hamtaTopplista(topplistaId))
@@ -616,7 +776,76 @@ export default function Spelplan({
     setForlustOrsak(orsak)
     byt('forlorad')
     ljud.forlust()
-    if (onForlust) onForlust(orsak)
+    if (onForlust) onForlust(orsak, sammanfattning())
+  }
+
+  // Det banan gav, för statistiken och Happys godisskål.
+  function sammanfattning() {
+    const st = sRef.current
+    return {
+      farg: [...st.samlat.farg],
+      special: { ...st.samlat.special },
+      hopp: st.samlat.hopp,
+      paket: st.samlat.paket,
+      godis: st.samlat.farg.reduce((a, b) => a + b, 0),
+      paketMynt: st.paketMynt,
+      ...rekord.current,
+    }
+  }
+
+  // Flygande mål: en kopia av målets ikon flyger från rutan upp till målet
+  // i statusraden, och målet studsar till när den kommer fram.
+  function flygTillMal(lista) {
+    const fx = fxRef.current
+    const lager = flygRef.current
+    const plan = spelplanRef.current
+    if (!fx || !lager || !plan || !lista.length) return
+    const pr = plan.getBoundingClientRect()
+    const br = bradRef.current.getBoundingClientRect()
+    const w = sRef.current.w
+    const cell = br.width / w
+    const perMal = {}
+    let n = 0
+    for (const f of lista) {
+      perMal[f.mal] = (perMal[f.mal] || 0) + 1
+      if (perMal[f.mal] > 12) continue
+      const malEl = plan.querySelector('[data-mal="' + f.mal + '"]')
+      const ikon = malEl && malEl.querySelector('.kr-malikon')
+      if (!ikon) continue
+      const mr = ikon.getBoundingClientRect()
+      const x0 = br.left - pr.left + ((f.i % w) + 0.5) * cell
+      const y0 = br.top - pr.top + (Math.floor(f.i / w) + 0.5) * cell
+      const x1 = mr.left - pr.left + mr.width / 2
+      const y1 = mr.top - pr.top + mr.height / 2
+      const storlek = Math.max(18, cell * 0.62)
+      const fordrojning = f.t + 70 + n * 18
+      const nr = n++
+      fx.senare(() => {
+        const el = document.createElement('div')
+        el.className = 'kr-flygmal'
+        el.style.cssText = `left:${x0 - storlek / 2}px;top:${y0 - storlek / 2}px;width:${storlek}px;height:${storlek}px`
+        el.innerHTML = ikon.innerHTML
+        lager.appendChild(el)
+        const dx = x1 - x0
+        const dy = y1 - y0
+        const sida = (nr % 2 ? 1 : -1) * cell * 0.8
+        const kf = []
+        for (let k = 0; k <= 12; k++) {
+          const t = k / 12
+          const e = t * t * (3 - 2 * t)
+          const x = dx * e + Math.sin(t * Math.PI) * sida
+          const y = dy * e - Math.sin(t * Math.PI) * cell * 0.9
+          const sk = 1 + Math.sin(t * Math.PI) * 0.35 - t * 0.45
+          kf.push({ transform: `translate(${x}px,${y}px) scale(${sk})`, opacity: t > 0.92 ? 0.6 : 1 })
+        }
+        el.animate(kf, { duration: 600, easing: 'linear', fill: 'forwards' })
+        fx.senare(() => {
+          el.remove()
+          malEl.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.28)' }, { transform: 'scale(1)' }], { duration: 240, easing: 'ease-out' })
+          if (nr % 3 === 0) ljud.samla(nr)
+        }, 600)
+      }, fordrojning)
+    }
   }
 
   function kopExtraDrag() {
@@ -760,6 +989,22 @@ export default function Spelplan({
     if (busy.current) return
     const st = sRef.current
     avbrytTips()
+    if (lage === 'happy') {
+      const hi = hittaHappy(st)
+      if (i === hi || hi < 0) return setLage(null)
+      if (!kanLanda(st, i)) return
+      setLage(null)
+      if (fasRef.current === 'start') startaSpel()
+      kor(happyHopp(st, hi, i))
+      return
+    }
+    if (!lage && st.tiles[i]?.happy && happyRedo(st, i)) {
+      // Happy är mätt: nästa tryck väljer var han ska hoppa
+      setVald(null)
+      setLage('happy')
+      ljud.vov()
+      return
+    }
     if (lage === 'tass') {
       if (!st.tiles[i]) return
       if (!forsokAnvanda('tass')) return
@@ -843,17 +1088,20 @@ export default function Spelplan({
   const synligaStart = ['plus3', 'raketbomb', 'skal'].filter((b) => bana.nr >= BOOSTER_FRAN[b])
 
   return (
-    <div className="kr-spelplan">
+    <div className="kr-spelplan" ref={spelplanRef}>
+      <div className="kr-flyglager" ref={flygRef} aria-hidden="true" />
       {/* ------------------------------------------------------ statusrad */}
       <div className="kr-hud">
         <div className={'kr-mal' + (visat.mal.length >= 3 ? ' kr-mal-manga' : '')} aria-label="Mål">
           {visat.mal.map((m, k) => (
-            <div key={k} className={'kr-malpost' + (m.klar ? ' kr-klar' : '')}>
+            <div key={k} data-mal={k} className={'kr-malpost' + (m.klar ? ' kr-klar' : '')}>
               {m.typ === 'poang' ? (
                 <span className="kr-malpoang">{m.antal.toLocaleString('sv-SE')}</span>
               ) : (
                 <>
-                  <MalIkon mal={m} storlek={26} />
+                  <span className="kr-malikon">
+                    <MalIkon mal={m} storlek={26} />
+                  </span>
                   <span className="kr-malantal">{m.klar ? '✓' : m.kvar}</span>
                 </>
               )}
@@ -961,6 +1209,7 @@ export default function Spelplan({
 
           <canvas ref={canvasRef} className="kr-canvas" aria-hidden="true" />
           <div ref={textRef} className="kr-textlager" aria-hidden="true" />
+          {hand && <Hand fran={hand[0]} till={hand[1]} w={s.w} h={s.h} />}
         </div>
       </div>
 
@@ -968,7 +1217,13 @@ export default function Spelplan({
       <div className="kr-nedre">
         {lage ? (
           <div className="kr-lagetext">
-            {lage === 'tass' ? 'Tryck på rutan Tassen ska krossa' : bytForst === null ? 'Tryck på första pjäsen' : 'Tryck på en granne att byta med'}
+            {lage === 'happy'
+              ? 'Tryck där Happy ska hoppa'
+              : lage === 'tass'
+                ? 'Tryck på rutan Tassen ska krossa'
+                : bytForst === null
+                  ? 'Tryck på första pjäsen'
+                  : 'Tryck på en granne att byta med'}
             <button className="kr-knapp kr-knapp-liten" onClick={() => setLage(null)}>
               Avbryt
             </button>
@@ -1000,7 +1255,7 @@ export default function Spelplan({
       {/* --------------------------------------------------------- rutorna */}
       {tips && (
         <Ruta>
-          <img src={HAPPY.nojd} alt="" className="kr-happy kr-happy-liten" />
+          <HappyRam humor="nojd" liten />
           <div className="kr-ruta-titel">{tips.titel}</div>
           <p className="kr-ruta-text">{tips.text}</p>
           <button
@@ -1018,7 +1273,7 @@ export default function Spelplan({
 
       {fas === 'nastan' && (
         <Ruta>
-          <img src={HAPPY.ledsen} alt="" className="kr-happy" />
+          <HappyRam humor="ledsen" />
           <div className="kr-ruta-titel">Nästan!</div>
           <p className="kr-ruta-text">Det här fattas:</p>
           <MalLista mal={visat.mal} />
@@ -1034,7 +1289,7 @@ export default function Spelplan({
 
       {fas === 'forlorad' && (
         <Ruta>
-          <img src={HAPPY.ledsen} alt="" className="kr-happy" />
+          <HappyRam humor="ledsen" />
           <div className="kr-ruta-titel">{forlustOrsak === 'klocka' ? 'Klockan ringde!' : 'Happy blev utan godis'}</div>
           {forlustOrsak === 'klocka' && <p className="kr-ruta-text">Happy vaknade av väckarklockan. Ta bort godis med klocka innan tiden går ut.</p>}
           {svitVidStart.length > 0 && <p className="kr-ruta-text">Vinstsviten är bruten.</p>}
@@ -1053,7 +1308,7 @@ export default function Spelplan({
 
       {fas === 'vunnen' && resultat && (
         <Ruta>
-          <img src={HAPPY.glad} alt="" className="kr-happy kr-happy-hopp" />
+          <HappyRam humor="glad" hoppar />
           <div className="kr-ruta-titel">{bana.dagens ? 'Dagens bana klar!' : bana.boss ? 'Bossen besegrad!' : 'Happy fick godis!'}</div>
           <div className="kr-resultat-stjarnor">
             {[0, 1, 2].map((k) => (
@@ -1064,6 +1319,14 @@ export default function Spelplan({
           {resultat.mynt > 0 && (
             <div className="kr-resultat-mynt">
               <Mynt storlek={18} /> +{resultat.mynt}
+              {resultat.svarBonus > 0 && <span className="kr-resultat-extra">varav {resultat.svarBonus} för {bana.svarighet === 2 ? 'supersvår' : 'svår'} bana</span>}
+              {resultat.paketMynt > 0 && <span className="kr-resultat-extra">varav {resultat.paketMynt} från paket</span>}
+            </div>
+          )}
+          {resultat.foto && (
+            <div className="kr-resultat-foto">
+              <img src={resultat.foto.src} alt="" />
+              <span>Nytt foto i Happys album!</span>
             </div>
           )}
           {topplistaId && <Topplista lista={topplista} spelare={spelare} />}
@@ -1128,6 +1391,48 @@ export function Topplista({ lista, spelare, antal = 5 }) {
         </li>
       ))}
     </ol>
+  )
+}
+
+// Happy överst i rutorna, med kläderna på.
+function HappyRam({ humor, liten = false, hoppar = false }) {
+  return (
+    <div className={'kr-happyram' + (liten ? ' kr-happyram-liten' : '') + (hoppar ? ' kr-happy-hopp' : '')}>
+      <HappyBild humor={humor} storlek={liten ? 70 : 92} ramBredd={5} />
+    </div>
+  )
+}
+
+// Handen som visar ett drag: trycker på pjäsen och drar den till grannen.
+function Hand({ fran, till, w, h }) {
+  const cw = 100 / w
+  const ch = 100 / h
+  const dx = (till % w) - (fran % w)
+  const dy = Math.floor(till / w) - Math.floor(fran / w)
+  return (
+    <div
+      className="kr-hand"
+      style={{
+        left: (fran % w) * cw + '%',
+        top: Math.floor(fran / w) * ch + '%',
+        width: cw + '%',
+        height: ch + '%',
+        // bilden är 95 % av rutan och procent i translate räknas på bilden
+        '--dx': (dx * 100) / 0.95 + '%',
+        '--dy': (dy * 100) / 0.95 + '%',
+      }}
+    >
+      <div className="kr-hand-ring" />
+      <svg viewBox="0 0 64 64" className="kr-hand-bild" aria-hidden="true">
+        <path
+          d="M22 30 V12 a5 5 0 0 1 10 0 V28 V22 a5 5 0 0 1 10 0 V30 V26 a5 5 0 0 1 9 0 V32 V30 a4.5 4.5 0 0 1 9 0 V44 C60 54 54 62 42 62 H34 C26 62 22 58 16 50 L7 38 a5 5 0 0 1 8 -6 Z"
+          fill="#fff"
+          stroke="#1f2937"
+          strokeWidth="3"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
   )
 }
 

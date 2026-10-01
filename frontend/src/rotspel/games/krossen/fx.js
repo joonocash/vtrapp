@@ -484,6 +484,46 @@ export function skapaFx({ bradet, lager, canvas, textlager, w, h }) {
     ring(till, 1.4, '#ffffff', { bredd: 4, ms: 300 })
   }
 
+  // Happy hoppar: en kopia av pjäsen tar sats, gör en volt i en hög båge och
+  // landar. Originalet göms under tiden. Kopian blir kvar där den landade
+  // tills spelplanen tar bort den — Happy står ju i smällen medan den pågår.
+  async function hopp(fran, till, id, ms = 640) {
+    const kalla = nod(id)
+    const p = cell()
+    const a = mitt(fran)
+    const b = mitt(till)
+    const flyg = document.createElement('div')
+    flyg.className = 'kr-flygare kr-hoppare'
+    flyg.style.cssText = `width:${p}px;height:${p}px;left:${a.x - p / 2}px;top:${a.y - p / 2}px`
+    flyg.innerHTML = kalla ? kalla.innerHTML : ''
+    if (kalla) kalla.style.visibility = 'hidden'
+    textlager.appendChild(flyg)
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    const topp = -Math.max(p * 2.2, Math.hypot(dx, dy) * 0.55)
+    const kf = [{ transform: 'translate(0,0) scale(1.1,.82)', offset: 0 }]
+    for (let k = 1; k <= 12; k++) {
+      const t = k / 12
+      const x = dx * t
+      const y = dy * t + topp * 4 * t * (1 - t)
+      const sk = 1 + Math.sin(t * Math.PI) * 0.7
+      kf.push({ transform: `translate(${x}px,${y}px) rotate(${t * 360}deg) scale(${sk})`, offset: 0.12 + t * 0.88 })
+    }
+    const anim = flyg.animate(kf, { duration: ms, easing: 'cubic-bezier(.3,.1,.5,1)', fill: 'forwards' })
+    const spar = setInterval(() => {
+      const r = flyg.getBoundingClientRect()
+      const br = bradet.getBoundingClientRect()
+      gnistor(r.left - br.left + r.width / 2, r.top - br.top + r.height / 2, '#ffe9a8', 2, 50)
+    }, 40)
+    await vila(ms)
+    clearInterval(spar)
+    anim.cancel()
+    flyg.style.left = b.x - p / 2 + 'px'
+    flyg.style.top = b.y - p / 2 + 'px'
+    flyg.animate([{ transform: 'scale(1.35,.7)' }, { transform: 'scale(.92,1.1)', offset: 0.5 }, { transform: 'scale(1)' }], { duration: 300, easing: 'ease-out' })
+    return flyg
+  }
+
   // Skärmblixt över en ruta.
   function blixt(i) {
     const p = cell()
@@ -825,11 +865,12 @@ export function skapaFx({ bradet, lager, canvas, textlager, w, h }) {
     }
   }
 
-  function banner(text, { farg = '#ffffff', storlek = 1, ms = 1100 } = {}) {
+  function banner(text, { farg = '#ffffff', storlek = 1, ms = 1100, nere = false } = {}) {
     const el = document.createElement('div')
     el.className = 'kr-banner'
     el.textContent = text
     el.style.color = farg
+    if (nere) el.style.top = '70%'
     el.style.fontSize = `calc(${storlek} * min(7vw, 30px))`
     textlager.appendChild(el)
     el.animate(
@@ -972,6 +1013,7 @@ export function skapaFx({ bradet, lager, canvas, textlager, w, h }) {
     bomb,
     stral,
     frisbee,
+    hopp,
     blixt,
     popp,
     samla,

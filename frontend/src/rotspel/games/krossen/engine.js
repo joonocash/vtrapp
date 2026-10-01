@@ -17,6 +17,11 @@
 //                      { id, typ: 'boll' }          tennisboll: faller, stoppar raketer
 //                    en bit kan ha klocka: n — den tickar ner ett steg per drag,
 //                    och når den noll är banan förlorad
+//                    en bit kan vara Happy (happy: true, mage): matchas som sin
+//                    färg men äter i stället för att försvinna; med full mage
+//                    kan spelaren låta honom hoppa och smälla 3×3
+//                    en bit kan vara ett paket (paket: true): när det smäller
+//                    blir det en överraskning i rutan
 //   s.lera[i]        lera under rutan, 0–2 lager
 //   s.koppel[i]      pjäsen i rutan sitter fast
 //
@@ -30,7 +35,24 @@
 export const SIDA_MAX = 9
 
 // Poäng. Bitar gånger kedjenivån, hinder och leverans är fasta.
-export const POANG = { bit: 20, lera: 100, lada: 40, ograss: 40, koppel: 40, kott: 1000, boll: 60 }
+export const POANG = { bit: 20, lera: 100, lada: 40, ograss: 40, koppel: 40, kott: 1000, boll: 60, hopp: 500 }
+
+// Så många godis Happy ska äta innan han kan hoppa.
+export const HAPPY_MATT = 10
+
+// Vad ett paket kan innehålla, och hur ofta.
+export const PAKET = [
+  { utfall: 'raket', vikt: 28 },
+  { utfall: 'bomb', vikt: 18 },
+  { utfall: 'frisbee', vikt: 18 },
+  { utfall: 'skal', vikt: 6 },
+  { utfall: 'drag', vikt: 12 },
+  { utfall: 'mynt', vikt: 12 },
+  { utfall: 'boll', vikt: 6 },
+]
+
+// Vanlig bit utan något extra: ingen special, inte Happy, inget paket.
+const enkel = (t) => t && t.typ === 'bit' && !t.special && !t.happy && !t.paket
 
 const arRaket = (x) => x === 'raket-h' || x === 'raket-v'
 
@@ -61,6 +83,7 @@ export function skapaRng(seed) {
 //   k  pjäs i koppel             K  pjäs i koppel på lera
 //   o  ogräs                     e  köttben
 //   b  tennisboll                t  pjäs med klocka
+//   h  Happy                     q  överraskningspaket
 export function skapaSpel(bana, rng = Math.random) {
   const rader = bana.karta
   const h = rader.length
@@ -68,6 +91,8 @@ export function skapaSpel(bana, rng = Math.random) {
   const n = w * h
 
   const klockCeller = []
+  const happyCeller = []
+  const paketCeller = []
   const s = {
     w,
     h,
@@ -81,7 +106,9 @@ export function skapaSpel(bana, rng = Math.random) {
     drag: bana.drag,
     poang: 0,
     mal: (bana.mal || []).map((m) => ({ ...m })),
-    samlat: { farg: new Array(6).fill(0), special: { raket: 0, bomb: 0, skal: 0, frisbee: 0 }, boll: 0, klocka: 0 },
+    samlat: { farg: new Array(6).fill(0), special: { raket: 0, bomb: 0, skal: 0, frisbee: 0 }, boll: 0, klocka: 0, hopp: 0, paket: 0 },
+    paket: bana.paket || null,
+    paketMynt: 0,
     kott: null,
     bollar: bana.bollar || null,
     klockor: bana.klockor || null,
@@ -106,6 +133,8 @@ export function skapaSpel(bana, rng = Math.random) {
       if (ch === 'e') s.tiles[i] = { id: s.nextId++, typ: 'kott' }
       if (ch === 'b') s.tiles[i] = { id: s.nextId++, typ: 'boll' }
       if (ch === 't') klockCeller.push(i)
+      if (ch === 'h') happyCeller.push(i)
+      if (ch === 'q') paketCeller.push(i)
     }
   }
 
@@ -133,6 +162,18 @@ export function skapaSpel(bana, rng = Math.random) {
   fyllStart(s)
   const tid = (bana.klockor && bana.klockor.tid) || 15
   for (const i of klockCeller) if (s.tiles[i] && s.tiles[i].typ === 'bit') s.tiles[i].klocka = tid
+  for (const i of paketCeller) if (enkel(s.tiles[i])) s.tiles[i].paket = true
+  if (bana.happy) {
+    // Happy börjar där kartan säger, annars på en vanlig ruta nära mitten
+    let i = happyCeller.find((j) => enkel(s.tiles[j]) && !s.koppel[j])
+    if (i === undefined) {
+      const mitt = (s.h / 2) * w + w / 2
+      const kandidater = s.tiles.map((t, j) => j).filter((j) => enkel(s.tiles[j]) && !s.koppel[j] && !s.tiles[j].klocka)
+      kandidater.sort((a, b) => Math.abs(a - mitt) - Math.abs(b - mitt))
+      i = kandidater[Math.floor(rng() * Math.min(6, kandidater.length))]
+    }
+    if (i !== undefined) Object.assign(s.tiles[i], { happy: true, mage: 0 })
+  }
   return s
 }
 
@@ -354,7 +395,7 @@ export function hittaGrupper(s, flyttade = null) {
     g.special = special
     g.plats = null
     if (special) {
-      const fria = g.celler.filter((i) => !s.koppel[i])
+      const fria = g.celler.filter((i) => !s.koppel[i] && !s.tiles[i].happy)
       if (flyttade && fria.includes(flyttade[0])) g.plats = flyttade[0]
       else if (flyttade && fria.includes(flyttade[1])) g.plats = flyttade[1]
       else if (fria.includes(standard)) g.plats = standard
@@ -518,6 +559,8 @@ function valjMal(s, undvik, fran) {
     else if (s.lera[j] > 0 && (!t || t.typ === 'bit')) v = 50 + s.lera[j] * 5
     else if (underKott.has(j) && t && t.typ === 'bit') v = 40
     else if (t && t.typ === 'bit' && behovFarg.has(t.farg)) v = 20
+    else if (t && t.typ === 'bit' && t.happy) continue
+    else if (t && t.typ === 'bit' && t.paket) v = 30
     else if (t && t.typ === 'bit') v = 1
     else continue
     v += s.rng() * 4
@@ -556,7 +599,9 @@ function samla(s, start, ctx = {}) {
 }
 
 // Rensar på riktigt. Returnerar vad som hände, för animation och poäng.
-function tillampa(s, rensas, kallor, kaskad = 1) {
+// matning: ruta -> hur mycket Happy i den rutan äter (en hel grupp han
+// ingår i). Utan post äter han ett godis per träff.
+function tillampa(s, rensas, kallor, kaskad = 1, matning = null) {
   const utlosta = new Set(kallor.map((k) => k.id))
   const res = {
     borta: [],
@@ -566,6 +611,8 @@ function tillampa(s, rensas, kallor, kaskad = 1) {
     lera: [],
     armerade: [],
     bollar: [],
+    matad: [],
+    paket: [],
     poang: 0,
   }
 
@@ -622,6 +669,18 @@ function tillampa(s, rensas, kallor, kaskad = 1) {
       skadaLera(i)
       continue
     }
+    if (t.happy) {
+      // Happy försvinner aldrig. Han äter, och byter färg när han ätit.
+      const fore = t.mage
+      t.mage = Math.min(HAPPY_MATT, t.mage + (matning?.get(i) ?? 1))
+      if (t.mage > fore) {
+        const andra = [...Array(s.farger).keys()].filter((f) => f !== t.farg)
+        t.farg = andra[Math.floor(s.rng() * andra.length)]
+      }
+      res.matad.push({ i, id: t.id, mage: t.mage, farg: t.farg })
+      skadaLera(i)
+      continue
+    }
     if (t.special === 'bomb' && !t.armerad && utlosta.has(t.id)) {
       // första smällen: bomben ligger kvar, laddad, och smäller igen efter fallet
       t.armerad = true
@@ -630,15 +689,61 @@ function tillampa(s, rensas, kallor, kaskad = 1) {
       continue
     }
     s.tiles[i] = null
-    res.borta.push({ i, id: t.id, farg: t.farg, special: t.special })
+    res.borta.push({ i, id: t.id, farg: t.farg, special: t.special, klocka: t.klocka ? 1 : 0 })
     s.samlat.farg[t.farg]++
     if (t.klocka) s.samlat.klocka++
     res.poang += POANG.bit * kaskad
     skadaLera(i)
+    if (t.paket) res.paket.push(oppnaPaket(s, i, t))
+  }
+
+  // Happy äter också godis som smäller precis bredvid honom
+  if (res.borta.length) {
+    const hi = hittaHappy(s)
+    if (hi >= 0 && !rensas.has(hi)) {
+      const h = s.tiles[hi]
+      const runt = new Set(grannar(s, hi))
+      const n = res.borta.filter((b) => runt.has(b.i)).length
+      if (n && h.mage < HAPPY_MATT) {
+        h.mage = Math.min(HAPPY_MATT, h.mage + n)
+        res.matad.push({ i: hi, id: h.id, mage: h.mage, farg: h.farg, bredvid: true })
+      }
+    }
   }
 
   s.poang += res.poang
   return res
+}
+
+// Ett paket smäller: dra en överraskning och lägg den i rutan. Specialpjäser
+// och tennisbollar hamnar på brädet, drag och mynt räknas direkt.
+function oppnaPaket(s, i, gammal) {
+  s.samlat.paket++
+  const lista = PAKET.filter((x) => !(s.iFinal && (x.utfall === 'drag' || x.utfall === 'boll')))
+  const summa = lista.reduce((a, x) => a + x.vikt, 0)
+  let r = s.rng() * summa
+  let utfall = lista[lista.length - 1].utfall
+  for (const x of lista) {
+    r -= x.vikt
+    if (r < 0) {
+      utfall = x.utfall
+      break
+    }
+  }
+  const ut = { i, id: gammal.id, utfall, nyId: null }
+  if (utfall === 'drag') s.drag += 3
+  else if (utfall === 'mynt') s.paketMynt += 25
+  else if (utfall === 'boll') {
+    const t = { id: s.nextId++, typ: 'boll' }
+    s.tiles[i] = t
+    ut.nyId = t.id
+  } else {
+    const special = utfall === 'raket' ? (s.rng() < 0.5 ? 'raket-h' : 'raket-v') : utfall
+    const t = nyBit(s, Math.floor(s.rng() * s.farger), special)
+    s.tiles[i] = t
+    ut.nyId = t.id
+  }
+  return ut
 }
 
 // Rensar en uppsättning celler med kedjor och allt. Bekvämlighet för
@@ -768,8 +873,13 @@ function inkommande(s, c) {
     if (antal < (b.max || 6) && s.rng() < (b.chans || 0.07)) return { id: s.nextId++, typ: 'boll' }
   }
   const bit = nyBit(s, Math.floor(s.rng() * s.farger))
+  const pk = s.paket
+  if (pk && !s.iFinal) {
+    const antal = s.tiles.filter((t) => t && t.paket).length
+    if (antal < (pk.max || 3) && s.rng() < (pk.chans || 0.04)) bit.paket = true
+  }
   const kl = s.klockor
-  if (kl && !s.iFinal) {
+  if (kl && !s.iFinal && !bit.paket) {
     const antal = s.tiles.filter((t) => t && t.typ === 'bit' && t.klocka).length
     if (antal < (kl.max || 3) && s.rng() < (kl.chans || 0.04)) bit.klocka = kl.tid || 15
   }
@@ -945,7 +1055,12 @@ function* kaskad(s, flyttade = null, kaskadStart = 0) {
     }
 
     const { rensas, kallor } = samla(s, start)
-    const res = tillampa(s, rensas, kallor, k)
+    // Happy i en grupp äter hela gruppen
+    const matning = new Map()
+    for (const g of grupper) {
+      for (const i of g.celler) if (s.tiles[i]?.happy) matning.set(i, (matning.get(i) || 0) + g.celler.length - 1)
+    }
+    const res = tillampa(s, rensas, kallor, k, matning)
 
     const nya = []
     for (const g of grupper) {
@@ -1033,7 +1148,7 @@ function* kombo(s, c, o) {
     const till = grundtyp(annan.special)
     const celler = []
     s.tiles.forEach((t, j) => {
-      if (t && t.typ === 'bit' && !t.special && t.farg === annan.farg && !s.koppel[j]) {
+      if (enkel(t) && t.farg === annan.farg && !s.koppel[j]) {
         t.special = till === 'raket' ? (s.rng() < 0.5 ? 'raket-h' : 'raket-v') : till
         celler.push(j)
       }
@@ -1143,7 +1258,7 @@ function vaxOgras(s) {
     if (!t || t.typ !== 'ograss') return
     for (const n of grannar(s, i)) {
       const x = s.tiles[n]
-      if (x && x.typ === 'bit' && !x.special && !s.koppel[n]) kandidater.push([i, n])
+      if (enkel(x) && !s.koppel[n]) kandidater.push([i, n])
     }
   })
   if (!kandidater.length) return null
@@ -1177,7 +1292,7 @@ export function blandaBradet(s) {
   for (let forsok = 0; forsok < 120; forsok++) {
     for (const i of platser) {
       const t = s.tiles[i]
-      if (!t.special) s.tiles[i] = null
+      if (enkel(t)) s.tiles[i] = null
     }
     for (const i of platser) if (!s.tiles[i]) s.tiles[i] = nyBit(s, sakerFarg(s, i))
     if (hittaGrupper(s).length === 0 && harDrag(s)) return true
@@ -1186,6 +1301,117 @@ export function blandaBradet(s) {
 }
 
 // ----------------------------------------------------------------- boosters
+
+// ------------------------------------------------------------------- Happy
+
+export function hittaHappy(s) {
+  return s.tiles.findIndex((t) => t && t.happy)
+}
+
+export const happyRedo = (s, i) => Boolean(s.tiles[i]?.happy && s.tiles[i].mage >= HAPPY_MATT)
+
+// Happy kan landa på en vanlig pjäs som inte sitter i koppel.
+export function kanLanda(s, i) {
+  const t = s.tiles[i]
+  return Boolean(s.mask[i] && t && t.typ === 'bit' && !t.happy && !s.koppel[i])
+}
+
+// Happy hoppar från fran till till, smäller 3×3 där han landar och börjar
+// om med tom mage. Kostar inget drag — det är belöningen för att ha matat
+// honom.
+export function* happyHopp(s, fran, till) {
+  const happy = s.tiles[fran]
+  s.ograsBortDettaDrag = true
+  s.samlat.hopp++
+  s.tiles[fran] = null
+  yield { typ: 'hopp', fran, till, id: happy.id }
+
+  const { w, h } = s
+  const r = Math.floor(till / w)
+  const c = till % w
+  const omr = []
+  for (let y = r - 1; y <= r + 1; y++) {
+    for (let x = c - 1; x <= c + 1; x++) {
+      if (y >= 0 && y < h && x >= 0 && x < w && s.mask[y * w + x]) omr.push(y * w + x)
+    }
+  }
+  const steg = rensa(s, omr, {}, 2)
+  steg.poang += POANG.hopp
+  s.poang += POANG.hopp
+  steg.hopp = { till }
+  yield steg
+
+  // landa där han siktade, annars i en tom ruta bredvid, annars där han stod
+  happy.mage = 0
+  const plats = !s.tiles[till] ? till : omr.find((j) => !s.tiles[j]) ?? (!s.tiles[fran] ? fran : null)
+  if (plats !== null && plats !== undefined) {
+    s.tiles[plats] = happy
+    yield { typ: 'landa', i: plats, id: happy.id }
+  }
+  yield* fall(s)
+  yield* kaskad(s, null, 1)
+  if (!harDrag(s)) {
+    blandaBradet(s)
+    yield { typ: 'blanda' }
+  }
+}
+
+// ------------------------------------------------------------- handledning
+
+// Mönster som lärs ut på banorna där en ny specialpjäs introduceras. X är
+// godiset som ska matchas, Y något annat. Draget flyttar pjäsen på fran
+// till till, och då ska gruppen bli specialen.
+const MONSTER = {
+  raket: { celler: [[0, 0, 'X'], [0, 1, 'X'], [0, 2, 'Y'], [0, 3, 'X'], [1, 2, 'X']], fran: [1, 2], till: [0, 2], special: 'raket' },
+  bomb: { celler: [[0, 0, 'X'], [0, 1, 'X'], [0, 2, 'Y'], [0, 3, 'X'], [1, 2, 'X'], [2, 2, 'X']], fran: [0, 3], till: [0, 2], special: 'bomb' },
+  frisbee: { celler: [[0, 0, 'X'], [0, 1, 'X'], [1, 0, 'X'], [1, 1, 'Y'], [2, 1, 'X']], fran: [2, 1], till: [1, 1], special: 'frisbee' },
+  skal: { celler: [[0, 0, 'X'], [0, 1, 'X'], [0, 2, 'Y'], [0, 3, 'X'], [0, 4, 'X'], [1, 2, 'X']], fran: [1, 2], till: [0, 2], special: 'skal' },
+}
+export const HAR_MONSTER = Object.keys(MONSTER)
+
+// Målar in ett mönster på brädet så att handen kan visa exakt draget som
+// ger specialpjäsen. Returnerar [fran, till] eller null om det inte fick
+// plats någonstans.
+export function planteraMonster(s, typ) {
+  const m = MONSTER[typ]
+  if (!m) return null
+  const { w, h } = s
+  const hojd = Math.max(...m.celler.map((x) => x[0])) + 1
+  const bredd = Math.max(...m.celler.map((x) => x[1])) + 1
+  const platser = []
+  for (let r = 0; r + hojd <= h; r++) for (let c = 0; c + bredd <= w; c++) platser.push([r, c])
+  // helst nära mitten
+  platser.sort((a, b) => Math.abs(a[0] + hojd / 2 - h / 2) + Math.abs(a[1] + bredd / 2 - w / 2) - (Math.abs(b[0] + hojd / 2 - h / 2) + Math.abs(b[1] + bredd / 2 - w / 2)))
+
+  for (const [r0, c0] of platser) {
+    const celler = m.celler.map(([dr, dc, x]) => [(r0 + dr) * w + c0 + dc, x])
+    if (!celler.every(([i]) => s.mask[i] && enkel(s.tiles[i]) && !s.koppel[i] && !s.tiles[i].klocka)) continue
+    const runt = new Set()
+    for (const [i] of celler) for (const n of grannar(s, i)) if (!celler.some(([j]) => j === n) && enkel(s.tiles[n])) runt.add(n)
+    const sparat = s.tiles.map((t) => (t ? { ...t } : null))
+    const X = Math.floor(s.rng() * s.farger)
+    const Y = (X + 1 + Math.floor(s.rng() * (s.farger - 1))) % s.farger
+    for (let forsok = 0; forsok < 25; forsok++) {
+      for (const [i, x] of celler) s.tiles[i].farg = x === 'X' ? X : Y
+      for (const n of runt) {
+        const val = [...Array(s.farger).keys()].filter((f) => f !== X)
+        s.tiles[n].farg = val[Math.floor(s.rng() * val.length)]
+      }
+      if (hittaGrupper(s).length) continue
+      const fran = (r0 + m.fran[0]) * w + c0 + m.fran[1]
+      const till = (r0 + m.till[0]) * w + c0 + m.till[1]
+      const a = s.tiles[fran]
+      s.tiles[fran] = s.tiles[till]
+      s.tiles[till] = a
+      const g = hittaGrupper(s, [till, fran]).find((x) => x.celler.includes(till))
+      s.tiles[till] = s.tiles[fran]
+      s.tiles[fran] = a
+      if (g && grundtyp(g.special) === m.special && harDrag(s)) return [fran, till]
+    }
+    sparat.forEach((t, i) => (s.tiles[i] = t))
+  }
+  return null
+}
 
 // Tassen: krossa valfri ruta. Räknas inte som ett drag.
 export function* tassen(s, i) {
@@ -1219,7 +1445,7 @@ export function kanBytasFritt(s, a, b) {
 export function laggUtSpecialer(s, lista) {
   const lediga = []
   s.tiles.forEach((t, i) => {
-    if (t && t.typ === 'bit' && !t.special && !s.koppel[i]) lediga.push(i)
+    if (enkel(t) && !s.koppel[i]) lediga.push(i)
   })
   const ut = []
   for (const special of lista) {
@@ -1243,7 +1469,7 @@ export function* godisregn(s, maxDrag = 25) {
   for (let k = 0; k < antal; k++) {
     const lediga = []
     s.tiles.forEach((t, i) => {
-      if (t && t.typ === 'bit' && !t.special && !s.koppel[i]) lediga.push(i)
+      if (enkel(t) && !s.koppel[i]) lediga.push(i)
     })
     s.drag--
     if (!lediga.length) continue
@@ -1316,6 +1542,12 @@ export function malStatus(s) {
         break
       case 'klocka':
         kvar = Math.max(0, m.antal - s.samlat.klocka)
+        break
+      case 'hopp':
+        kvar = Math.max(0, m.antal - s.samlat.hopp)
+        break
+      case 'paket':
+        kvar = Math.max(0, m.antal - s.samlat.paket)
         break
     }
     return { ...m, kvar, totalt, klar: kvar === 0 }
