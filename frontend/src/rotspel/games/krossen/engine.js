@@ -979,22 +979,25 @@ function* kombo(s, c, o) {
   const sa = A.special
   const sb = B.special
 
+  // Pjäser som kombon förbrukar direkt. De rapporteras i stegets borta så
+  // att de spricker på skärmen i stället för att bara försvinna.
   const taBort = (i) => {
     const t = s.tiles[i]
     s.tiles[i] = null
     s.samlat.farg[t.farg]++
     const typ = grundtyp(t.special)
     if (typ in s.samlat.special) s.samlat.special[typ]++
-    return t
+    return { i, id: t.id, farg: t.farg, special: t.special }
   }
 
   // skål + skål: hela brädet
   if (sa === 'skal' && sb === 'skal') {
-    taBort(o)
-    taBort(c)
+    const forbrukade = [taBort(o), taBort(c)]
     const alla = []
     for (let i = 0; i < s.tiles.length; i++) if (s.mask[i]) alla.push(i)
     const steg = rensa(s, alla, { utanKedja: true }, 2)
+    steg.borta.unshift(...forbrukade)
+    steg.sammanslagen = { fran: o, till: c }
     steg.kombo = 'skal-skal'
     steg.kallor = [{ i: c, id: A.id, special: 'skal-skal', farg: A.farg, omrade: alla }]
     steg.kombobeskrivning = 'Hela brädet!'
@@ -1011,7 +1014,7 @@ function* kombo(s, c, o) {
 
     if (!annan.special) {
       // skålen tar alla av den sorten
-      taBort(si)
+      const forbrukad = taBort(si)
       const celler = []
       s.tiles.forEach((t, j) => {
         if (t && t.typ === 'bit' && t.farg === annan.farg) celler.push(j)
@@ -1019,13 +1022,14 @@ function* kombo(s, c, o) {
       const { rensas, kallor } = samla(s, celler)
       kallor.unshift({ i: si, id: skal.id, special: 'skal', farg: annan.farg, omrade: celler })
       const res = tillampa(s, rensas, kallor.slice(1), 2)
+      res.borta.unshift(forbrukad)
       yield { typ: 'rensa', kaskad: 2, kallor, rensas: [...rensas], ...res, grupper: [], nya: [], kombo: 'skal' }
       yield* fall(s)
       return
     }
 
     // skål + special: alla av den sorten blir samma special och avfyras
-    taBort(si)
+    const forbrukad = taBort(si)
     const till = grundtyp(annan.special)
     const celler = []
     s.tiles.forEach((t, j) => {
@@ -1040,6 +1044,7 @@ function* kombo(s, c, o) {
       celler,
       special: till,
       farg: annan.farg,
+      bort: forbrukad,
       kombobeskrivning: till === 'raket' ? 'Raketregn!' : till === 'bomb' ? 'Bombregn!' : 'Frisbeeregn!',
     }
     const aktiverade = new Set()
@@ -1054,8 +1059,8 @@ function* kombo(s, c, o) {
     return
   }
 
-  // två specialpjäser utan skål: B försvinner, A blir kombinationen
-  taBort(o)
+  // två specialpjäser utan skål: B glider in i A, A blir kombinationen
+  const forbrukad = taBort(o)
   A.orig = sa
   let beskrivning = ''
   if (arRaket(sa) && arRaket(sb)) {
@@ -1080,6 +1085,7 @@ function* kombo(s, c, o) {
   }
   const { rensas, kallor } = samla(s, [c])
   const res = tillampa(s, rensas, kallor, 2)
+  res.borta.unshift(forbrukad)
   yield {
     typ: 'rensa',
     kaskad: 2,
@@ -1090,6 +1096,7 @@ function* kombo(s, c, o) {
     nya: [],
     kombo: A.special,
     kombobeskrivning: beskrivning,
+    sammanslagen: { fran: o, till: c },
   }
   yield* fall(s)
 }

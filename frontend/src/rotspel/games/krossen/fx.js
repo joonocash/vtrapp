@@ -537,6 +537,42 @@ export function skapaFx({ bradet, lager, canvas, textlager, w, h }) {
     return p
   }
 
+  // En pjäs som ingår i gruppen men blir kvar (ett godis i koppel) rycker
+  // till mot specialpjäsen och studsar tillbaka. Ingen fill — den ska stå
+  // på sin egen plats efteråt.
+  function rycka(id, fran, mot) {
+    const n = inre(id)
+    if (!n) return
+    const a = mitt(fran)
+    const b = mitt(mot)
+    const dx = (b.x - a.x) * 0.22
+    const dy = (b.y - a.y) * 0.22
+    n.animate(
+      [
+        { transform: 'translate(0,0) scale(1)' },
+        { transform: `translate(${dx}px,${dy}px) scale(.9)`, offset: 0.45 },
+        { transform: 'translate(0,0) scale(1)' },
+      ],
+      { duration: 320, easing: 'ease-out' }
+    )
+  }
+
+  // Säkerhetsnät. En animation med fill: 'forwards' håller kvar sitt
+  // slutläge så länge elementet finns. Det är meningen för pjäser som
+  // spricker eller dras ihop — de försvinner när React ritar nästa läge.
+  // Finns elementet kvar efter det var slutläget aldrig menat att hålla, så
+  // det släpps. Då kan ingen pjäs bli hängande osynlig eller förskjuten, hur
+  // en framtida effekt än råkar se ut.
+  function stada() {
+    const behall = (a) => a.playState !== 'finished' || a.effect?.getComputedTiming?.().fill !== 'forwards'
+    for (const n of bradet.querySelectorAll('[data-id], [data-koppel], [data-lera]')) {
+      for (const el of [n, n.firstElementChild]) {
+        if (!el || !el.getAnimations) continue
+        for (const a of el.getAnimations()) if (!behall(a)) a.cancel()
+      }
+    }
+  }
+
   async function visaNy(id, farg) {
     const n = inre(id)
     if (!n) return
@@ -939,6 +975,8 @@ export function skapaFx({ bradet, lager, canvas, textlager, w, h }) {
     blixt,
     popp,
     samla,
+    rycka,
+    stada,
     visaNy,
     pulsera,
     byte,
