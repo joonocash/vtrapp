@@ -1,0 +1,60 @@
+/* Pixelkanon — det som inte är delat. */
+
+.px-rot { --accent: #ff7ab6; --accent2: #7c5cff; }
+
+.px-info { display: flex; align-items: center; gap: 10px; padding: 0 4px 6px; }
+.px-namn { font-weight: 800; font-size: 13px; white-space: nowrap; }
+.px-namn.happy { color: #ffd43b; text-shadow: 0 0 12px rgba(255, 212, 59, 0.5); animation: ds-puls 1.4s ease-in-out infinite; }
+.px-mater { flex: 1; height: 5px; border-radius: 3px; background: #1d2540; overflow: hidden; }
+.px-mater i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #7c5cff, #ff7ab6, #ffd43b); box-shadow: 0 0 10px rgba(255, 122, 182, 0.6); transition: width 200ms linear; }
+.px-yta canvas { background: radial-gradient(110% 60% at 50% 30%, #1a2245 0%, #0e1328 75%); box-shadow: inset 0 0 0 1px var(--kant); }
+.px-galleriknapp { font-size: 13px; }
+.px-kvar { font-size: 12px; color: var(--dim); white-space: nowrap; }
+.px-kvar b { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
+
+.px-avslojd { display: grid; justify-items: center; gap: 6px; margin: 12px 0 2px; animation: ds-studs 600ms 200ms cubic-bezier(.34,1.56,.64,1) both; }
+.px-avslojd img { width: 112px; height: 112px; object-fit: contain; border-radius: 12px; background: rgba(0,0,0,0.25); padding: 6px; }
+.px-avslojd img.pixlad { image-rendering: pixelated; }
+.px-avslojd.happy img { object-fit: cover; padding: 0; width: 150px; height: 150px; border-radius: 16px; box-shadow: 0 0 0 3px #ffd43b, 0 0 30px rgba(255, 212, 59, 0.55); transform: rotate(-3deg); }
+.px-avslojd span { font-size: 13px; font-weight: 800; color: var(--text); }
+
+.px-galleri { align-items: stretch; }
+.px-galleri-ram { width: 100%; max-height: 100%; display: flex; flex-direction: column; border-radius: 18px; background: #161d33; box-shadow: 0 0 0 1px rgba(255,255,255,0.08); overflow: hidden; animation: ds-kort-in 320ms cubic-bezier(.34,1.56,.64,1); }
+.px-galleri-topp { display: flex; align-items: center; gap: 10px; padding: 12px 12px 10px; }
+.px-galleri-topp b { font-size: 17px; }
+.px-galleri-topp span { flex: 1; font-size: 12.5px; color: var(--dim); }
+.px-galleri-rutnat { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 6px; padding: 0 12px 14px; overflow-y: auto; }
+.px-galleri-rutnat figure { margin: 0; aspect-ratio: 1; display: grid; place-items: center; border-radius: 10px; background: rgba(0,0,0,0.25); overflow: hidden; }
+.px-galleri-rutnat figure img { width: 86%; height: 86%; object-fit: contain; }
+.px-galleri-rutnat figure img.pixlad { image-rendering: pixelated; }
+.px-galleri-rutnat figure.happy { box-shadow: inset 0 0 0 2px #ffd43b; }
+.px-galleri-rutnat figure.happy img { width: 100%; height: 100%; object-fit: cover; }
+.px-galleri-rutnat figure.last span { font-size: 18px; color: #3a4466; font-weight: 900; }
+
+/* Superenhörningen: mätare i toppraden som laddas av träffar. Full mätare =
+   regnbågsknapp som pulserar tills man trycker. */
+.px-enhorning {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 6px; border-radius: 999px;
+  background: var(--panel); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06); max-width: 100%;
+}
+.px-enhorning-ikon { font-size: 17px; line-height: 1; filter: grayscale(0.6) brightness(0.85); transition: filter 200ms; }
+.px-enhorning-mater { width: 56px; height: 7px; border-radius: 4px; background: #252d4a; overflow: hidden; }
+.px-enhorning-mater i {
+  display: block; height: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, #ff4d6d, #ff9f43, #ffd43b, #5bd96b, #4dabf7, #9b7bff);
+  background-size: 56px 100%; transition: width 160ms linear;
+}
+.px-enhorning-text { font-size: 12.5px; font-weight: 900; color: #fff; }
+.px-enhorning.redo {
+  background: linear-gradient(90deg, #ff4d6d, #ff9f43, #ffd43b, #5bd96b, #4dabf7, #9b7bff, #ff4d6d);
+  background-size: 200% 100%;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.85), 0 0 22px rgba(190, 120, 255, 0.85);
+  animation: px-regnbage 1.4s linear infinite, px-guppa 0.9s ease-in-out infinite;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.55);
+}
+.px-enhorning.redo .px-enhorning-ikon { filter: none; animation: ds-studs 600ms cubic-bezier(.34,1.56,.64,1); }
+.px-enhorning.redo .px-enhorning-mater { display: none; }
+.px-enhorning:disabled:not(.redo) { opacity: 1; }
+@keyframes px-regnbage { to { background-position: -200% 0; } }
+@keyframes px-guppa { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .px-enhorning.redo { animation: none; } }
