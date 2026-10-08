@@ -1,0 +1,7 @@
+/* Skruvat — det som inte är delat. */
+
+.sk-rot { --accent: #ffb547; --accent2: #3b82f6; }
+
+.sk-mater { height: 5px; margin: 0 4px 8px; border-radius: 3px; background: #1d2540; overflow: hidden; }
+.sk-mater i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #f97316, #facc15); box-shadow: 0 0 10px rgba(250, 204, 21, 0.6); transition: width 260ms cubic-bezier(.2,.9,.3,1); }
+.sk-yta canvas { background: radial-gradient(100% 60% at 50% 0%, #1b2547 0%, #10162b 70%); box-shadow: inset 0 0 0 1px var(--kant); }

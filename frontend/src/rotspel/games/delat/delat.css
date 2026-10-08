@@ -1,0 +1,229 @@
+/* Delat utseende för Pilflykt, Pixelkanon, Skruvat och Hållplatsen.
+   Prefix ds- så att inget krockar med resten av sidan. Varje spel sätter
+   --accent och --accent2 på sin rot. */
+
+.ds-rot {
+  --bg: #0d1222;
+  --panel: #161d33;
+  --panel2: #1f2844;
+  --kant: rgba(160, 180, 230, 0.14);
+  --text: #eef2ff;
+  --dim: #95a1bf;
+  --guld: #ffd43b;
+  --rod: #ff4d6d;
+  --accent: #5ce1e6;
+  --accent2: #9b7bff;
+
+  position: relative;
+  width: var(--spelbredd, 420px);
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 10px 10px 12px;
+  box-sizing: border-box;
+  border-radius: 20px;
+  color: var(--text);
+  background: radial-gradient(120% 65% at 50% 0%, color-mix(in srgb, var(--accent2) 22%, #121a35) 0%, var(--bg) 62%);
+  font-family: ui-rounded, 'SF Pro Rounded', 'Outfit Variable', system-ui, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+}
+.ds-rot * { box-sizing: border-box; }
+:where(.ds-rot) button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+:where(.ds-rot) button:disabled { cursor: default; }
+:where(.ds-rot) button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.ds-yta { position: relative; width: 100%; }
+.ds-yta canvas { display: block; width: 100%; touch-action: none; border-radius: 14px; }
+
+/* ---------------------------------------------------------------- topprad */
+
+.ds-topp { display: flex; align-items: center; gap: 8px; min-height: 36px; margin-bottom: 8px; }
+.ds-niva { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.ds-niva-tal { font-weight: 900; font-size: 17px; letter-spacing: -0.01em; }
+.ds-svar {
+  font-size: 10.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 3px 7px; border-radius: 999px; color: #fff;
+}
+.ds-svar-svar { background: linear-gradient(160deg, #ff7a3d, #e5293b); box-shadow: 0 0 12px rgba(255, 90, 60, 0.45); }
+.ds-svar-super { background: linear-gradient(160deg, #b44dff, #5a1fd1); box-shadow: 0 0 14px rgba(170, 80, 255, 0.55); animation: ds-puls 1.6s ease-in-out infinite; }
+.ds-mitt { flex: 1; display: flex; justify-content: center; align-items: center; min-width: 0; }
+.ds-hoger { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.ds-mynt {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-weight: 900; font-size: 15px; font-variant-numeric: tabular-nums;
+  padding: 4px 10px 4px 6px; border-radius: 999px;
+  background: linear-gradient(180deg, #2a2410, #1c180a); color: var(--guld);
+  box-shadow: inset 0 0 0 1px rgba(255, 212, 59, 0.28);
+}
+.ds-mynt.ds-studs { animation: ds-studs 420ms cubic-bezier(.34,1.56,.64,1); }
+.ds-myntikon { width: 18px; height: 18px; flex-shrink: 0; vertical-align: -3px; }
+.ds-myntikon.stor { width: 28px; height: 28px; }
+
+.ds-hjartan { display: inline-flex; gap: 2px; font-size: 20px; line-height: 1; }
+.ds-hjarta { color: #ff4d6d; text-shadow: 0 0 10px rgba(255, 77, 109, 0.55); transition: transform 200ms; }
+.ds-hjarta.tomt { color: #39405a; text-shadow: none; }
+.ds-hjarta.brast { animation: ds-brast 520ms ease-out; }
+
+.ds-chip {
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 4px 10px; border-radius: 999px;
+  background: var(--panel); font-size: 12px; color: var(--dim); white-space: nowrap;
+}
+.ds-chip b { font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
+.ds-chip.varm b { color: #ff5a4f; }
+.ds-chip.varm { animation: ds-puls 0.9s ease-in-out infinite; }
+
+/* ---------------------------------------------------------------- boosters */
+
+.ds-boostrad { display: flex; gap: 6px; justify-content: center; margin-top: 8px; flex-wrap: wrap; }
+.ds-boost {
+  position: relative; display: flex; align-items: center; gap: 6px;
+  padding: 7px 12px 7px 9px; border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel2), var(--panel));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 3px 0 rgba(0,0,0,0.35);
+  font-weight: 800; font-size: 13px;
+  transition: transform 90ms;
+}
+.ds-boost:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 1px 0 rgba(0,0,0,0.35); }
+.ds-boost:disabled { opacity: 0.4; }
+.ds-boost.fattig { opacity: 0.55; }
+.ds-boost.aktiv { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 45%, #1f2844), var(--panel)); box-shadow: 0 0 0 2px var(--accent), 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent); }
+.ds-boost-ikon { font-size: 18px; line-height: 1; }
+.ds-boost-antal {
+  position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 999px; background: #ff4d6d; color: #fff; font-size: 12px; font-weight: 900;
+  display: grid; place-items: center; box-shadow: 0 0 0 2px var(--bg);
+}
+.ds-boost-pris { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--guld); }
+.ds-boost-pris .ds-myntikon { width: 14px; height: 14px; }
+/* Tre boosters: ikon överst, namn och pris under, så raden får plats på mobil. */
+.ds-boostrad.kompakt { gap: 8px; flex-wrap: nowrap; }
+.ds-boostrad.kompakt .ds-boost { flex: 1 1 0; max-width: 112px; flex-direction: column; gap: 1px; padding: 6px 6px 7px; font-size: 12px; }
+.ds-boostrad.kompakt .ds-boost-ikon { font-size: 20px; }
+.ds-boostrad.kompakt .ds-boost-namn { white-space: nowrap; }
+.ds-boostrad.kompakt .ds-boost-pris { font-size: 11.5px; }
+
+/* ---------------------------------------------------------------- banner */
+
+.ds-banner { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; pointer-events: none; }
+.ds-banner-band {
+  display: grid; justify-items: center; gap: 2px; width: 120%; padding: 14px 0 12px;
+  font-weight: 900; font-size: 30px; letter-spacing: -0.01em; color: #fff; text-transform: uppercase;
+  text-shadow: 0 3px 0 rgba(0,0,0,0.35);
+  animation: ds-banner 1.7s cubic-bezier(.2,.9,.3,1) forwards;
+}
+.ds-banner-svar .ds-banner-band { background: linear-gradient(90deg, transparent, #e5293b 15%, #ff7a3d 50%, #e5293b 85%, transparent); }
+.ds-banner-super .ds-banner-band { background: linear-gradient(90deg, transparent, #5a1fd1 15%, #b44dff 50%, #5a1fd1 85%, transparent); }
+.ds-banner-skalle { font-size: 34px; animation: ds-studs 600ms 200ms cubic-bezier(.34,1.56,.64,1) both; }
+.ds-banner-sub { font-size: 13px; text-transform: none; letter-spacing: 0.02em; opacity: 0.9; }
+
+/* ---------------------------------------------------------------- kort */
+
+.ds-kort-bak {
+  position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 14px;
+  background: rgba(6, 9, 20, 0.62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  animation: ds-tona 220ms ease-out;
+}
+.ds-kort {
+  position: relative; width: min(100%, 330px); padding: 20px 18px 16px; border-radius: 22px; overflow: hidden;
+  background: linear-gradient(180deg, #232d4d, #161d33); text-align: center;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 24px 60px -20px rgba(0,0,0,0.8);
+  animation: ds-kort-in 420ms cubic-bezier(.34,1.56,.64,1);
+}
+.ds-stralar {
+  position: absolute; left: 50%; top: 40px; width: 520px; height: 520px; margin: -260px 0 0 -260px; z-index: 0;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 212, 59, 0.13) 0deg 12deg, transparent 12deg 24deg);
+  mask-image: radial-gradient(circle, #000 0%, transparent 60%); -webkit-mask-image: radial-gradient(circle, #000 0%, transparent 60%);
+  animation: ds-snurra 14s linear infinite; pointer-events: none;
+}
+.ds-kort > *:not(.ds-stralar) { position: relative; z-index: 1; }
+.ds-kort-titel {
+  font-size: 34px; font-weight: 900; letter-spacing: -0.02em; line-height: 1.05;
+  background: linear-gradient(180deg, #fff6c8, #ffd43b 55%, #ff9f1a); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 3px 0 rgba(120, 60, 0, 0.5));
+  animation: ds-studs 600ms 120ms cubic-bezier(.34,1.56,.64,1) both;
+}
+.ds-kort-forlust .ds-kort-titel { background: linear-gradient(180deg, #ffd0d8, #ff6b84 60%, #e5293b); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 3px 0 rgba(90, 0, 20, 0.5)); }
+.ds-kort-sub { margin-top: 4px; font-size: 13.5px; color: var(--dim); }
+.ds-kort-liten { margin-top: 6px; font-size: 12px; color: var(--dim); }
+.ds-forlust-ikon { font-size: 46px; line-height: 1; margin-bottom: 4px; animation: ds-skaka 500ms 150ms ease-in-out both; }
+
+.ds-rader { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 4px; }
+.ds-rader li {
+  display: flex; justify-content: space-between; padding: 6px 10px; border-radius: 10px;
+  background: rgba(255,255,255,0.04); font-size: 13.5px; animation: ds-in-vanster 340ms cubic-bezier(.2,.9,.3,1) both;
+}
+.ds-rader li:nth-child(2) { animation-delay: 80ms; }
+.ds-rader li:nth-child(3) { animation-delay: 160ms; }
+.ds-rader li:nth-child(4) { animation-delay: 240ms; }
+.ds-rader li:nth-child(5) { animation-delay: 320ms; }
+.ds-rader li b { color: var(--guld); font-variant-numeric: tabular-nums; }
+.ds-rader li.ds-svit { background: linear-gradient(90deg, rgba(255, 110, 40, 0.18), rgba(255,255,255,0.03)); }
+.ds-summa { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 12px 0 6px; }
+.ds-summa b { font-size: 34px; font-weight: 900; color: var(--guld); font-variant-numeric: tabular-nums; text-shadow: 0 0 18px rgba(255, 212, 59, 0.45); }
+
+.ds-kista { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; margin: 6px 0 14px; padding: 8px 10px; border-radius: 14px; background: rgba(0,0,0,0.22); text-align: left; }
+.ds-kista-ikon { grid-row: span 2; font-size: 30px; line-height: 1; }
+.ds-kista.full .ds-kista-ikon { animation: ds-skaka 260ms ease-in-out 4; }
+.ds-kista.oppen .ds-kista-ikon { animation: ds-studs 600ms cubic-bezier(.34,1.56,.64,1); }
+.ds-kista-matare { display: flex; gap: 4px; }
+.ds-kista-matare i { flex: 1; height: 8px; border-radius: 4px; background: #2b3352; }
+.ds-kista-matare i.pa { background: linear-gradient(90deg, #ffb703, #ffd43b); box-shadow: 0 0 8px rgba(255, 212, 59, 0.5); }
+.ds-kista-matare i.ny { animation: ds-fyll 600ms 300ms cubic-bezier(.34,1.56,.64,1) both; }
+.ds-kista-text { font-size: 12.5px; color: var(--dim); margin-top: 4px; }
+.ds-kista-vinst { color: var(--guld); font-weight: 900; font-size: 15px; animation: ds-studs 500ms cubic-bezier(.34,1.56,.64,1); display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.ds-kista-vinst > span { white-space: nowrap; }
+
+.ds-knapp {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 18px; border-radius: 14px; font-weight: 900; font-size: 15px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 85%, #fff), var(--accent));
+  color: #071022; box-shadow: 0 4px 0 color-mix(in srgb, var(--accent) 45%, #000), 0 10px 24px -10px var(--accent);
+  transition: transform 80ms, box-shadow 80ms, opacity 200ms;
+}
+.ds-knapp:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 45%, #000); }
+.ds-knapp:disabled { opacity: 0.45; }
+.ds-knapp-stor { width: 100%; font-size: 18px; padding: 13px 18px; }
+.ds-knapp-guld { background: linear-gradient(180deg, #ffe680, #ffc21a); box-shadow: 0 4px 0 #b37a00, 0 10px 24px -10px #ffc21a; margin-top: 14px; justify-content: space-between; }
+.ds-knapp-pris { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: rgba(0,0,0,0.16); font-size: 14px; }
+.ds-knapp-sek { margin-top: 10px; width: 100%; background: transparent; color: var(--dim); box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.14); }
+
+.ds-knapp-liten { padding: 6px 11px; border-radius: 11px; font-size: 12.5px; font-weight: 800; background: var(--panel); color: var(--dim); }
+.ds-knapp-liten:hover { color: var(--text); }
+
+.ds-notis {
+  position: absolute; left: 50%; top: 46%; z-index: 25; transform: translate(-50%, -50%);
+  padding: 9px 16px; border-radius: 14px; background: rgba(10, 14, 28, 0.88); color: #fff;
+  font-weight: 800; font-size: 14px; white-space: nowrap; pointer-events: none;
+  box-shadow: 0 8px 24px -8px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.1);
+  animation: ds-notis 1.6s ease-out forwards;
+}
+
+.ds-hjalp { margin: 8px 2px 0; font-size: 12px; line-height: 1.45; color: var(--dim); text-align: center; }
+/* I fullskärm räknas varje pixel — hjälptexten får vika. */
+[data-fullskarm] .ds-hjalp { display: none; }
+
+/* ---------------------------------------------------------------- animationer */
+
+@keyframes ds-studs { 0% { transform: scale(0.6); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes ds-puls { 0%, 100% { opacity: 1; } 50% { opacity: 0.65; } }
+@keyframes ds-tona { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ds-kort-in { from { opacity: 0; transform: translateY(24px) scale(0.92); } to { opacity: 1; transform: none; } }
+@keyframes ds-snurra { to { transform: rotate(360deg); } }
+@keyframes ds-in-vanster { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+@keyframes ds-fyll { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes ds-skaka { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
+@keyframes ds-brast { 0% { transform: scale(1); color: #ff4d6d; } 30% { transform: scale(1.6); color: #ff4d6d; } 100% { transform: scale(1); } }
+@keyframes ds-banner {
+  0% { transform: translateX(-110%) skewX(-12deg); opacity: 0; }
+  18% { transform: translateX(0) skewX(-6deg); opacity: 1; }
+  78% { transform: translateX(2%) skewX(-6deg); opacity: 1; }
+  100% { transform: translateX(110%) skewX(-12deg); opacity: 0; }
+}
+@keyframes ds-notis { 0% { opacity: 0; transform: translate(-50%, -30%); } 12% { opacity: 1; transform: translate(-50%, -50%); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -70%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-stralar, .ds-svar-super, .ds-chip.varm { animation: none; }
+}
