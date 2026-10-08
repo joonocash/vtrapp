@@ -5,7 +5,7 @@
 // man tjänar i ett spel och handlar boosters i ett annat. Allt sparas i
 // webbläsaren. Topplistan går mot den vanliga /api/scores.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { mulberry32, viktat, heltal } from './rng.js'
 
 const PLANBOK = 'rotspel-planbok-v1'
@@ -77,16 +77,27 @@ export function laddaSpar(id, standard) {
   }
 }
 
+// Sparläget skrivs till localStorage direkt i set-anropet, inte i en effekt
+// efteråt — annars kan en vinst gå förlorad om man lämnar spelet samma
+// ögonblick (komponenten hinner försvinna innan effekten körs).
 export function useSpar(id, standard) {
-  const [spar, setSpar] = useState(() => laddaSpar(id, standard))
-  useEffect(() => {
-    try {
-      localStorage.setItem(id, JSON.stringify(spar))
-    } catch {
-      /* privat läge */
-    }
-  }, [id, spar])
-  return [spar, setSpar]
+  const [spar, setState] = useState(() => laddaSpar(id, standard))
+  const ref = useRef(spar)
+  const setSpar = useCallback(
+    (u) => {
+      const ny = typeof u === 'function' ? u(ref.current) : u
+      ref.current = ny
+      try {
+        localStorage.setItem(id, JSON.stringify(ny))
+      } catch {
+        /* privat läge */
+      }
+      setState(ny)
+    },
+    [id]
+  )
+  // Tredje värdet: alltid det senaste sparläget, även före nästa render.
+  return [spar, setSpar, ref]
 }
 
 export { svarighet } from './svarighet.js'

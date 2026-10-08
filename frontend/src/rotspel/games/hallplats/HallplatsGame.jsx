@@ -34,9 +34,7 @@ const HUD = '#f6d2b0'
 const farg = (f) => (f >= 0 && FARGER[f] ? FARGER[f].hex : '#6b7280')
 
 export default function HallplatsGame() {
-  const [spar, setSpar] = useSpar('hallplatsen-v1', START)
-  const sparRef = useRef(spar)
-  sparRef.current = spar
+  const [spar, setSpar, sparRef] = useSpar('hallplatsen-v1', START)
   const mynt = useMynt()
   const ljud = useMemo(() => skapaLjud(), [])
   useEffect(() => () => ljud.stang(), [ljud])
@@ -244,6 +242,7 @@ export default function HallplatsGame() {
   }
 
   function plats() {
+    if (a.current.klar) return
     if (spel.bank.length >= 5 + MAX_EXTRA) {
       visaNotis('Bänken är redan max lång')
       return
@@ -288,6 +287,7 @@ export default function HallplatsGame() {
       setLyftLage(false)
       return
     }
+    if (a.current.klar) return
     if ((sparRef.current.boost.lyft || 0) <= 0 && mynt < BOOST.lyft.pris) {
       visaNotis('För lite mynt')
       return
@@ -299,7 +299,11 @@ export default function HallplatsGame() {
 
   /* --------------------------------------------------------------- vinst/förlust */
 
-  function vinna() {
+  // Belöningen räknas och sparas direkt när banan är klar; bara kortet
+  // visas efter firandet. Lämnar man spelet under tiden är vinsten kvar.
+  const vinstTimer = useRef(0)
+  useEffect(() => () => clearTimeout(vinstTimer.current), [])
+  function vinna(fordrojning = 0) {
     const s = a.current
     const res = belona(sparRef.current, {
       gameId: ID,
@@ -310,7 +314,8 @@ export default function HallplatsGame() {
       boostTyper: Object.keys(BOOST),
     })
     setSpar(res.spar)
-    setVinst({ ...res.resultat, bastaKombo: s.bastaKombo })
+    const visa = { ...res.resultat, bastaKombo: s.bastaKombo }
+    vinstTimer.current = setTimeout(() => setVinst(visa), fordrojning)
   }
 
   function nasta() {
@@ -435,6 +440,11 @@ export default function HallplatsGame() {
           }
         }
       }
+      // bänken centreras om när en plats läggs till
+      if (g.fas === 'sitter') {
+        g.x = platsX(g.mal.plats)
+        g.y = BANK_Y
+      }
       if (g.fas === 'sitter' && g.vantaBank) {
         // bänken -> vagnen när vagnen står inne
         g.vantaBank = false
@@ -475,7 +485,7 @@ export default function HallplatsGame() {
       s.firat = true
       fx.konfetti(W / 2, H * 0.7, 90, W)
       ljud.vinst()
-      setTimeout(vinna, 900)
+      vinna(900)
     }
   }
 

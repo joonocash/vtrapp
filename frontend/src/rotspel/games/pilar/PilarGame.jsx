@@ -27,9 +27,7 @@ const HALL_MS = 320 // håll så länge för att se vägen ut
 const KOMBO_ORD = { 5: 'Snyggt!', 10: 'Grymt!', 15: 'Galet!', 20: 'Ostoppbar!', 30: 'PILREGN!' }
 
 export default function PilarGame() {
-  const [spar, setSpar] = useSpar('pilflykt-v1', START)
-  const sparRef = useRef(spar)
-  sparRef.current = spar
+  const [spar, setSpar, sparRef] = useSpar('pilflykt-v1', START)
   const mynt = useMynt()
   const ljud = useMemo(() => skapaLjud(), [])
   useEffect(() => () => ljud.stang(), [ljud])
@@ -147,12 +145,14 @@ export default function PilarGame() {
   // Som i originalet: ett tryck skickar iväg pilen, men håller man kvar
   // fingret visas vägen ut först — och då skickas den inte när man släpper.
   const tryckRef = useRef(null)
-  function ner({ x, y }) {
+  function ner({ x, y, e }) {
     const fx_ = (x - geo.ox) / geo.cs
     const fy_ = (y - geo.oy) / geo.cs
     const id = spel.pilVid(fx_, fy_)
     if (id < 0 || a.current.klar) return
-    const p = { id, x, y, visar: false }
+    // ett nytt finger tar över: det gamla trycket räknas inte
+    slapp(false)
+    const p = { id, x, y, visar: false, pekare: e && e.pointerId }
     p.timer = setTimeout(() => {
       if (tryckRef.current !== p) return
       p.visar = true
@@ -161,13 +161,19 @@ export default function PilarGame() {
     }, HALL_MS)
     tryckRef.current = p
   }
-  function flytta({ x, y }) {
+  function flytta({ x, y, e }) {
     const p = tryckRef.current
     if (!p || p.visar) return
+    if (e && p.pekare != null && e.pointerId !== p.pekare) return
     if (Math.hypot(x - p.x, y - p.y) > geo.cs * 0.9) slapp(false)
   }
-  function upp() {
+  function upp({ e }) {
+    const p = tryckRef.current
+    if (p && e && p.pekare != null && e.pointerId !== p.pekare) return
     slapp(true)
+  }
+  function avbryt() {
+    slapp(false)
   }
   function slapp(skicka) {
     const p = tryckRef.current
@@ -227,7 +233,11 @@ export default function PilarGame() {
 
   /* ------------------------------------------------------------ vinst/förlust */
 
-  function vinna() {
+  // Belöningen räknas och sparas direkt när banan är klar; bara kortet
+  // visas efter firandet. Lämnar man spelet under tiden är vinsten kvar.
+  const vinstTimer = useRef(0)
+  useEffect(() => () => clearTimeout(vinstTimer.current), [])
+  function vinna(fordrojning = 0) {
     const s = a.current
     const res = belona(sparRef.current, {
       gameId: ID,
@@ -238,7 +248,8 @@ export default function PilarGame() {
       boostTyper: Object.keys(BOOST),
     })
     setSpar(res.spar)
-    setVinst({ ...res.resultat, bastaKombo: s.bastaKombo })
+    const visa = { ...res.resultat, bastaKombo: s.bastaKombo }
+    vinstTimer.current = setTimeout(() => setVinst(visa), fordrojning)
   }
 
   function nasta() {
@@ -292,7 +303,7 @@ export default function PilarGame() {
       fx.konfetti(W / 2, H * 0.75, 90, W)
       fx.skaka(5)
       ljud.vinst()
-      setTimeout(vinna, 900)
+      vinna(900)
     }
   }
 
@@ -481,7 +492,7 @@ export default function PilarGame() {
     ctx.fill()
   }
 
-  const canvasRef = useSpelyta({ bredd: W, hojd: H, rita, uppdatera, ner, flytta, upp })
+  const canvasRef = useSpelyta({ bredd: W, hojd: H, rita, uppdatera, ner, flytta, upp, avbryt })
 
   const kvar = spel.kvar()
   const totalt = spel.pilar.length

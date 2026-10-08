@@ -32,9 +32,7 @@ const FORTSATT_PRIS = 80
 const farg = (f) => FARGER[f]?.hex ?? '#888'
 
 export default function SkruvGame() {
-  const [spar, setSpar] = useSpar('skruvat-v1', START)
-  const sparRef = useRef(spar)
-  sparRef.current = spar
+  const [spar, setSpar, sparRef] = useSpar('skruvat-v1', START)
   const mynt = useMynt()
   const ljud = useMemo(() => skapaLjud(), [])
   useEffect(() => () => ljud.stang(), [ljud])
@@ -184,6 +182,7 @@ export default function SkruvGame() {
   }
 
   function extraHal() {
+    if (a.current.klar) return
     if (spel.reserv.length >= RESERV + MAX_EXTRA) {
       visaNotis('Redan max antal hål')
       return
@@ -215,7 +214,11 @@ export default function SkruvGame() {
 
   /* ---------------------------------------------------------------- vinst/förlust */
 
-  function vinna() {
+  // Belöningen räknas och sparas direkt när banan är klar; bara kortet
+  // visas efter firandet. Lämnar man spelet under tiden är vinsten kvar.
+  const vinstTimer = useRef(0)
+  useEffect(() => () => clearTimeout(vinstTimer.current), [])
+  function vinna(fordrojning = 0) {
     const s = a.current
     const res = belona(sparRef.current, {
       gameId: ID,
@@ -226,7 +229,8 @@ export default function SkruvGame() {
       boostTyper: Object.keys(BOOST),
     })
     setSpar(res.spar)
-    setVinst({ ...res.resultat, bastaKombo: s.bastaKombo })
+    const visa = { ...res.resultat, bastaKombo: s.bastaKombo }
+    vinstTimer.current = setTimeout(() => setVinst(visa), fordrojning)
   }
   function nasta() {
     setAktivNiva(sparRef.current.niva)
@@ -306,6 +310,11 @@ export default function SkruvGame() {
     for (const sp of s.skruvar) {
       sp.t += dt
       if (sp.t < 0) continue
+      // raden med reservhål centreras om när ett hål läggs till
+      if (sp.fas === 'reserv') {
+        sp.x = resX(sp.mal.plats)
+        sp.y = RES_Y
+      }
       if (sp.fas === 'skruva') {
         sp.rot += dt * 30
         if (sp.t >= 0.16) {
@@ -389,7 +398,7 @@ export default function SkruvGame() {
       s.firat = true
       fx.konfetti(W / 2, H * 0.6, 100, W)
       ljud.vinst()
-      setTimeout(vinna, 900)
+      vinna(900)
     }
   }
 

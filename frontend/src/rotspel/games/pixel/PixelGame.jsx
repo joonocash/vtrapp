@@ -70,9 +70,7 @@ const ljus = (h) => {
 }
 
 export default function PixelGame() {
-  const [spar, setSpar] = useSpar('pixelkanon-v1', START)
-  const sparRef = useRef(spar)
-  sparRef.current = spar
+  const [spar, setSpar, sparRef] = useSpar('pixelkanon-v1', START)
   const mynt = useMynt()
   const ljud = useMemo(() => skapaLjud(), [])
   useEffect(() => () => ljud.stang(), [ljud])
@@ -217,26 +215,31 @@ export default function PixelGame() {
 
   /* ---------------------------------------------------------------- händelser */
 
-  function tryckKolumn(c, djup = 0) {
+  function tryckKolumn(c) {
     const s = a.current
     if (s.klar || vinst || slut) return
-    const res = djup > 0 ? spel.hand(c, djup) : spel.skickaKolumn(c)
+    const res = spel.skickaKolumn(c)
     if (!res.ok) {
       if (res.varfor === 'fullt') {
         visaNotis('Bandet är fullt')
         ljud.fel()
       } else if (res.varfor === 'lankad') {
-        visaNotis('Länkade grisar åker ihop')
+        visaNotis('Länkade grisar åker ihop — båda måste stå först', 1900)
         ljud.fel()
       }
       s.skak.set(c, s.t)
       return false
     }
+    hoppaUpp(res)
+    return true
+  }
+
+  function hoppaUpp(res) {
+    const s = a.current
     for (const g of res.grisar) s.hopp.set(g.id, { fran: [kolX(g.kol), KO_Y + (g.djup || 0) * KO_STEG], t: 0 })
     ljud.ton(320, 0.16, 'triangle', 0.1, 0, 680)
     ljud.brus(0.14, 0.05, 1200, 0, 3800, 1.4)
     rendera()
-    return true
   }
 
   function tryckSlot(p) {
@@ -258,6 +261,10 @@ export default function PixelGame() {
 
   function ner({ x, y }) {
     const lage = valRef.current
+    if (a.current.klar) {
+      if (lage) setValLage(null)
+      return
+    }
     if (lage === 'super') {
       const cx = Math.floor((x - geo.bx) / geo.c)
       const cy = Math.floor((y - geo.by) / geo.c)
@@ -337,8 +344,10 @@ export default function PixelGame() {
       } else if (e.typ === 'forlust') {
         s.klar = true
         s.slutVantar = s.t + 0.3
+        if (valRef.current) setValLage(null)
       } else if (e.typ === 'vinst') {
         s.klar = true
+        if (valRef.current) setValLage(null)
       }
     }
   }
@@ -480,20 +489,37 @@ export default function PixelGame() {
     visaNotis(lage === 'hand' ? 'Välj vilken gris som helst i köerna' : 'Tryck på en färg i bilden', 1800)
   }
 
+  // Handen: valfri gris, även den främsta (då löses en länk upp). Betalas
+  // bara om grisen faktiskt kom iväg.
   function valjHand(kol, djup) {
-    setValLage(null)
-    if (spel.ombord() + 1 > spel.kap) {
-      visaNotis('Bandet är fullt')
+    if (a.current.klar) return
+    if (!harBoost('hand')) {
+      setValLage(null)
+      visaNotis('För lite mynt')
+      return
+    }
+    const res = spel.hand(kol, djup)
+    if (!res.ok) {
+      visaNotis(res.varfor === 'fullt' ? 'Bandet är fullt' : 'Välj en gris')
       ljud.fel()
       return
     }
-    if (!betalaBoost('hand')) return
+    setValLage(null)
+    betalaBoost('hand')
     ljud.booster()
     fx.ring(kolX(kol), KO_Y + djup * KO_STEG, '#ffffff', 30, 0.4, 3)
-    tryckKolumn(kol, djup)
+    hoppaUpp(res)
   }
 
+  // Supergrisen tar bara kuber som syns (ytterst i bilden). Trycker man på
+  // en färg som inte syns än får man välja igen — och betalar inget.
   function valjSuper(f, x, y) {
+    if (a.current.klar) return
+    if (!spel.synliga().has(f)) {
+      visaNotis('Den färgen syns inte än — välj en kub i kanten', 1800)
+      ljud.fel()
+      return
+    }
     setValLage(null)
     if (!betalaBoost('super')) return
     superFarg(f, x, y)
@@ -535,7 +561,11 @@ export default function PixelGame() {
 
   /* ---------------------------------------------------------------- vinst/förlust */
 
-  function vinna() {
+  // Belöningen räknas och sparas direkt när banan är klar; bara kortet
+  // visas efter firandet. Lämnar man spelet under tiden är vinsten kvar.
+  const vinstTimer = useRef(0)
+  useEffect(() => () => clearTimeout(vinstTimer.current), [])
+  function vinna(fordrojning = 0) {
     const s = a.current
     const extraMynt = Math.floor(s.bastaKombo / 10) + s.guldMynt + s.fargerKlara * FARG_MYNT
     const res = belona(sparRef.current, {
@@ -546,13 +576,15 @@ export default function PixelGame() {
       extra: extraMynt,
       boostTyper: Object.keys(BOOST),
     })
-    const galleriNy = sparRef.current.galleri.includes(bana.bild.id) ? sparRef.current.galleri : [...sparRef.current.galleri, bana.bild.id]
+    const ny = !sparRef.current.galleri.includes(bana.bild.id)
+    const galleriNy = ny ? [...sparRef.current.galleri, bana.bild.id] : sparRef.current.galleri
     setSpar({ ...res.spar, galleri: galleriNy, enhorning: laddRef.current })
     const rader = []
     if (s.bastaKombo >= 10) rader.push([`Bästa kombo x${s.bastaKombo}`, `+${Math.floor(s.bastaKombo / 10)}`])
     if (s.fargerKlara) rader.push([`Färger klara x${s.fargerKlara}`, `+${s.fargerKlara * FARG_MYNT}`])
     if (s.guldMynt) rader.push([`Guldkuber ✨`, `+${s.guldMynt}`])
-    setVinst({ ...res.resultat, rader, ny: !sparRef.current.galleri.includes(bana.bild.id) })
+    const visa = { ...res.resultat, rader, ny }
+    vinstTimer.current = setTimeout(() => setVinst(visa), fordrojning)
   }
   function nasta() {
     setAktivNiva(sparRef.current.niva)
@@ -654,7 +686,7 @@ export default function PixelGame() {
       setValLage(null)
       ljud.vinst()
       fx.konfetti(W / 2, geo.y1, 110, W)
-      setTimeout(vinna, 1700)
+      vinna(1700)
     }
   }
 
@@ -933,17 +965,19 @@ export default function PixelGame() {
       for (let d = Math.min(3, k.length - 1); d >= 0; d--) {
         const g = k[d]
         const y = KO_Y + d * KO_STEG
-        // länkade: kedja till grannen
+        // länkade: kedja till partnern, var i köerna den än står
         if (g.lank != null) {
           for (let c2 = c + 1; c2 < antalKol; c2++) {
-            const g2 = spel.kolumner[c2][d]
-            if (g2 && g2.lank === g.lank) {
+            const k2 = spel.kolumner[c2]
+            for (let d2 = 0; d2 <= Math.min(3, k2.length - 1); d2++) {
+              if (k2[d2].lank !== g.lank) continue
+              const y2 = KO_Y + d2 * KO_STEG
               ctx.strokeStyle = '#c7cede'
               ctx.lineWidth = 3
               ctx.setLineDash([5, 4])
               ctx.beginPath()
               ctx.moveTo(x + 14, y)
-              ctx.lineTo(kolX(c2) - 14, y)
+              ctx.lineTo(kolX(c2) - 14, y2)
               ctx.stroke()
               ctx.setLineDash([])
             }

@@ -149,6 +149,20 @@ export function skapaSpel(bana) {
       c.dold = false
       handelser.push({ typ: 'avslojd', i, f: c.f })
     }
+    // Isen smälter bara av drag. Kan ingen gå längre (bara isade kvar, eller
+    // isade som spärrar alla andra) skulle banan låsa sig — då smälter all is.
+    if (raknaDrag && celler.some((c) => c && c.t === 'r' && c.is > 0)) {
+      let kan = false
+      for (let i = 0; i < celler.length && !kan; i++) kan = kanGa(i)
+      if (!kan) {
+        for (let i = 0; i < celler.length; i++) {
+          const c = celler[i]
+          if (!c || c.t !== 'r' || !(c.is > 0)) continue
+          c.is = 0
+          handelser.push({ typ: 'tinat', i, kvar: 0 })
+        }
+      }
+    }
   }
 
   // Vagnar som fylls går, nästa rullar in och tar med sig bänkens folk.

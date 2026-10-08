@@ -11,10 +11,10 @@ import { useEffect, useRef } from 'react'
 // Callbackarna läses via en ref, så spelet kan skicka nya funktioner varje
 // render utan att canvasen sätts upp igen.
 
-export function useSpelyta({ bredd, hojd, rita, uppdatera, ner, flytta, upp }) {
+export function useSpelyta({ bredd, hojd, rita, uppdatera, ner, flytta, upp, avbryt }) {
   const canvasRef = useRef(null)
   const cb = useRef({})
-  cb.current = { rita, uppdatera, ner, flytta, upp }
+  cb.current = { rita, uppdatera, ner, flytta, upp, avbryt }
   const mat = useRef({ bredd, hojd, skala: 1 })
   mat.current.bredd = bredd
   mat.current.hojd = hojd
@@ -80,10 +80,12 @@ export function useSpelyta({ bredd, hojd, rita, uppdatera, ner, flytta, upp }) {
     }
     const pm = (e) => cb.current.flytta && cb.current.flytta(pos(e))
     const pu = (e) => cb.current.upp && cb.current.upp(pos(e))
+    // Ett avbrutet tryck (systemet tar över gesten) är inte ett släpp.
+    const pc = (e) => (cb.current.avbryt ? cb.current.avbryt(pos(e)) : pu(e))
     canvas.addEventListener('pointerdown', pn)
     canvas.addEventListener('pointermove', pm)
     canvas.addEventListener('pointerup', pu)
-    canvas.addEventListener('pointercancel', pu)
+    canvas.addEventListener('pointercancel', pc)
 
     return () => {
       cancelAnimationFrame(raf)
@@ -92,7 +94,7 @@ export function useSpelyta({ bredd, hojd, rita, uppdatera, ner, flytta, upp }) {
       canvas.removeEventListener('pointerdown', pn)
       canvas.removeEventListener('pointermove', pm)
       canvas.removeEventListener('pointerup', pu)
-      canvas.removeEventListener('pointercancel', pu)
+      canvas.removeEventListener('pointercancel', pc)
     }
   }, [])
 

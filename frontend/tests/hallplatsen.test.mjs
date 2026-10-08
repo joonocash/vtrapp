@@ -7,6 +7,7 @@
 
 import assert from 'node:assert/strict'
 import { genereraBana, skapaSpel, girigBot, bankBehov, KAPACITET, BANK } from '../src/rotspel/games/hallplats/engine.js'
+import { mulberry32 } from '../src/rotspel/games/delat/rng.js'
 
 let passed = 0
 const test = (name, fn) => {
@@ -152,6 +153,29 @@ test('vinka tar alla i vagnens färg var de än står, så många som får plats
   assert.deepEqual([1, 3, 4].map((i) => s.celler[i]), [null, null, null], 'de synliga togs först')
   assert.ok(s.celler[2] && s.celler[2].f === 0, 'den hemliga står kvar (och syns nu när grannen gått)')
   assert.equal(s.aktiv(), 1, 'vagnen blev full och gick')
+})
+
+test('slumpade spelare fastnar aldrig: finns resenärer kvar kan alltid någon gå', () => {
+  // Spelaren tar oftast vagnens färg, annars vem som helst som kan gå. Bana
+  // 113 låste sig förr när bara en isad resenär var kvar (isen smälte aldrig).
+  for (let n = 100; n <= 120; n++) {
+    const bana = genereraBana(n)
+    for (const bank of [5, 6]) {
+      for (let fro = 0; fro < 20; fro++) {
+        const r = mulberry32(fro * 7919 + n)
+        const s = skapaSpel({ ...bana, bank })
+        for (let steg = 0; steg < 500 && s.status() === 'spelar'; steg++) {
+          const kan = []
+          for (let i = 0; i < s.celler.length; i++) if (s.kanGa(i)) kan.push(i)
+          assert.ok(kan.length > 0, `bana ${n} (bänk ${bank}, frö ${fro}) låste sig efter ${steg} drag`)
+          const aktivF = s.vagnar[s.aktiv()]
+          const direkt = kan.filter((i) => s.celler[i].f === aktivF)
+          const lista = direkt.length && r() < 0.85 ? direkt : kan
+          s.tryck(lista[Math.floor(r() * lista.length)])
+        }
+      }
+    }
+  }
 })
 
 test('bänkbehovet räknas som i spelet', () => {
