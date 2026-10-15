@@ -316,21 +316,82 @@ export function parametrar(niva) {
     dolda: niva < 8 ? 0 : klamp(0.08 + niva * 0.002, 0.08, 0.25),
     is: niva < 14 ? 0 : klamp(Math.floor(niva / 14), 1, 4),
     tunnlar: niva < 20 ? 0 : klamp(Math.floor((niva - 12) / 12), 1, 3),
-    fonster: niva < 4 ? 1 : klamp(2 + Math.floor(niva / 8), 2, 9) + (svar === 'normal' ? 0 : 2),
-    marginal: svar === 'normal' ? (niva < 30 ? 2 : 1) : svar === 'svår' ? 1 : 0,
+    // Hur mycket färgerna blandas mot den tänkta ordningen: större fönster =
+    // fler som måste vänta på bänken = mer att tänka på.
+    fonster: niva < 3 ? 1 : klamp(2 + Math.floor(niva / 4), 2, 9) + (svar === 'normal' ? 0 : 2),
+    marginal: svar === 'normal' ? (niva < 10 ? 2 : 1) : svar === 'svår' ? 1 : 0,
   }
 }
 
-export function genereraBana(niva) {
+// Hur ofta en "rytmklickare" (tar alltid en resenär i vagnens färg om det
+// går, annars vem som helst) får klara banan. Tak så att man måste tänka.
+export function rytmTak(niva, svar) {
+  if (niva <= 4) return 1
+  const tak = niva <= 10 ? 0.7 : niva <= 25 ? 0.5 : niva <= 50 ? 0.45 : 0.35
+  return svar === 'normal' ? tak : Math.min(tak, 0.25)
+}
+
+// Banorna 1–200 genereras i förväg med fler försök (frontend/tests/
+// hallplatsen-banor.gen.mjs) och ligger i banor.json. Högre banor görs i
+// webbläsaren med färre försök.
+const cacheBanor = new Map()
+export function genereraBana(niva, { forsok: antalForsok = 24 } = {}) {
+  const nyckel = `${niva}:${antalForsok}`
+  if (cacheBanor.has(nyckel)) return cacheBanor.get(nyckel)
   const p = parametrar(niva)
-  for (let forsok = 0; forsok < 60; forsok++) {
+  const tak = rytmTak(niva, p.svar)
+  let bast = null
+  let bastRytm = Infinity
+  // fönstret krymper lite i taget om det inte går att bygga en bana
+  const krymp = Math.max(8, Math.floor(antalForsok / 7))
+  for (let forsok = 0; forsok < antalForsok; forsok++) {
     const r = slump('hallplatsen', niva, forsok)
-    const fonster = Math.max(1, p.fonster - Math.floor(forsok / 8))
+    const fonster = Math.max(1, p.fonster - Math.floor(forsok / krymp))
     const bana = forsokBygga(niva, p, r, fonster)
-    if (bana) return bana
+    if (!bana) continue
+    const rytm = tak >= 1 ? 0 : rytmChans(bana, 8, niva)
+    if (rytm < bastRytm) {
+      bast = bana
+      bastRytm = rytm
+    }
+    if (rytm <= tak) break
+  }
+  if (bast) {
+    cacheBanor.set(nyckel, bast)
+    return bast
   }
   // Nödutgång: helt utan krångel (ska aldrig behövas, testerna kollar).
   return forsokBygga(niva, { ...p, dolda: 0, is: 0, tunnlar: 0, vaggar: 0 }, slump('hallplatsen-nod', niva), 1)
+}
+
+/* --------------------------------------------- kompakt form för banor.json */
+
+const SVAR = ['normal', 'svår', 'supersvår']
+
+export function koda(b) {
+  const cell = (c) => {
+    if (!c) return 0
+    if (c.t === 'v') return 1
+    if (c.t === 't') return ['t', c.dir, c.ko]
+    if (!c.dold && !c.is) return c.f + 2
+    return [c.f, c.dold ? 1 : 0, c.is || 0]
+  }
+  return [SVAR.indexOf(b.svar), b.w, b.h, b.celler.map(cell), b.vagnar, b.tid, b.losning]
+}
+
+export function avkoda(niva, d) {
+  const [svar, w, h, celler, vagnar, tid, losning] = d
+  const cell = (c) => {
+    if (c === 0) return null
+    if (c === 1) return { t: 'v' }
+    if (typeof c === 'number') return { t: 'r', f: c - 2 }
+    if (c[0] === 't') return { t: 't', dir: c[1], ko: c[2] }
+    const ut = { t: 'r', f: c[0] }
+    if (c[1]) ut.dold = true
+    if (c[2]) ut.is = c[2]
+    return ut
+  }
+  return { niva, svar: SVAR[svar], namn: hallplatsFor(niva), w, h, celler: celler.map(cell), vagnar, bank: BANK, tid, losning }
 }
 
 function forsokBygga(niva, p, r, fonster) {
@@ -679,4 +740,24 @@ export function girigBot(bana) {
     s.tryck(val)
   }
   return false
+}
+
+export function rytmChans(bana, forsok = 8, fro = 1) {
+  let vinster = 0
+  for (let f = 0; f < forsok; f++) {
+    let x = (fro * 7919 + f * 104729 + 17) >>> 0
+    const rnd = () => ((x = (x * 1103515245 + 12345) >>> 0) / 4294967296)
+    const s = skapaSpel(bana)
+    for (let drag = 0; drag < 800 && s.status() === 'spelar'; drag++) {
+      const kan = []
+      for (let i = 0; i < s.celler.length; i++) if (s.kanGa(i)) kan.push(i)
+      if (!kan.length) break
+      const vf = s.vagnar[s.aktiv()]
+      const direkt = kan.filter((i) => s.celler[i].f === vf)
+      const lista = direkt.length ? direkt : kan
+      s.tryck(lista[Math.floor(rnd() * lista.length)])
+    }
+    if (s.status() === 'vunnit') vinster++
+  }
+  return vinster / forsok
 }

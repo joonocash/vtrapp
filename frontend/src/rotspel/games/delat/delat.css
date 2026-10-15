@@ -216,7 +216,7 @@
 .ds-notis {
   position: absolute; left: 50%; top: 46%; z-index: 25; transform: translate(-50%, -50%);
   padding: 9px 16px; border-radius: 14px; background: rgba(10, 14, 28, 0.88); color: #fff;
-  font-weight: 800; font-size: 14px; white-space: nowrap; pointer-events: none;
+  font-weight: 800; font-size: 14px; width: max-content; max-width: 92%; text-align: center; pointer-events: none;
   box-shadow: 0 8px 24px -8px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.1);
   animation: ds-notis 1.6s ease-out forwards;
 }
@@ -246,4 +246,17 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ds-stralar, .ds-svar-super, .ds-chip.varm { animation: none; }
+}
+
+/* smala telefoner: topraden får inte trycka ut mynten */
+.ds-hjartan.kompakt { align-items: center; gap: 3px; }
+.ds-hjartan.kompakt b { font-size: 15px; font-weight: 900; color: #ffb3c1; font-variant-numeric: tabular-nums; }
+.ds-hjartan.kompakt.brast { animation: ds-brast 520ms ease-out; }
+.ds-mitt > * { min-width: 0; }
+@media (max-width: 420px) {
+  .ds-topp { gap: 5px; }
+  .ds-niva-tal { font-size: 15px; }
+  .ds-svar { font-size: 9px; padding: 3px 5px; letter-spacing: 0.03em; }
+  .ds-topp .ds-svitchip-pip { display: none; }
+  .ds-topp .ds-mynt { font-size: 14px; padding: 3px 8px 3px 5px; }
 }

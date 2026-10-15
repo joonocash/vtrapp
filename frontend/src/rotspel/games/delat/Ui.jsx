@@ -83,6 +83,14 @@ export function Mynt({ stor }) {
 }
 
 export function Hjartan({ antal, max = 3, forlorat }) {
+  // Med extra hjärtan (vinstsviten) blir raden för lång: visa ett hjärta och en siffra.
+  if (antal > max)
+    return (
+      <span className={`ds-hjartan kompakt${forlorat ? ' brast' : ''}`} aria-label={`${antal} hjärtan kvar`}>
+        <span className="ds-hjarta">❤</span>
+        <b>×{antal}</b>
+      </span>
+    )
   return (
     <span className="ds-hjartan" aria-label={`${antal} hjärtan kvar`}>
       {Array.from({ length: Math.max(max, antal) }, (_, i) => (

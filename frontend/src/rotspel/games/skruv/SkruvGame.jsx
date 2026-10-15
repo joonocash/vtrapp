@@ -906,8 +906,8 @@ export default function SkruvGame() {
   return (
     <div className="ds-rot sk-rot">
       <Topprad niva={aktivNiva} svar={bana.svar} mynt={mynt} hoger={<SvitChip svit={spar.svit || 0} />}>
-        <span className="ds-chip">
-          🔩 <b>{kvarSkruvar}</b> kvar
+        <span className="ds-chip" title={`${kvarSkruvar} skruvar kvar`} aria-label={`${kvarSkruvar} skruvar kvar`}>
+          🔩 <b>{kvarSkruvar}</b>
         </span>
       </Topprad>
       <div className="sk-mater" aria-hidden="true">

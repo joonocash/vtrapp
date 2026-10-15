@@ -6,7 +6,7 @@
 // regler stämmer: fri pil flyger ut, blockerad pil kostar ett hjärta.
 
 import assert from 'node:assert/strict'
-import { genereraBana, skapaSpel, losGirigt, DX, DY, HJARTAN } from '../src/rotspel/games/pilar/engine.js'
+import { genereraBana, skapaSpel, losGirigt, DX, DY, HJARTAN, arHappy, HAPPY_VAR } from '../src/rotspel/games/pilar/engine.js'
 
 let passed = 0
 const test = (name, fn) => {
@@ -118,6 +118,30 @@ test('tryck nära en pil träffar den', () => {
     const [x, y] = p.celler[0]
     assert.equal(s.pilVid(x + 0.5, y + 0.5), p.id)
   }
+})
+
+test('banorna växer: fler pilar senare, och var sjätte bana är en Happy-bild', () => {
+  const pilar = (a, b) => {
+    let n = 0
+    for (let k = a; k <= b; k++) n += genereraBana(k).pilar.length
+    return n / (b - a + 1)
+  }
+  const tidigt = pilar(11, 20)
+  const mitt = pilar(31, 40)
+  const sent = pilar(61, 70)
+  assert.ok(mitt > tidigt * 1.3, `${tidigt} → ${mitt}`)
+  assert.ok(sent > tidigt * 1.6, `${tidigt} → ${sent}`)
+  for (let n = 1; n <= 60; n++) {
+    assert.equal(arHappy(n), n % HAPPY_VAR === 3)
+    const b = genereraBana(n)
+    if (arHappy(n) && n > 6) {
+      assert.equal(b.formId, null, `bana ${n}: Happy-banor är geometriska`)
+      assert.ok(Math.abs(b.w - b.h) <= 2, `bana ${n}: Happy-banor är ungefär kvadratiska (${b.w}×${b.h})`)
+    }
+  }
+  let siluetter = 0
+  for (let n = 12; n <= 60; n++) if (genereraBana(n).formId) siluetter++
+  assert.ok(siluetter >= 15, `bara ${siluetter} siluetter`)
 })
 
 console.log(`\n${passed} test ok`)

@@ -11,3 +11,4 @@
 .hp-kvar { margin-left: 6px; }
 .hp-kvar b { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
 .hp-yta canvas { background: #1a2034; box-shadow: inset 0 0 0 1px var(--kant); }
+.hp-overtid b { color: var(--dim); }
