@@ -98,7 +98,7 @@ export default function PixelGame() {
   const [notis, visaNotis] = useNotis()
   useEffect(() => {
     if (hjalp.extra <= 0) return
-    const id = setTimeout(() => visaNotis(`🔥 Vinstsvit ${sparRef.current.svit}: +1 väntplats${hjalp.extra >= 2 ? ' och +1 band' : ''}`, 2200), 700)
+    const id = setTimeout(() => visaNotis(`🔥 Vinstsvit ${sparRef.current.svit}: +1 väntplats${hjalp.extra >= 2 ? ' och +1 band' : ''}`, 2200), bana.svar !== 'normal' ? 2400 : 700)
     return () => clearTimeout(id)
   }, [spel]) // eslint-disable-line react-hooks/exhaustive-deps
   // Superenhörningens laddning. Ligger i en ref under rundan och sparas vid

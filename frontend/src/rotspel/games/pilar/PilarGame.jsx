@@ -57,7 +57,7 @@ export default function PilarGame() {
   const [notis, visaNotis] = useNotis()
   useEffect(() => {
     if (hjalp.extra <= 0) return
-    const id = setTimeout(() => visaNotis(`🔥 Vinstsvit ${sparRef.current.svit}: +${hjalp.extra} ${hjalp.extra === 1 ? 'hjärta' : 'hjärtan'}`, 2200), 600)
+    const id = setTimeout(() => visaNotis(`🔥 Vinstsvit ${sparRef.current.svit}: +${hjalp.extra} ${hjalp.extra === 1 ? 'hjärta' : 'hjärtan'}`, 2200), bana.svar !== 'normal' ? 2400 : 600)
     return () => clearTimeout(id)
   }, [spel]) // eslint-disable-line react-hooks/exhaustive-deps
   // Happy-foton laddas innan de kan ritas under brädet.

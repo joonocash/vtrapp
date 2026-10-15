@@ -113,8 +113,11 @@ export default function SkruvGame() {
   // Svithjälpen visas en gång när banan startar.
   useEffect(() => {
     if (hjalp.extra > 0 && !a.current.hjalpVisad) {
-      a.current.hjalpVisad = true
-      visaNotis(`🔥 Vinstsvit ${spar.svit}: +${hjalp.extra} reservhål`, 2200)
+      const id = setTimeout(() => {
+        a.current.hjalpVisad = true
+        visaNotis(`🔥 Vinstsvit ${spar.svit}: +${hjalp.extra} reservhål`, 2200)
+      }, bana.svar !== 'normal' ? 2400 : 400)
+      return () => clearTimeout(id)
     }
   }, [spel]) // eslint-disable-line react-hooks/exhaustive-deps
 
