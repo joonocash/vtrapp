@@ -141,6 +141,21 @@ export function belona(spar, { gameId, niva, svar = 'normal', perfekt = false, e
   }
 }
 
+// Vinstsviten ger hjälp från start i nästa bana — och allt tappas vid en
+// förlust (som Royal Matchs och Candy Crushs vinstsviter). Nivåerna:
+//   2 vinster i rad → nivå 1, 4 → nivå 2, 6 → nivå 3.
+// Varje spel bestämmer själv vad nivån ger (ett hjärta, ett reservhål …).
+export const SVIT_NIVAER = [2, 4, 6]
+export function svitNiva(svit) {
+  let n = 0
+  for (const g of SVIT_NIVAER) if (svit >= g) n++
+  return n
+}
+export function svitHjalp(svit) {
+  const niva = svitNiva(svit)
+  return { niva, extra: niva >= 3 ? 2 : niva >= 1 ? 1 : 0 }
+}
+
 export function forlust(spar) {
   return { ...spar, svit: 0, forluster: (spar.forluster || 0) + 1 }
 }

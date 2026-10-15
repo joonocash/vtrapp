@@ -47,7 +47,7 @@ export const GAMES = [
   {
     id: 'pinnbollen',
     name: 'Pinnbollen',
-    blurb: 'Sikta och släpp kulan. Träffa alla orange pinnar.',
+    blurb: 'Peggle! Sikta, skjut och tänd alla orange pinnar. Sista träffen ger Extreme Fever.',
     category: 'arkad',
     accent: 'text-orange-400',
     ikon: '🎯',
@@ -55,9 +55,9 @@ export const GAMES = [
     scoreLabel: 'poäng',
     scoreFormat: 'number',
     higherIsBetter: true,
-    reglage: ['ljud', 'skak'],
-    forhallande: 300 / 420,
-    load: () => import('./Pinnbollen.jsx'),
+    reglage: ['ljud', 'skak', 'hitstop'],
+    forhallande: 0.5,
+    load: () => import('./pinnboll/PinnbollGame.jsx'),
   },
   {
     id: 'rotblast',
