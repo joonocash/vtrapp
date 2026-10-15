@@ -230,4 +230,16 @@ test('slumpad spelare med boosters: ammo = kuber hela tiden, inga krascher', () 
   }
 })
 
+test('färre väntplatser ju längre man kommer (men aldrig färre än tre)', () => {
+  for (let n = 1; n <= 6; n++) assert.equal(byggBana(n).slots, 5, `bana ${n}`)
+  for (let n = 7; n <= 24; n++) assert.ok(byggBana(n).slots <= 4, `bana ${n}`)
+  let tre = 0
+  for (let n = 25; n <= 80; n++) {
+    const b = byggBana(n)
+    assert.ok(b.slots >= 3 && b.slots <= 5, `bana ${n}: ${b.slots} platser`)
+    if (b.slots === 3) tre++
+  }
+  assert.ok(tre >= 20, `bara ${tre} banor med tre platser`)
+})
+
 console.log(`\n${passed} test ok`)

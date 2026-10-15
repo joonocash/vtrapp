@@ -21,6 +21,12 @@ export const DX = [0, 1, 0, -1]
 export const DY = [-1, 0, 1, 0]
 export const HJARTAN = 3
 
+// Under varje bräde ligger en bild som syns ruta för ruta när pilarna åker
+// ut. Var sjätte bana (3, 9, 15 …) är det ett foto på Happy, då är brädet
+// en enkel form så att fotot får plats.
+export const HAPPY_VAR = 6
+export const arHappy = (niva) => niva % HAPPY_VAR === 3
+
 /* ------------------------------------------------------------------ former */
 
 // Skalar en siluett (40 rutor) till s rutor på längsta sidan.
@@ -131,11 +137,13 @@ export function parametrar(niva) {
     [6, 6],
     [6, 7],
   ]
-  let storlek = niva <= tidig.length ? null : klamp(7 + Math.floor((niva - 6) / 4), 7, 15)
-  if (storlek && svar === 'svår') storlek = Math.min(17, storlek + 2)
-  if (storlek && svar === 'supersvår') storlek = Math.min(18, storlek + 3)
-  const maxLangd = klamp(2 + Math.floor(niva / 5), 3, 9) + (svar === 'svår' ? 2 : svar === 'supersvår' ? 3 : 0)
-  const svang = klamp(0.25 + niva * 0.006, 0.25, 0.5) + (svar !== 'normal' ? 0.1 : 0)
+  // Brädet växer hela vägen till 18 rutor (svåra 21), och pilarna blir
+  // längre och slingrigare — fler pilar som spärrar varandra i flera led.
+  let storlek = niva <= tidig.length ? null : klamp(7 + Math.floor((niva - 6) / 3), 7, 18)
+  if (storlek && svar === 'svår') storlek = Math.min(20, storlek + 2)
+  if (storlek && svar === 'supersvår') storlek = Math.min(21, storlek + 3)
+  const maxLangd = klamp(2 + Math.floor(niva / 4), 3, 12) + (svar === 'svår' ? 2 : svar === 'supersvår' ? 3 : 0)
+  const svang = klamp(0.25 + niva * 0.006, 0.25, 0.55) + (svar !== 'normal' ? 0.1 : 0)
   return { svar, tidig: niva <= tidig.length ? tidig[niva - 1] : null, storlek, maxLangd, svang }
 }
 
@@ -147,11 +155,16 @@ export function valjForm(niva) {
   }
   const r = slump('pilflykt-form', niva)
   const s = p.storlek
-  // Från bana 16 är varannan bana en bild (siluetter syns inte i små bräden),
-  // varannan en geometrisk form.
+  // Happy-banor: kvadratiska former så att fotot får plats.
+  if (arHappy(niva)) {
+    const [typ, namn] = [['rekt', 'Rektangel'], ['cirkel', 'Cirkel'], ['romb', 'Romb']][Math.floor(niva / HAPPY_VAR) % 3]
+    return { namn, ...geometrisk(typ, s, s) }
+  }
+  // Från bana 12 är varannan bana en siluett (de syns inte i små bräden),
+  // varannan en geometrisk form. Bilden under en siluett är samma emoji.
   if (niva % 2 === 0 && s >= 10) {
     const form = FORMER[(Math.floor(niva / 2) * 7 + heltal(r, 0, 2)) % FORMER.length]
-    return { namn: form.namn, ...formMask(form, s + 1) }
+    return { namn: form.namn, id: form.id, ...formMask(form, s + 1) }
   }
   const [typ, namn] = GEO[Math.floor(niva / 2) % GEO.length]
   if (typ === 'rekt') return { namn, ...geometrisk('rekt', s, Math.round(s * 1.25)) }
@@ -174,7 +187,7 @@ export function genereraBana(niva) {
     if (!bast || tathet > bast.tathet) bast = { pilar, tathet }
     if (tathet > 0.97) break
   }
-  return { niva, svar: p.svar, namn: form.namn, w: form.w, h: form.h, mask: form.mask, pilar: bast.pilar }
+  return { niva, svar: p.svar, namn: form.namn, formId: form.id || null, w: form.w, h: form.h, mask: form.mask, pilar: bast.pilar }
 }
 
 function bygg(w, h, mask, p, r) {

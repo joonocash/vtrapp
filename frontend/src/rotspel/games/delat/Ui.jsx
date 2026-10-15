@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { KISTA_VAR } from './meta.js'
+import { KISTA_VAR, SVIT_NIVAER, svitNiva } from './meta.js'
 import './delat.css'
 
 // Delade UI-delar för de nya rötspelen: topprad, myntchip, vinst- och
@@ -18,6 +18,23 @@ export function Topprad({ niva, svar, mynt, children, hoger }) {
         <MyntChip mynt={mynt} />
       </div>
     </header>
+  )
+}
+
+// Vinstsviten: en låga som växer med nivån och tre pippar fram till nästa.
+export function SvitChip({ svit }) {
+  const niva = svitNiva(svit)
+  if (svit <= 0) return null
+  return (
+    <span className={`ds-svitchip niva${niva}`} title={`Vinstsvit ${svit} — tappas om du förlorar`} aria-label={`Vinstsvit ${svit}`}>
+      <span className="ds-svitchip-eld" aria-hidden="true">🔥</span>
+      <b>{svit}</b>
+      <span className="ds-svitchip-pip" aria-hidden="true">
+        {SVIT_NIVAER.map((g, i) => (
+          <i key={i} className={svit >= g ? 'pa' : ''} />
+        ))}
+      </span>
+    </span>
   )
 }
 
@@ -66,6 +83,14 @@ export function Mynt({ stor }) {
 }
 
 export function Hjartan({ antal, max = 3, forlorat }) {
+  // Med extra hjärtan (vinstsviten) blir raden för lång: visa ett hjärta och en siffra.
+  if (antal > max)
+    return (
+      <span className={`ds-hjartan kompakt${forlorat ? ' brast' : ''}`} aria-label={`${antal} hjärtan kvar`}>
+        <span className="ds-hjarta">❤</span>
+        <b>×{antal}</b>
+      </span>
+    )
   return (
     <span className="ds-hjartan" aria-label={`${antal} hjärtan kvar`}>
       {Array.from({ length: Math.max(max, antal) }, (_, i) => (
@@ -233,7 +258,7 @@ export function Vinstkort({ resultat, titel, rader = [], ljud, boostInfo = {}, o
   )
 }
 
-export function Forlustkort({ titel, text, ikon = '😵', fortsatt, onIgen, mynt }) {
+export function Forlustkort({ titel, text, ikon = '😵', fortsatt, onIgen, mynt, svit = 0 }) {
   const [klar, setKlar] = useState(false)
   useEffect(() => {
     const id = setTimeout(() => setKlar(true), 450)
@@ -248,6 +273,11 @@ export function Forlustkort({ titel, text, ikon = '😵', fortsatt, onIgen, mynt
         </div>
         <div className="ds-kort-titel">{titel}</div>
         {text && <div className="ds-kort-sub">{text}</div>}
+        {svit >= 2 && (
+          <div className="ds-svitvarning">
+            🔥 Vinstsvit {svit} — {fortsatt ? 'fortsätt för att behålla den!' : 'den tappas om du börjar om.'}
+          </div>
+        )}
         {fortsatt && (
           <button className="ds-knapp ds-knapp-stor ds-knapp-guld" onClick={fortsatt.onClick} disabled={!klar || !kanKopa}>
             <span>{fortsatt.text}</span>

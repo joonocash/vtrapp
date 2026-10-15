@@ -6,7 +6,8 @@
 // hemliga resenärer, is och rulltrappor.
 
 import assert from 'node:assert/strict'
-import { genereraBana, skapaSpel, girigBot, bankBehov, KAPACITET, BANK } from '../src/rotspel/games/hallplats/engine.js'
+import { readFileSync } from 'node:fs'
+import { genereraBana, avkoda, koda, skapaSpel, girigBot, bankBehov, rytmChans, KAPACITET, BANK } from '../src/rotspel/games/hallplats/engine.js'
 import { mulberry32 } from '../src/rotspel/games/delat/rng.js'
 
 let passed = 0
@@ -16,11 +17,16 @@ const test = (name, fn) => {
   console.log('ok  ' + name)
 }
 
-const BANOR = 150
+// Banorna 1–200 ligger förgenererade i hallplats/banor.json (se
+// hallplatsen-banor.gen.mjs); högre banor görs i webbläsaren.
+const RADER = JSON.parse(readFileSync(new URL('../src/rotspel/games/hallplats/banor.json', import.meta.url), 'utf8'))
+const BANA = (n) => (n <= RADER.length ? avkoda(n, RADER[n - 1]) : genereraBana(n))
+const BANOR = 220
 
 test(`bana 1–${BANOR}: tre resenärer per vagn och färg, lösningen vinner`, () => {
+  assert.equal(RADER.length, 200)
   for (let n = 1; n <= BANOR; n++) {
-    const b = genereraBana(n)
+    const b = BANA(n)
     assert.ok(b, `bana ${n} saknas`)
     const antal = new Map()
     for (const c of b.celler) {
@@ -47,13 +53,26 @@ test(`bana 1–${BANOR}: tre resenärer per vagn och färg, lösningen vinner`, 
 
 test('vanliga banor upp till 80 klaras av en girig spelare', () => {
   for (let n = 1; n <= 80; n++) {
-    const b = genereraBana(n)
+    const b = BANA(n)
     if (b.svar === 'normal') assert.ok(girigBot(b), `bana ${n}`)
   }
 })
 
-test('generatorn är deterministisk', () => {
-  for (const n of [1, 9, 27, 61]) assert.deepEqual(genereraBana(n), genereraBana(n))
+test('kodningen går fram och tillbaka, och generatorn är deterministisk', () => {
+  for (const n of [1, 9, 27, 61, 150]) assert.deepEqual(koda(BANA(n)), RADER[n - 1])
+  for (const n of [205, 230]) assert.deepEqual(genereraBana(n), genereraBana(n))
+})
+
+test('det krävs tänkande: en rytmklickare klarar inte allt efter de första banorna', () => {
+  let tidig = 0
+  let mitt = 0
+  let sen = 0
+  for (let n = 1; n <= 4; n++) tidig += rytmChans(BANA(n), 8, n + 7)
+  for (let n = 5; n <= 25; n++) mitt += rytmChans(BANA(n), 8, n + 7)
+  for (let n = 26; n <= 60; n++) sen += rytmChans(BANA(n), 8, n + 7)
+  assert.ok(tidig / 4 >= 0.9, `de första banorna ska gå på rytm (${tidig / 4})`)
+  assert.ok(mitt / 21 <= 0.8, `bana 5–25: rytmklickaren vinner för ofta (${mitt / 21})`)
+  assert.ok(sen / 35 <= 0.4, `bana 26–60: rytmklickaren vinner för ofta (${sen / 35})`)
 })
 
 const R = (f, extra = {}) => ({ t: 'r', f, ...extra })

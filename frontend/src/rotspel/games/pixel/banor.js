@@ -36,22 +36,26 @@ export function parametrar(niva) {
   return {
     svar,
     kolumner: niva <= 3 ? 2 : niva <= 14 ? 3 : 4,
-    ammo: klamp(Math.round(9 + niva * 0.3), 9, 22) * (svar === 'normal' ? 1 : 1.3) * (niva % HAPPY_VAR === 0 ? 1.4 : 1),
+    // större grisar från bana 11: fler som inte hinner skjuta allt på ett varv
+    ammo: klamp(Math.round(9 + niva * 0.3), 9, 22) * (svar === 'normal' ? 1 : 1.3) * (niva % HAPPY_VAR === 0 ? 1.4 : 1) * (niva > 10 ? 1.4 : 1),
     brus: niva <= 3 ? 0.4 : klamp(0.8 + niva * 0.05, 0.8, 4) + (svar === 'normal' ? 0 : 1.5),
     dolda: niva < 12 ? 0 : klamp(0.12 + niva * 0.002, 0.12, 0.3),
     lankar: niva < 20 ? 0 : klamp(Math.floor((niva - 10) / 12), 1, 3),
     marginal: svar === 'supersvår' ? 0 : 1,
     kap: KAPACITET,
-    slots: SLOTS,
+    // Färre väntplatser är det som tvingar fram tänkande: skickar man en gris
+    // vars färg mest ligger begravd kommer den tillbaka och tar en plats.
+    slots: niva <= 6 ? SLOTS : niva <= 24 ? SLOTS - 1 : svar === 'normal' ? SLOTS - 1 - (niva % 2) : SLOTS - 2,
   }
 }
 
 const cache = new Map()
 
-export function byggBana(niva) {
-  if (cache.has(niva)) return cache.get(niva)
+export function byggBana(niva, andra = null) {
+  const nyckel = andra ? niva + JSON.stringify(andra) : niva
+  if (cache.has(nyckel)) return cache.get(nyckel)
   const bild = bildFor(niva)
-  const p = parametrar(niva)
+  const p = { ...parametrar(niva), ...(andra || {}) }
   const h = bild.rader.length
   const w = bild.rader[0].length
   const kuber = []
@@ -59,20 +63,23 @@ export function byggBana(niva) {
 
   const lager = skala(kuber, w, h)
   let bana = null
-  for (let forsok = 0; forsok < 12 && !bana; forsok++) {
-    const r = slump('pixelkanon', niva, forsok)
-    const brus = Math.max(0, p.brus * (1 - forsok / 8))
-    const kolumner = gorGrisar(kuber, lager, w, h, p, r, brus, forsok < 8)
-    const kandidat = { niva, svar: p.svar, w, h, kuber, kolumner, kap: p.kap, slots: p.slots, bild }
-    const res = spelaBot(kandidat)
-    if (res.vann && res.maxSlots <= p.slots - p.marginal) bana = kandidat
+  // Går banan inte med så få väntplatser får den en plats till (högst SLOTS).
+  for (let slots = p.slots; slots <= Math.max(p.slots, SLOTS) && !bana; slots++) {
+    for (let forsok = 0; forsok < 12 && !bana; forsok++) {
+      const r = slump('pixelkanon', niva, forsok, slots === p.slots ? '' : slots)
+      const brus = Math.max(0, p.brus * (1 - forsok / 8))
+      const kolumner = gorGrisar(kuber, lager, w, h, p, r, brus, forsok < 8)
+      const kandidat = { niva, svar: p.svar, w, h, kuber, kolumner, kap: p.kap, slots, bild }
+      const res = spelaBot(kandidat)
+      if (res.vann && res.maxSlots <= slots - p.marginal) bana = kandidat
+    }
   }
   if (!bana) {
     // Nödutgång: helt sorterat, inga dolda eller länkade.
     const r = slump('pixelkanon-nod', niva)
-    bana = { niva, svar: p.svar, w, h, kuber, kolumner: gorGrisar(kuber, lager, w, h, { ...p, dolda: 0, lankar: 0 }, r, 0, false), kap: p.kap, slots: p.slots, bild }
+    bana = { niva, svar: p.svar, w, h, kuber, kolumner: gorGrisar(kuber, lager, w, h, { ...p, dolda: 0, lankar: 0 }, r, 0, false), kap: p.kap, slots: Math.max(p.slots, SLOTS), bild }
   }
-  cache.set(niva, bana)
+  cache.set(nyckel, bana)
   return bana
 }
 

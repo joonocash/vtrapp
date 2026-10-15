@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { genereraBana, skapaSpel, hallplatsFor, FARGER, KAPACITET, DX, DY } from './engine.js'
+import { genereraBana, avkoda, skapaSpel, hallplatsFor, FARGER, KAPACITET, DX, DY } from './engine.js'
+import BANOR from './banor.json'
 import { useSpelyta } from '../delat/useSpelyta.js'
 import { skapaLjud } from '../delat/ljud.js'
 import { skapaFx, rundRekt, ljusare, easeOut, easeInOut, lerp } from '../delat/fx.js'
-import { useSpar, useMynt, belona, forlust, betala } from '../delat/meta.js'
-import { Topprad, BoostKnapp, Banner, Vinstkort, Forlustkort, Notis, useNotis } from '../delat/Ui.jsx'
+import { useSpar, useMynt, belona, forlust, betala, svitHjalp } from '../delat/meta.js'
+import { Topprad, BoostKnapp, Banner, Vinstkort, Forlustkort, Notis, useNotis, SvitChip } from '../delat/Ui.jsx'
 import './hallplats.css'
 
 // Hållplatsen — Bus Jam med spårvagnar.
 // Tryck på en resenär med fri väg upp till perrongen. Rätt färg kliver på
 // vagnen, fel färg sätter sig på bänken. Full bänk = slut.
+//
+// Klockan är en bonus, inte ett slut: hinner man innan den går ut blir det
+// extra mynt. Man ska få tänka efter i lugn och ro.
 
 const ID = 'hallplatsen'
 const W = 360
@@ -28,10 +32,15 @@ const BOOST = {
   vinka: { ikon: '👋', namn: 'Vinka', pris: 120 },
 }
 const FORTSATT_PLATS = 80
-const FORTSATT_TID = 60
+const TIDSBONUS = 8
 const HUD = '#f6d2b0'
 
 const farg = (f) => (f >= 0 && FARGER[f] ? FARGER[f].hex : '#6b7280')
+
+function hamtaBana(niva) {
+  if (niva <= BANOR.length) return avkoda(niva, BANOR[niva - 1])
+  return genereraBana(niva)
+}
 
 export default function HallplatsGame() {
   const [spar, setSpar, sparRef] = useSpar('hallplatsen-v1', START)
@@ -42,13 +51,24 @@ export default function HallplatsGame() {
 
   const [aktivNiva, setAktivNiva] = useState(spar.niva)
   const [omgang, setOmgang] = useState(0)
-  const bana = useMemo(() => genereraBana(aktivNiva), [aktivNiva])
-  const spel = useMemo(() => skapaSpel(bana), [bana, omgang]) // eslint-disable-line react-hooks/exhaustive-deps
+  const bana = useMemo(() => hamtaBana(aktivNiva), [aktivNiva])
+  // Vinstsvitens hjälp: extra platser på bänken från start (tappas vid förlust).
+  const hjalp = useMemo(() => svitHjalp(sparRef.current.svit || 0), [omgang, aktivNiva]) // eslint-disable-line react-hooks/exhaustive-deps
+  const spel = useMemo(() => {
+    const sp = skapaSpel(bana)
+    for (let i = 0; i < hjalp.extra; i++) sp.extraPlats()
+    return sp
+  }, [bana, omgang]) // eslint-disable-line react-hooks/exhaustive-deps
   const [, rendera] = useReducer((x) => x + 1, 0)
   const [vinst, setVinst] = useState(null)
-  const [slut, setSlut] = useState(null) // 'bank' | 'tid'
+  const [slut, setSlut] = useState(null) // 'bank'
   const [lyftLage, setLyftLage] = useState(false)
   const [notis, visaNotis] = useNotis()
+  useEffect(() => {
+    if (hjalp.extra <= 0) return
+    const id = setTimeout(() => visaNotis(`🔥 Vinstsvit ${sparRef.current.svit}: +${hjalp.extra} ${hjalp.extra === 1 ? 'plats' : 'platser'} på bänken`, 2200), bana.svar !== 'normal' ? 2400 : 600)
+    return () => clearTimeout(id)
+  }, [spel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const cs = Math.min(44, (W - 20) / bana.w)
   const gx = (W - bana.w * cs) / 2
@@ -69,6 +89,7 @@ export default function HallplatsGame() {
       bastaKombo: 0,
       tidKvar: bana.tid,
       tidIgang: false,
+      overtid: false,
       sistaSek: 99,
       klar: false,
       firat: false,
@@ -310,11 +331,11 @@ export default function HallplatsGame() {
       niva: aktivNiva,
       svar: bana.svar,
       perfekt: !s.anvandeBank,
-      extra: Math.floor(s.bastaKombo / 2),
+      extra: Math.floor(s.bastaKombo / 2) + (s.overtid ? 0 : TIDSBONUS),
       boostTyper: Object.keys(BOOST),
     })
     setSpar(res.spar)
-    const visa = { ...res.resultat, bastaKombo: s.bastaKombo }
+    const visa = { ...res.resultat, bastaKombo: s.bastaKombo, inomTid: !s.overtid, kombo: Math.floor(s.bastaKombo / 2) }
     vinstTimer.current = setTimeout(() => setVinst(visa), fordrojning)
   }
 
@@ -335,14 +356,6 @@ export default function HallplatsGame() {
     ljud.booster()
     rendera()
   }
-  function fortsattTid() {
-    if (!betala(FORTSATT_TID)) return
-    a.current.tidKvar += 30
-    a.current.klar = false
-    setSlut(null)
-    ljud.booster()
-    rendera()
-  }
 
   /* --------------------------------------------------------------- uppdatera */
 
@@ -353,7 +366,7 @@ export default function HallplatsGame() {
     s.t += dt
 
     // klockan
-    if (s.tidIgang && !s.klar && !vinst && !slut && typeof document !== 'undefined' && !document.hidden) {
+    if (s.tidIgang && !s.overtid && !s.klar && !vinst && !slut && typeof document !== 'undefined' && !document.hidden) {
       s.tidKvar = Math.max(0, s.tidKvar - dt)
       const sek = Math.ceil(s.tidKvar)
       if (sek !== s.sistaSek) {
@@ -361,10 +374,11 @@ export default function HallplatsGame() {
         if (sek <= 10 && sek > 0) ljud.ton(1400, 0.04, 'square', 0.04)
         rendera()
       }
-      if (s.tidKvar <= 0) {
-        s.klar = true
-        ljud.forlust()
-        setSlut('tid')
+      if (s.tidKvar <= 0 && !s.overtid) {
+        s.overtid = true
+        ljud.varning()
+        visaNotis('⏱ Övertid – ingen tidsbonus', 2000)
+        rendera()
       }
     }
 
@@ -851,11 +865,17 @@ export default function HallplatsGame() {
         niva={aktivNiva}
         svar={bana.svar}
         mynt={mynt}
-        hoger={null}
+        hoger={<SvitChip svit={spar.svit || 0} />}
       >
-        <span className={`ds-chip${tid <= 10 && s.tidIgang ? ' varm' : ''}`}>
-          ⏱ <b>{Math.floor(tid / 60)}:{String(tid % 60).padStart(2, '0')}</b>
-        </span>
+        {s.overtid ? (
+          <span className="ds-chip hp-overtid" title="Klockan gick ut — ingen tidsbonus">
+            ⏱ <b>Övertid</b>
+          </span>
+        ) : (
+          <span className={`ds-chip${tid <= 10 && s.tidIgang ? ' varm' : ''}`} title={`Klara banan innan klockan går ut: +${TIDSBONUS} mynt`}>
+            ⏱ <b>{Math.floor(tid / 60)}:{String(tid % 60).padStart(2, '0')}</b>
+          </span>
+        )}
       </Topprad>
       <div className="hp-info">
         <span className="hp-skylt">
@@ -880,7 +900,7 @@ export default function HallplatsGame() {
             resultat={vinst}
             ljud={ljud}
             boostInfo={BOOST}
-            rader={vinst.bastaKombo >= 2 ? [[`Bästa kombo x${vinst.bastaKombo}`, `+${vinst.extra}`]] : []}
+            rader={[...(vinst.inomTid ? [['⏱ I tid', `+${TIDSBONUS}`]] : []), ...(vinst.bastaKombo >= 2 ? [[`Bästa kombo x${vinst.bastaKombo}`, `+${vinst.kombo}`]] : [])]}
             onNasta={nasta}
             nastaText={`Mot ${hallplatsFor(sparRef.current.niva)}`}
           />
@@ -891,18 +911,9 @@ export default function HallplatsGame() {
             text="Ingen plats kvar att vänta på."
             ikon="🪑"
             mynt={mynt}
-            fortsatt={spel.bank.length < 5 + MAX_EXTRA ? { text: 'Fortsätt med +1 plats', pris: FORTSATT_PLATS, onClick: fortsattPlats } : null}
+            fortsatt={spel.bank.length < 5 + MAX_EXTRA + hjalp.extra ? { text: 'Fortsätt med +1 plats', pris: FORTSATT_PLATS, onClick: fortsattPlats } : null}
             onIgen={forsokIgen}
-          />
-        )}
-        {slut === 'tid' && (
-          <Forlustkort
-            titel="Tiden är ute!"
-            text={`${kvarVagnar} ${kvarVagnar === 1 ? 'vagn' : 'vagnar'} kvar.`}
-            ikon="⏰"
-            mynt={mynt}
-            fortsatt={{ text: 'Fortsätt med +30 s', pris: FORTSATT_TID, onClick: fortsattTid }}
-            onIgen={forsokIgen}
+            svit={spar.svit || 0}
           />
         )}
       </div>
@@ -921,7 +932,7 @@ export default function HallplatsGame() {
         />
         <BoostKnapp {...BOOST.vinka} antal={spar.boost.vinka || 0} mynt={mynt} onClick={vinka} disabled={Boolean(vinst || slut)} />
       </div>
-      <p className="ds-hjalp">Tryck på en resenär med fri väg upp. Rätt färg kliver på spårvagnen, fel färg får vänta på bänken. Tre per vagn.</p>
+      <p className="ds-hjalp">Tryck på en resenär med fri väg upp. Rätt färg kliver på spårvagnen, fel färg får vänta på bänken. Tre per vagn. Hinner du innan klockan går ut blir det bonusmynt.</p>
     </div>
   )
 }

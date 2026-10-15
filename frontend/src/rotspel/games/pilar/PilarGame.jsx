@@ -3,20 +3,24 @@ import { genereraBana, skapaSpel, DX, DY, HJARTAN } from './engine.js'
 import { useSpelyta } from '../delat/useSpelyta.js'
 import { skapaLjud } from '../delat/ljud.js'
 import { skapaFx, easeOut, easeOutBack } from '../delat/fx.js'
-import { useSpar, useMynt, belona, forlust, betala } from '../delat/meta.js'
-import { Topprad, Hjartan, BoostKnapp, Banner, Vinstkort, Forlustkort, Notis, useNotis } from '../delat/Ui.jsx'
+import { useSpar, useMynt, belona, forlust, betala, svitHjalp } from '../delat/meta.js'
+import { Topprad, Hjartan, BoostKnapp, Banner, Vinstkort, Forlustkort, Notis, useNotis, SvitChip } from '../delat/Ui.jsx'
+import { bildFor, ritaBild, laddaFoto, allaBilder, tumnagel } from './bild.js'
 import './pilar.css'
 
 // Pilflykt — Arrows – Puzzle Escape i Rötspel.
 // Spelet öppnar direkt i banan man är på. Tryck på en pil: är vägen fri
 // flyger den ut, annars krockar den och ett hjärta går.
+//
+// Under pilarna ligger en bild (en emoji, ibland ett foto på Happy) som
+// syns ruta för ruta när pilarna åker ut. Klarade bilder samlas i albumet.
 
 const ID = 'pilflykt'
 const W = 360
 const PAD = 12
 // Höjden följer brädet så att det inte blir tomma fält ovanför och under.
 const hojdFor = (bana) => Math.round(Math.max(300, Math.min(470, ((W - PAD * 2) * bana.h) / bana.w + PAD * 2)))
-const START = { niva: 1, basta: 0, svit: 0, kista: 0, boost: { tips: 3, blixt: 1 } }
+const START = { niva: 1, basta: 0, svit: 0, kista: 0, boost: { tips: 3, blixt: 1 }, album: [] }
 const BOOST = {
   tips: { ikon: '💡', namn: 'Tips', pris: 40 },
   blixt: { ikon: '⚡', namn: 'Blixt', pris: 120 },
@@ -36,12 +40,36 @@ export default function PilarGame() {
   const [aktivNiva, setAktivNiva] = useState(spar.niva)
   const [omgang, setOmgang] = useState(0)
   const bana = useMemo(() => genereraBana(aktivNiva), [aktivNiva])
-  const spel = useMemo(() => skapaSpel(bana), [bana, omgang]) // eslint-disable-line react-hooks/exhaustive-deps
+  const bild = useMemo(() => bildFor(aktivNiva, bana), [aktivNiva, bana])
+  // Vinstsvitens hjälp: extra hjärtan från start (tappas vid förlust).
+  const hjalp = useMemo(() => svitHjalp(sparRef.current.svit || 0), [omgang, aktivNiva]) // eslint-disable-line react-hooks/exhaustive-deps
+  const spel = useMemo(() => {
+    const sp = skapaSpel(bana)
+    for (let i = 0; i < hjalp.extra; i++) sp.extraHjarta()
+    return sp
+  }, [bana, omgang]) // eslint-disable-line react-hooks/exhaustive-deps
   const [, rendera] = useReducer((x) => x + 1, 0)
   const [vinst, setVinst] = useState(null)
   const [slut, setSlut] = useState(false)
   const [hjartaBrast, setHjartaBrast] = useState(false)
+  const [album, setAlbum] = useState(false)
+  const [foto, setFoto] = useState(null)
   const [notis, visaNotis] = useNotis()
+  useEffect(() => {
+    if (hjalp.extra <= 0) return
+    const id = setTimeout(() => visaNotis(`🔥 Vinstsvit ${sparRef.current.svit}: +${hjalp.extra} ${hjalp.extra === 1 ? 'hjärta' : 'hjärtan'}`, 2200), bana.svar !== 'normal' ? 2400 : 600)
+    return () => clearTimeout(id)
+  }, [spel]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Happy-foton laddas innan de kan ritas under brädet.
+  useEffect(() => {
+    setFoto(null)
+    if (bild.typ !== 'happy') return
+    let levande = true
+    laddaFoto(bild.src, (img) => levande && setFoto(img))
+    return () => {
+      levande = false
+    }
+  }, [bild])
 
   // Allt som animeras bor i en ref, ritloopen läser den.
   const a = useRef(null)
@@ -59,6 +87,8 @@ export default function PilarGame() {
       senast: -10,
       klar: false,
       vinstTid: 0,
+      avslojd: new Float32Array(bana.w * bana.h).fill(-1),
+      glans: -1,
     }
   }
   useEffect(() => {
@@ -79,6 +109,12 @@ export default function PilarGame() {
     return { cs, ox: (W - bana.w * cs) / 2, oy: (H - bana.h * cs) / 2 }
   }, [bana, H])
   const mitt = (x, y) => [geo.ox + (x + 0.5) * geo.cs, geo.oy + (y + 0.5) * geo.cs]
+  const bildHue = (aktivNiva * 47 + 200) % 360
+  const bildCanvas = useMemo(() => {
+    if (typeof document === 'undefined') return null
+    const k = Math.min(3, (window.devicePixelRatio || 1) * 1.25)
+    return ritaBild(bild, bana.w * geo.cs, bana.h * geo.cs, k, bildHue, foto)
+  }, [bild, bana, geo, foto, bildHue])
 
   const farg = useMemo(() => {
     const bas = (aktivNiva * 47) % 360
@@ -105,6 +141,11 @@ export default function PilarGame() {
     if (res.typ === 'ut') {
       const p = spel.pilar[id]
       s.rorelse.set(id, { typ: 'ut', start: nu, langd: p.celler.length, vag: spel.vagLangd(id) })
+      // rutorna blir lediga i tur och ordning när pilen glider ut (svansen först)
+      p.celler.forEach(([cx, cy], i) => {
+        const fs = i + 0.6
+        s.avslojd[cy * bana.w + cx] = nu + (-14 + Math.sqrt(196 + 136 * fs)) / 68
+      })
       if (s.tips === id) s.tips = -1
       s.kombo = nu - s.senast < KOMBO_FONSTER ? s.kombo + 1 : 1
       s.senast = nu
@@ -247,8 +288,11 @@ export default function PilarGame() {
       extra: Math.floor(s.bastaKombo / 2),
       boostTyper: Object.keys(BOOST),
     })
-    setSpar(res.spar)
-    const visa = { ...res.resultat, bastaKombo: s.bastaKombo }
+    const fore = sparRef.current.album || []
+    const ny = !fore.includes(bild.id)
+    const albumNu = ny ? [...fore, bild.id] : fore
+    setSpar({ ...res.spar, album: albumNu })
+    const visa = { ...res.resultat, bastaKombo: s.bastaKombo, ny, antal: albumNu.length }
     vinstTimer.current = setTimeout(() => setVinst(visa), fordrojning)
   }
 
@@ -300,10 +344,13 @@ export default function PilarGame() {
     }
     if (s.klar && s.vinstTid && s.t >= s.vinstTid && !s.firat) {
       s.firat = true
+      s.glans = s.t
+      for (let i = 0; i < s.avslojd.length; i++) if (s.avslojd[i] < 0) s.avslojd[i] = s.t
       fx.konfetti(W / 2, H * 0.75, 90, W)
       fx.skaka(5)
       ljud.vinst()
-      vinna(900)
+      fx.text(W / 2, H * 0.5, bild.typ === 'happy' ? '🐶 Happy!' : bild.namn, { farg: '#ffffff', storlek: 34, liv: 1.6, stig: 24 })
+      vinna(1500)
     }
   }
 
@@ -314,24 +361,56 @@ export default function PilarGame() {
     ctx.save()
     ctx.translate(fx.skakX(), fx.skakY())
 
-    // brädets form: svagt ifyllda rutor och en prick i varje
+    // brädets form: dolda rutor är mörka plattor med en prick, avslöjade
+    // rutor visar sin bit av bilden (poppar fram när pilen lämnat dem)
     const { cs } = geo
-    ctx.fillStyle = 'rgba(120, 140, 255, 0.07)'
+    const av = s.avslojd
+    const k = bildCanvas ? bildCanvas.width / (bana.w * cs) : 1
     for (let y = 0; y < bana.h; y++) {
       for (let x = 0; x < bana.w; x++) {
-        if (!bana.mask[y * bana.w + x]) continue
-        ctx.fillRect(geo.ox + x * cs + 0.5, geo.oy + y * cs + 0.5, cs - 1, cs - 1)
-      }
-    }
-    ctx.fillStyle = 'rgba(160, 180, 230, 0.16)'
-    for (let y = 0; y < bana.h; y++) {
-      for (let x = 0; x < bana.w; x++) {
-        if (!bana.mask[y * bana.w + x]) continue
-        const [mx, my] = mitt(x, y)
+        const i = y * bana.w + x
+        if (!bana.mask[i]) continue
+        const x0 = geo.ox + x * cs
+        const y0 = geo.oy + y * cs
+        const ta = av[i]
+        if (ta >= 0 && t >= ta && bildCanvas) {
+          const q = Math.min(1, (t - ta) / 0.24)
+          const sk = 0.55 + 0.45 * easeOutBack(q)
+          const d = (cs * (1 - sk)) / 2
+          ctx.drawImage(bildCanvas, x * cs * k, y * cs * k, cs * k, cs * k, x0 + d, y0 + d, cs * sk, cs * sk)
+          if (q < 1) {
+            ctx.fillStyle = `rgba(255,255,255,${(1 - q) * 0.7})`
+            ctx.fillRect(x0 + d, y0 + d, cs * sk, cs * sk)
+          }
+          continue
+        }
+        ctx.fillStyle = 'rgba(120, 140, 255, 0.09)'
+        ctx.fillRect(x0 + 0.5, y0 + 0.5, cs - 1, cs - 1)
+        ctx.fillStyle = 'rgba(160, 180, 230, 0.18)'
         ctx.beginPath()
-        ctx.arc(mx, my, Math.max(1.2, cs * 0.06), 0, Math.PI * 2)
+        ctx.arc(x0 + cs / 2, y0 + cs / 2, Math.max(1.2, cs * 0.06), 0, Math.PI * 2)
         ctx.fill()
       }
+    }
+    // glans över hela bilden när banan är klar
+    if (s.glans >= 0 && t - s.glans < 1.2) {
+      const q = (t - s.glans) / 1.2
+      const bx = geo.ox
+      const by = geo.oy
+      const bw = bana.w * cs
+      const bh = bana.h * cs
+      const pos = bx - bh + (bw + bh * 2) * q
+      const g = ctx.createLinearGradient(pos, by, pos + bh * 0.6, by + bh)
+      g.addColorStop(0, 'rgba(255,255,255,0)')
+      g.addColorStop(0.5, 'rgba(255,255,255,0.55)')
+      g.addColorStop(1, 'rgba(255,255,255,0)')
+      ctx.save()
+      ctx.beginPath()
+      for (let y = 0; y < bana.h; y++) for (let x = 0; x < bana.w; x++) if (bana.mask[y * bana.w + x]) ctx.rect(bx + x * cs, by + y * cs, cs + 0.5, cs + 0.5)
+      ctx.clip()
+      ctx.fillStyle = g
+      ctx.fillRect(bx, by, bw, bh)
+      ctx.restore()
     }
 
     ctx.lineCap = 'round'
@@ -503,9 +582,15 @@ export default function PilarGame() {
         <Hjartan antal={spel.hjartan()} max={HJARTAN} forlorat={hjartaBrast} />
       </Topprad>
       <div className="pf-info">
-        <span className="pf-form">{bana.namn}</span>
-        <span className="pf-kvar">
-          <b>{kvar}</b> av {totalt} pilar kvar
+        <span className="pf-form">{bild.typ === 'happy' ? '🐶 Happy-bild!' : bild.passar ? bana.namn : '❓ Hemlig bild'}</span>
+        <span className="pf-hoger">
+          <SvitChip svit={spar.svit || 0} />
+          <button className="ds-knapp-liten pf-albumknapp" onClick={() => setAlbum(true)} aria-label="Album">
+            🖼 {(spar.album || []).length}
+          </button>
+          <span className="pf-kvar">
+            <b>{kvar}</b>/{totalt}
+          </span>
         </span>
       </div>
       <div className="pf-mater" aria-hidden="true">
@@ -520,8 +605,10 @@ export default function PilarGame() {
             resultat={vinst}
             ljud={ljud}
             boostInfo={BOOST}
+            titel={bild.typ === 'happy' ? 'Happy!' : undefined}
             rader={vinst.bastaKombo >= 2 ? [[`Bästa kombo x${vinst.bastaKombo}`, `+${vinst.extra}`]] : []}
             onNasta={nasta}
+            barn={<BildKort bild={bild} ny={vinst.ny} antal={vinst.antal} />}
           />
         )}
         {slut && (
@@ -532,8 +619,10 @@ export default function PilarGame() {
             mynt={mynt}
             fortsatt={{ text: 'Fortsätt med +1 ❤', pris: FORTSATT_PRIS, onClick: fortsatt }}
             onIgen={forsokIgen}
+            svit={spar.svit || 0}
           />
         )}
+        {album && <Album samlade={spar.album || []} onStang={() => setAlbum(false)} />}
       </div>
       <div className="ds-boostrad">
         {Object.entries(BOOST).map(([typ, b]) => (
@@ -550,6 +639,58 @@ export default function PilarGame() {
         ))}
       </div>
       <p className="ds-hjalp">Tryck på en pil så flyger den ut åt det håll den pekar. Står något i vägen krockar den och du förlorar ett hjärta. Håll kvar fingret för att se vägen ut utan att skicka.</p>
+    </div>
+  )
+}
+
+const ALLA = allaBilder()
+
+function BildKort({ bild, ny, antal }) {
+  return (
+    <div className="pf-bildkort">
+      <figure className={bild.typ === 'happy' ? 'happy' : ''}>
+        <img src={bild.typ === 'happy' ? bild.src : tumnagel(bild.rader)} alt={bild.namn} className={bild.typ === 'happy' ? '' : 'pixlad'} />
+      </figure>
+      <div>
+        <b>{bild.namn}</b>
+        <small>
+          {ny ? '✨ Ny i albumet' : 'Redan i albumet'} · {antal} av {ALLA.length}
+        </small>
+      </div>
+    </div>
+  )
+}
+
+function Album({ samlade, onStang }) {
+  const har = new Set(samlade)
+  const antal = ALLA.filter((b) => har.has(b.id)).length
+  return (
+    <div className="ds-kort-bak pf-album" role="dialog" aria-modal="true" aria-label="Album">
+      <div className="pf-album-ram">
+        <div className="pf-album-topp">
+          <b>Album</b>
+          <span>
+            {antal} av {ALLA.length}
+          </span>
+          <button className="ds-knapp-liten" onClick={onStang}>
+            Stäng
+          </button>
+        </div>
+        <p className="pf-album-text">Varje bräde döljer en bild. Klara banan så hamnar den här — var sjätte bana är ett foto på Happy.</p>
+        <div className="pf-album-rutnat">
+          {ALLA.map((b) =>
+            har.has(b.id) ? (
+              <figure key={b.id} className={b.typ === 'happy' ? 'happy' : ''} title={b.namn}>
+                <img src={b.typ === 'happy' ? b.src : tumnagel(b.rader)} alt={b.namn} className={b.typ === 'happy' ? '' : 'pixlad'} loading="lazy" />
+              </figure>
+            ) : (
+              <figure key={b.id} className="last" title="Inte hittad än">
+                <span>{b.typ === 'happy' ? '🐶' : '?'}</span>
+              </figure>
+            )
+          )}
+        </div>
+      </div>
     </div>
   )
 }

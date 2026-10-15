@@ -6,8 +6,8 @@ import { useSpelyta } from '../delat/useSpelyta.js'
 import { skapaLjud } from '../delat/ljud.js'
 import { skapaFx, rundRekt, ljusare, easeOut, lerp } from '../delat/fx.js'
 import { slump, blanda } from '../delat/rng.js'
-import { useSpar, useMynt, belona, forlust, betala } from '../delat/meta.js'
-import { Topprad, BoostKnapp, Banner, Vinstkort, Forlustkort, Notis, useNotis } from '../delat/Ui.jsx'
+import { useSpar, useMynt, belona, forlust, betala, svitHjalp } from '../delat/meta.js'
+import { Topprad, BoostKnapp, Banner, Vinstkort, Forlustkort, Notis, useNotis, SvitChip } from '../delat/Ui.jsx'
 import { ALBUM_CAPTIONS } from '../revir/config.js'
 import foto17 from '../revir/album/17-snopromenad.webp'
 import foto15 from '../revir/album/15-rodhalsduk.webp'
@@ -79,7 +79,15 @@ export default function PixelGame() {
   const [aktivNiva, setAktivNiva] = useState(spar.niva)
   const [omgang, setOmgang] = useState(0)
   const bana = useMemo(() => byggBana(aktivNiva), [aktivNiva])
-  const spel = useMemo(() => skapaSpel(bana), [bana, omgang]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Vinstsvitens hjälp från start: +1 väntplats, och från sex vinster i rad
+  // även +1 plats på bandet. Tappas vid förlust.
+  const hjalp = useMemo(() => svitHjalp(sparRef.current.svit || 0), [omgang, aktivNiva]) // eslint-disable-line react-hooks/exhaustive-deps
+  const spel = useMemo(() => {
+    const s = skapaSpel(bana)
+    if (hjalp.extra >= 1) s.extraSlot()
+    if (hjalp.extra >= 2) s.extraBricka()
+    return s
+  }, [bana, omgang]) // eslint-disable-line react-hooks/exhaustive-deps
   const [, rendera] = useReducer((x) => x + 1, 0)
   const [vinst, setVinst] = useState(null)
   const [slut, setSlut] = useState(false)
@@ -88,6 +96,11 @@ export default function PixelGame() {
   const valRef = useRef(null)
   valRef.current = valLage
   const [notis, visaNotis] = useNotis()
+  useEffect(() => {
+    if (hjalp.extra <= 0) return
+    const id = setTimeout(() => visaNotis(`🔥 Vinstsvit ${sparRef.current.svit}: +1 väntplats${hjalp.extra >= 2 ? ' och +1 band' : ''}`, 2200), bana.svar !== 'normal' ? 2400 : 700)
+    return () => clearTimeout(id)
+  }, [spel]) // eslint-disable-line react-hooks/exhaustive-deps
   // Superenhörningens laddning. Ligger i en ref under rundan och sparas vid
   // vinst — en förlust nollar den, som i originalet.
   const laddRef = useRef(Math.min(ENHORNING_MAX, spar.enhorning || 0))
@@ -933,7 +946,7 @@ export default function PixelGame() {
     const fara = fyllda >= spel.slots.length - 1 && !s.klar
     for (let p = 0; p < spel.slots.length; p++) {
       const x = slotX(p)
-      ctx.fillStyle = fara ? `rgba(255, 60, 90, ${0.2 + Math.sin(t * 9) * 0.1})` : p >= SLOTS ? '#2e2752' : '#151c33'
+      ctx.fillStyle = fara ? `rgba(255, 60, 90, ${0.2 + Math.sin(t * 9) * 0.1})` : p >= bana.slots ? '#2e2752' : '#151c33'
       rundRekt(ctx, x - 20, SLOT_Y - 20, 40, 40, 12)
       ctx.fill()
       ctx.strokeStyle = fara ? 'rgba(255, 77, 109, 0.8)' : 'rgba(255,255,255,0.1)'
@@ -1039,6 +1052,7 @@ export default function PixelGame() {
         <span className="px-mater" aria-hidden="true">
           <i style={{ width: `${((spel.totalt - kvar) / Math.max(1, spel.totalt)) * 100}%` }} />
         </span>
+        <SvitChip svit={spar.svit || 0} />
         <span className="px-kvar">
           <b>{kvar}</b> kvar
         </span>
@@ -1066,6 +1080,7 @@ export default function PixelGame() {
             mynt={mynt}
             fortsatt={spel.slots.length < SLOTS + MAX_EXTRA ? { text: 'Fortsätt med +1 plats', pris: FORTSATT_PRIS, onClick: fortsatt } : null}
             onIgen={forsokIgen}
+            svit={spar.svit || 0}
           />
         )}
         {galleri && <Galleri samlade={spar.galleri} onStang={() => setGalleri(false)} />}
