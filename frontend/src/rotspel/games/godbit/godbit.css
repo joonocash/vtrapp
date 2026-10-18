@@ -1,0 +1,94 @@
+/* Godbiten — det som inte är delat. */
+
+.gb-rot { --accent: #f59f00; --accent2: #f472b6; padding-top: 8px; }
+
+.gb-topp { display: flex; align-items: center; gap: 8px; min-height: 38px; margin-bottom: 8px; }
+.gb-ikonknapp {
+  width: 36px; height: 36px; flex-shrink: 0; border-radius: 12px; font-size: 18px; font-weight: 900;
+  background: var(--panel); box-shadow: inset 0 0 0 1px var(--kant);
+}
+.gb-ikonknapp:active { transform: scale(0.94); }
+.gb-titel { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.1; }
+.gb-titel b { font-size: 15.5px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gb-titel small { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gb-stjarnor { display: flex; gap: 1px; font-size: 21px; line-height: 1; flex-shrink: 0; }
+.gb-stjarnor span { color: #39405a; }
+.gb-stjarnor span.pa { color: #ffd43b; text-shadow: 0 0 10px rgba(255, 212, 59, 0.8); animation: ds-studs 520ms cubic-bezier(.34,1.56,.64,1); }
+
+.gb-yta { border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1px var(--kant), 0 10px 30px -14px rgba(0, 0, 0, 0.8); }
+.gb-yta canvas { border-radius: 14px; cursor: crosshair; }
+
+.gb-reglage { display: flex; gap: 6px; margin-top: 8px; }
+.gb-knapp {
+  flex: 1; height: 44px; border-radius: 14px; font-weight: 900; font-size: 14.5px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--panel); box-shadow: inset 0 0 0 1px var(--kant);
+}
+.gb-knapp:active:not(:disabled) { transform: scale(0.97); }
+.gb-knapp.tips { background: linear-gradient(180deg, #ffe08a, #f5b81c); color: #3b2300; box-shadow: 0 3px 0 #a16207; }
+.gb-knapp.tips:disabled { filter: grayscale(0.8) brightness(0.7); }
+.gb-pris { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px; background: rgba(0, 0, 0, 0.15); font-size: 12px; }
+
+/* vinstkortet */
+.gb-vinst { margin-top: 6px; }
+.gb-vinst-stj { display: flex; justify-content: center; gap: 6px; font-size: 36px; line-height: 1; }
+.gb-vinst-stj span { color: #39405a; transform: scale(0.8); transition: color 200ms, transform 320ms cubic-bezier(.34,1.56,.64,1), text-shadow 200ms; }
+.gb-vinst-stj span:nth-child(2) { font-size: 44px; transform: translateY(-6px) scale(0.8); }
+.gb-vinst-stj span.pa { color: #ffd43b; transform: scale(1.1); text-shadow: 0 0 16px rgba(255, 212, 59, 0.85); }
+.gb-vinst-stj span:nth-child(2).pa { transform: translateY(-6px) scale(1.12); }
+.gb-vinst-text { margin-top: 6px; font-size: 12.5px; color: var(--dim); }
+.gb-vinst-ny { margin-top: 8px; padding: 6px 10px; border-radius: 10px; font-weight: 900; font-size: 13px; background: rgba(250, 204, 21, 0.14); color: #fde68a; animation: ds-puls 1.2s ease-in-out infinite; }
+.gb-vinst-knappar { display: flex; gap: 8px; margin-top: 8px; }
+.gb-liten { flex: 1; height: 32px; border-radius: 10px; font-size: 13px; font-weight: 800; color: var(--dim); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.14); }
+.gb-rot .ds-kort-bak { overflow-y: auto; }
+.gb-rot .ds-kort { margin: auto 0; padding: 14px 14px 12px; }
+.gb-rot .ds-kort-titel { font-size: 30px; }
+.gb-rot .ds-summa { margin: 8px 0 4px; }
+.gb-rot .ds-summa b { font-size: 28px; }
+.gb-rot .ds-kista { margin: 4px 0 10px; }
+
+/* hittat foto */
+.gb-foto img { display: block; width: 100%; max-width: 260px; aspect-ratio: 1; object-fit: cover; margin: 10px auto 6px; border-radius: 16px; box-shadow: 0 0 0 3px #ffd43b, 0 12px 30px -10px rgba(0, 0, 0, 0.8); animation: ds-studs 600ms cubic-bezier(.34,1.56,.64,1); }
+
+/* kartan */
+.gb-karta-bak { place-items: stretch; padding: 8px; }
+.gb-karta {
+  display: flex; flex-direction: column; max-height: 100%; min-height: 0; border-radius: 20px; overflow: hidden;
+  background: linear-gradient(180deg, #1c2442, #121830); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 24px 60px -20px rgba(0, 0, 0, 0.8);
+  animation: ds-kort-in 380ms cubic-bezier(.34,1.56,.64,1);
+}
+.gb-karta-topp { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 12px 8px 16px; }
+.gb-karta-topp div { display: flex; flex-direction: column; min-width: 0; }
+.gb-karta-topp b { font-size: 21px; font-weight: 900; }
+.gb-karta-topp small { font-size: 12px; color: var(--dim); }
+.gb-stang { width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; background: var(--panel2); font-weight: 900; }
+.gb-karta-lista { overflow-y: auto; padding: 0 10px 12px; display: grid; gap: 10px; }
+.gb-varld {
+  padding: 10px; border-radius: 16px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--v1) 40%, #1a2140), color-mix(in srgb, var(--v2) 28%, #121830));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.gb-varld.last { filter: grayscale(0.6) brightness(0.8); }
+.gb-varld header { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+.gb-varld header div { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.gb-varld header b { font-size: 15px; font-weight: 900; }
+.gb-varld header small { font-size: 11.5px; color: rgba(255, 255, 255, 0.75); }
+.gb-varld-ikon { width: 32px; height: 32px; display: grid; place-items: center; font-size: 20px; border-radius: 50%; background: rgba(255, 255, 255, 0.15); }
+.gb-banknappar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.gb-bank { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 2px 5px; border-radius: 12px; background: rgba(10, 14, 30, 0.5); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.gb-bank:active:not(:disabled) { transform: scale(0.95); }
+.gb-bank:disabled { opacity: 0.45; }
+.gb-bank.nu { box-shadow: inset 0 0 0 2px #ffd43b, 0 0 14px rgba(255, 212, 59, 0.35); }
+.gb-bank-nr { font-size: 16px; font-weight: 900; line-height: 1.1; }
+.gb-bank-stj { display: flex; font-size: 10px; line-height: 1; }
+.gb-bank-stj i { font-style: normal; color: rgba(255, 255, 255, 0.22); }
+.gb-bank-stj i.pa { color: #ffd43b; }
+
+/* albumet */
+.gb-album { overflow-y: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 12px 14px; }
+.gb-album figure { margin: 0; aspect-ratio: 1; border-radius: 12px; overflow: hidden; display: grid; place-items: center; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.gb-album figure img { width: 100%; height: 100%; object-fit: cover; }
+.gb-album figure.last span { color: rgba(255, 255, 255, 0.3); font-weight: 900; font-size: 13px; }
+
+/* tipsen ligger högt upp så att de inte skymmer godbiten, och stannar längre */
+.gb-rot .ds-notis { top: 9%; font-size: 13px; max-width: 86%; animation-duration: 3.2s; }
