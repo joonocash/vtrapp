@@ -62,7 +62,7 @@ export const GAMES = [
   {
     id: 'pinnbollen',
     name: 'Pinnbollen',
-    blurb: 'Peggle! Sikta, skjut och tänd alla orange pinnar. Sista träffen ger Extreme Fever.',
+    blurb: 'Peggle! Sikta, skjut och tänd alla orange pinnar. Äventyr, oändligt läge, bonusbanor som smäller och en egen baneditor.',
     category: 'arkad',
     accent: 'text-orange-400',
     ikon: '🎯',

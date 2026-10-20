@@ -40,6 +40,8 @@ export const FYSIK = {
 const MAXFART = 1100
 const FAST_TID = 1.1
 const SKOTT_TAK = 40
+const KEDJA_DT = 0.09 // tid mellan smällarna i en kedjereaktion
+const LANG_TID = 14 // efter så här länge i ett skott försvinner tända saker som kulan rör
 
 export const HINK = { bredd: 56, hojd: 20, y: H - 22, fart: (2 * Math.PI) / 6.5 }
 export const FACK_POANG = [10000, 50000, 100000, 50000, 10000]
@@ -64,6 +66,8 @@ export const STIL = {
   hinkskicklig: { namn: 'Hinkskicklig', poang: 5000 },
   dubbelkraft: { namn: 'Dubbelkraft', poang: 25000 },
   rensat: { namn: 'Rent hus', poang: 50000 },
+  kedja: { namn: 'Kedjereaktion', poang: 50000 },
+  mega: { namn: 'Megasmäll', poang: 100000 },
 }
 
 export const KRAFTER = {
@@ -143,11 +147,19 @@ function rotera(x, y, cx, cy, c, s) {
 
 /* ----------------------------------------------------------------- spelet */
 
-// bana: { namn, objekt: [...], grupper: [...], orange?: antal }
-// objekt: { typ: 'pinne'|'tegel', form: 'cirkel'|'segment'|'bage', x, y, r | x1,y1,x2,y2 | cx,cy,R,a0,a1, grupp?, ejOrange? }
+// bana: { namn, objekt: [...], grupper: [...], orange?: antal, fasta?: true }
+// objekt: { typ: 'pinne'|'tegel', form: 'cirkel'|'segment'|'bage', x, y, r | x1,y1,x2,y2 | cx,cy,R,a0,a1, grupp?, ejOrange?, farg0? }
 // grupp: { typ: 'rotera', cx, cy, w } | { typ: 'pendel', cx, cy, A, T } | { typ: 'glid', ax, ay, T, fas } | { typ: 'bana', R, T, fas }
-export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
+//
+// fasta: färgerna är bestämda i banan (farg0 på objekten) i stället för
+// slumpade — bonusbanorna vill ha de orange längs den väg kulan tar.
+//
+// val: kulor (antal från start), kulBonus (10 000 per kula kvar när banan
+// är klar), hinkBredd, extraGrona (fler gröna pinnar), start ({ spar, eld,
+// spok, trippel } — krafter som är igång från början).
+export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, hinkBredd = HINK.bredd, extraGrona = 0, start = {} } = {}) {
   const rnd = mulberry32(fro >>> 0)
+  start = { ...(bana.start || {}), ...start }
   const grupper = (bana.grupper || []).map((g) => ({ ...g, c: 1, s: 0, ox: 0, oy: 0, w: g.w || 0, vx: 0, vy: 0, vinkel: 0 }))
   const objekt = bana.objekt.map((o, id) => {
     const ut = { ...o, id, farg: 'bla', lit: false, borta: false, nr: 0 }
@@ -157,22 +169,30 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
     }
     return ut
   })
-  // 25 orange bland de som får vara orange, två gröna bland resten
-  const kandidater = objekt.filter((o) => !o.ejOrange)
-  const antalOrange = Math.min(bana.orange ?? ANTAL_ORANGE, kandidater.length)
-  blanda(kandidater, rnd)
-  for (let i = 0; i < antalOrange; i++) kandidater[i].farg = 'orange'
-  // gröna bara där kulan når (ejOrange = inbyggd i en sluten ring)
-  let ovriga = objekt.filter((o) => o.farg === 'bla' && !o.ejOrange)
-  if (ovriga.length < 2) ovriga = objekt.filter((o) => o.farg === 'bla')
-  blanda(ovriga, rnd)
-  // gröna: helst en i övre och en i undre halvan
-  const ovre = ovriga.filter((o) => (o.y ?? o.cy ?? o.y1) < 330)
-  const undre = ovriga.filter((o) => (o.y ?? o.cy ?? o.y1) >= 330)
-  const g1 = ovre[0] || ovriga[0]
-  const g2 = undre.find((o) => o !== g1) || ovriga.find((o) => o !== g1)
-  if (g1) g1.farg = 'gron'
-  if (g2) g2.farg = 'gron'
+  let antalOrange
+  if (bana.fasta) {
+    for (const o of objekt) o.farg = o.farg0 || 'bla'
+    antalOrange = objekt.filter((o) => o.farg === 'orange').length
+  } else {
+    // 25 orange bland de som får vara orange, två gröna bland resten
+    const kandidater = objekt.filter((o) => !o.ejOrange)
+    antalOrange = Math.min(bana.orange ?? ANTAL_ORANGE, kandidater.length)
+    blanda(kandidater, rnd)
+    for (let i = 0; i < antalOrange; i++) kandidater[i].farg = 'orange'
+    // gröna bara där kulan når (ejOrange = inbyggd i en sluten ring)
+    let ovriga = objekt.filter((o) => o.farg === 'bla' && !o.ejOrange)
+    if (ovriga.length < 2) ovriga = objekt.filter((o) => o.farg === 'bla')
+    blanda(ovriga, rnd)
+    // gröna: helst en i övre och en i undre halvan
+    const ovre = ovriga.filter((o) => (o.y ?? o.cy ?? o.y1) < 330)
+    const undre = ovriga.filter((o) => (o.y ?? o.cy ?? o.y1) >= 330)
+    const g1 = ovre[0] || ovriga[0]
+    const g2 = undre.find((o) => o !== g1) || ovriga.find((o) => o !== g1)
+    if (g1) g1.farg = 'gron'
+    if (g2) g2.farg = 'gron'
+    // fler gröna (en bonus i oändligt läge)
+    for (const o of ovriga.filter((q) => q.farg === 'bla').slice(0, extraGrona)) o.farg = 'gron'
+  }
 
   const spel = {
     bana,
@@ -195,12 +215,14 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
     skottTid: 0,
     extraGivna: 0,
     lista: [], // tända objekt i den ordning de träffades
+    kedjeKo: [], // gröna som ska smälla strax (kedjereaktion)
     stilar: [],
     kraftNamn: bana.kraft || 'spar',
-    sparKvar: 0,
-    eldKvar: 0,
-    spokKvar: 0,
-    trippelKvar: 0,
+    sparKvar: start.spar || 0,
+    eldKvar: start.eld || 0,
+    spokKvar: start.spok || 0,
+    trippelKvar: start.trippel || 0,
+    hinkBredd,
     lila: null,
     feber: false,
     fack: null,
@@ -308,7 +330,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
 
   const orangeKvar = () => objekt.filter((o) => o.farg === 'orange' && !o.lit && !o.borta).length
 
-  function tand(o, handelser, k) {
+  function tand(o, handelser, k, kedja = false) {
     if (o.lit || o.borta) return
     o.lit = true
     spel.lista.push(o)
@@ -322,6 +344,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
     const varde = bas * (spel.trippelKvar > 0 ? 3 : 1)
     spel.skottSumma += varde
     spel.skottTraffar++
+    if (spel.skottTraffar === 50 && !spel.stilar.includes('mega')) stil('mega', handelser)
     const fore = spel.extraGivna
     while (spel.extraGivna < EXTRA_KULA_VID.length && skottPoang() >= EXTRA_KULA_VID[spel.extraGivna]) spel.extraGivna++
     const [mx, my] = mitt(o)
@@ -347,7 +370,12 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
       if (k.glid >= 12 && !spel.stilar.includes('glid')) stil('glid', handelser)
     }
     if (spel.skottOrange >= 10 && !spel.stilar.includes('orangeattack')) stil('orangeattack', handelser)
-    if (o.farg === 'gron') kraft(o, handelser, k)
+    // en grön som tänds av en annan grön smäll smäller lite senare, så att
+    // kedjereaktionen syns som en våg
+    if (o.farg === 'gron') {
+      if (kedja) spel.kedjeKo.push({ t: spel.skottTid + KEDJA_DT, id: o.id })
+      else kraft(o, handelser, k)
+    }
     // sista orange: Extreme Fever
     if (o.farg === 'orange' && orangeKvar() === 0 && !spel.feber) {
       spel.feber = true
@@ -370,13 +398,17 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
     const ut = { typ: 'kraft', kraft: namn, x: gx, y: gy }
     spel.grontSkott = (spel.grontSkott || 0) + 1
     if (spel.grontSkott === 2) stil('dubbelkraft', handelser)
+    if (spel.grontSkott === 5) stil('kedja', handelser)
     if (namn === 'spar') spel.sparKvar += KRAFTER.spar.skott
     else if (namn === 'eld') spel.eldKvar += 1
     else if (namn === 'spok') spel.spokKvar = 1
     else if (namn === 'multi') {
       const fran = k || spel.kulor[0]
-      if (fran) {
-        const ny = nyKula(gx + 3, gy - 10, -fran.vx * 0.9 || 120, -Math.abs(fran.vy) * 0.6 - 80)
+      // bana.multi: fler kulor per grön (bonusbanan Kulregnet), högst 40 åt gången
+      const antal = Math.min(bana.multi || 1, 40 - spel.kulor.length)
+      for (let i = 0; i < antal && fran; i++) {
+        const sida = i % 2 ? -1 : 1
+        const ny = nyKula(gx + 3 * sida, gy - 10, (-fran.vx * 0.9 || 120) * (i ? -0.7 : 1) + sida * i * 40, -Math.abs(fran.vy) * 0.6 - 80 - i * 30)
         spel.kulor.push(ny)
         ut.nyKula = ny.id
       }
@@ -388,7 +420,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
         if (Math.hypot(qx - gx, qy - gy) < 62) ut.tanda.push(p.id)
       }
       handelser.push(ut)
-      for (const id of ut.tanda) tand(objekt[id], handelser, null)
+      for (const id of ut.tanda) tand(objekt[id], handelser, null, true)
       return
     } else if (namn === 'blomma') {
       const or = objekt.filter((p) => p.farg === 'orange' && !p.lit && !p.borta)
@@ -440,6 +472,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
     spel.skottTid = 0
     spel.extraGivna = 0
     spel.lista = []
+    spel.kedjeKo = []
     spel.stilar = []
     spel.grontSkott = 0
     spel.hinkSkott = false
@@ -492,6 +525,13 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
       const grans = tj + k.r
       if (d >= grans) continue
       if (simulera) return { traff: o, x: k.x, y: k.y }
+      // ett skott som aldrig tar slut (kulan gungar i en halfpipe): det tända
+      // den rör försvinner, så att den till slut ramlar ner
+      if (o.lit && spel.skottTid > LANG_TID) {
+        o.borta = true
+        handelser.push({ typ: 'fast', id: o.id })
+        continue
+      }
       if (d < 1e-6) {
         nx = 0
         ny = -1
@@ -527,7 +567,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
     if (!simulera && !spel.feber && !spel.eldNu && !(spel.spokNu && !k.spokad)) {
       const hy = HINK.y
       for (const sida of [-1, 1]) {
-        const ex = spel.hinkX + sida * (HINK.bredd / 2)
+        const ex = spel.hinkX + sida * (spel.hinkBredd / 2)
         const qy = Math.max(hy, Math.min(H + 10, k.y))
         const dx = k.x - ex
         const dy = k.y - qy
@@ -543,7 +583,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
           k.hinkStuds = true
         }
       }
-      if (k.y > hy + 4 && Math.abs(k.x - spel.hinkX) < HINK.bredd / 2 - 2) {
+      if (k.y > hy + 4 && Math.abs(k.x - spel.hinkX) < spel.hinkBredd / 2 - 2) {
         spel.kulorKvar++
         spel.hinkSkott = true
         handelser.push({ typ: 'hink', kula: k.id, x: k.x })
@@ -592,11 +632,11 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
     spel.t += dt
     uppdateraGrupper(spel.t)
     // hinken glider fram och tillbaka
-    const hx = W / 2 + (W / 2 - HINK.bredd / 2 - 8) * Math.sin(spel.t * HINK.fart)
+    const hx = W / 2 + (W / 2 - spel.hinkBredd / 2 - 8) * Math.sin(spel.t * HINK.fart)
     spel.hinkVx = (hx - spel.hinkX) / Math.max(dt, 1e-4)
     spel.hinkX = hx
     if (spel.lage !== 'skjuter' && spel.lage !== 'feber') return handelser
-    if (!spel.kulor.length) return handelser
+    if (!spel.kulor.length && !spel.kedjeKo.length) return handelser
     spel.skottTid += dt
     for (let i = spel.kulor.length - 1; i >= 0; i--) {
       const k = spel.kulor[i]
@@ -658,8 +698,13 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
       // på väg mot sista orange? (för zoomen)
       if (!spel.feber) sistaKoll(k, handelser)
     }
-    if (spel.skottTid > SKOTT_TAK) spel.kulor.length = 0
-    if (!spel.kulor.length) avsluta(handelser)
+    // kedjereaktionen: smällar som väntar på sin tur
+    while (spel.kedjeKo.length && spel.kedjeKo[0].t <= spel.skottTid) kraft(objekt[spel.kedjeKo.shift().id], handelser, null)
+    if (spel.skottTid > SKOTT_TAK) {
+      spel.kulor.length = 0
+      spel.kedjeKo.length = 0
+    }
+    if (!spel.kulor.length && !spel.kedjeKo.length) avsluta(handelser)
     return handelser
   }
 
@@ -717,7 +762,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
         spel.rensat = true
         stil('rensat', handelser)
       }
-      const bonusKulor = spel.kulorKvar * 10000
+      const bonusKulor = kulBonus ? spel.kulorKvar * 10000 : 0
       spel.poang += (spel.feberFack || 0) + bonusKulor
       spel.lage = 'klar'
       handelser.push({ typ: 'banaKlar', fack: spel.feberFack || 0, kulor: spel.kulorKvar, kulBonus: bonusKulor, poang: spel.poang })
@@ -783,6 +828,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
     st.lila = spel.lila ? spel.lila.id : -1
     st.fack = spel.fack ? [...spel.fack] : null
     st.narSista = spel.narSista
+    st.kedjeKo = spel.kedjeKo.map((x) => ({ ...x }))
     return st
   }
   function ladda(st) {
@@ -794,6 +840,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR } = {}) {
     spel.lila = st.lila >= 0 ? objekt[st.lila] : null
     spel.fack = st.fack ? [...st.fack] : null
     spel.narSista = st.narSista
+    spel.kedjeKo = (st.kedjeKo || []).map((x) => ({ ...x }))
     uppdateraGrupper(spel.t)
   }
 

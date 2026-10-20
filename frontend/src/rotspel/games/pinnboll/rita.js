@@ -473,8 +473,7 @@ export function ritaKanon(ctx, vinkel, laddad, ikon, t, eld) {
 
 /* ------------------------------------------------------------------ hinken */
 
-export function ritaHink(ctx, x, t, glod) {
-  const b = HINK.bredd
+export function ritaHink(ctx, x, t, glod, b = HINK.bredd) {
   const y = HINK.y
   ctx.save()
   const kropp = ctx.createLinearGradient(x - b / 2, 0, x + b / 2, 0)
