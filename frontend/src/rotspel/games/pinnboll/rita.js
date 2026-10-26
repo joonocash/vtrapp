@@ -139,6 +139,77 @@ export function ritaTegel(ctx, o, farg, lit, s = 1, alfa = 1) {
   ctx.globalAlpha = 1
 }
 
+// Studsare (flipperspelet): en vit ring som visar hur mycket som är kvar av
+// den, och som blixtrar till vid varje studs (k = 1 precis efter).
+export function ritaStudsare(ctx, o, k, andel) {
+  ctx.save()
+  ctx.lineCap = 'round'
+  if (o.form === 'cirkel') {
+    if (k > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${0.35 * k})`
+      ctx.beginPath()
+      ctx.arc(o.wx, o.wy, o.r + 4 + 8 * k, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.arc(o.wx, o.wy, o.r + 3.5, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.strokeStyle = `rgba(255,255,255,${0.75 + 0.25 * k})`
+    ctx.lineWidth = 2.5
+    ctx.beginPath()
+    ctx.arc(o.wx, o.wy, o.r + 3.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.04, andel))
+    ctx.stroke()
+  } else if (o.form === 'segment') {
+    const dx = o.wx2 - o.wx1
+    const dy = o.wy2 - o.wy1
+    const L = Math.hypot(dx, dy) || 1
+    // studsmattan: ett vitt band ovanpå som sjunker in vid studsen
+    const nx = dy / L
+    const ny = -dx / L
+    const s = ny > 0 ? -1 : 1
+    const dj = -2 * k
+    ctx.strokeStyle = `rgba(255,255,255,${0.7 + 0.3 * k})`
+    ctx.lineWidth = 2.5
+    ctx.beginPath()
+    ctx.moveTo(o.wx1 + nx * s * (o.tj + dj), o.wy1 + ny * s * (o.tj + dj))
+    ctx.lineTo(o.wx1 + dx * Math.max(0.04, andel) + nx * s * (o.tj + dj), o.wy1 + dy * Math.max(0.04, andel) + ny * s * (o.tj + dj))
+    ctx.stroke()
+    if (k > 0) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.3 * k})`
+      ctx.lineWidth = o.tj * 2 + 10 * k
+      ctx.beginPath()
+      ctx.moveTo(o.wx1, o.wy1)
+      ctx.lineTo(o.wx2, o.wy2)
+      ctx.stroke()
+    }
+  }
+  ctx.restore()
+}
+
+// En bombpinne (roguelike: Bomber): mörk kärna och en gnistrande stubin.
+export function ritaBomb(ctx, o, t) {
+  const r = o.r
+  ctx.save()
+  ctx.fillStyle = 'rgba(17,24,39,0.85)'
+  ctx.beginPath()
+  ctx.arc(o.wx, o.wy, r * 0.62, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#fbbf24'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(o.wx + r * 0.3, o.wy - r * 0.45)
+  ctx.quadraticCurveTo(o.wx + r * 0.6, o.wy - r * 1.1, o.wx + r * 1.0, o.wy - r * 1.0)
+  ctx.stroke()
+  const g = 0.5 + 0.5 * Math.sin(t * 18 + o.id)
+  ctx.fillStyle = `rgba(255,${150 + 80 * g},60,${0.6 + 0.4 * g})`
+  ctx.beginPath()
+  ctx.arc(o.wx + r, o.wy - r, 1.6 + g * 1.4, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+}
+
 /* ----------------------------------------------------------- bakgrunder */
 
 const bakgrunder = new Map()

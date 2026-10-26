@@ -2,7 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { skapaSpel, botSkott, W, H, KANON, STARTKULOR, KRAFTER, multiplikator, mitt, ANTAL_ORANGE } from './motor.js'
 import { hamtaBana, ANTAL_BANOR, VARLDAR, stjarnor } from './banor.js'
 import { BONUS, hamtaBonus } from './bonus.js'
-import { nyRunda, rundaBana, spelVal, rundaKlar, bonusVal, valjBonus, BONUSAR, NYA_KULOR } from './runda.js'
+import { nyRunda, rundaBana, spelVal, rundaKlar, bonusVal, valjBonus, slaOm, oppnaKista, build, ingarI, hjalte, HJALTAR, UPPGRADERINGAR, GRADER, NYA_KULOR } from './runda.js'
 import { byggEgen, koda, avkoda } from './editor.js'
 import BanEditor from './BanEditor.jsx'
 import { useSpelyta } from '../delat/useSpelyta.js'
@@ -24,9 +24,10 @@ import './pinnboll.css'
 // kulan landar i ett av feberfacken.
 //
 // Fyra lägen: äventyret (30 banor och en bonusbana efter varje värld),
-// oändligt läge (banor som byggs av sig själva, kulor som följer med, en
-// bonusbana var femte bana), bonusbanorna för sig och egna banor från
-// baneditorn (som också går att dela som länk).
+// oändligt läge (ett roguelike: välj hjälte, banor som byggs av sig själva,
+// uppgraderingar efter varje bana, en bonusbana och en skattkista var femte
+// bana — se runda.js), bonusbanorna för sig (världarnas sex och tio
+// kulregnsbanor) och egna banor från baneditorn (som går att dela som länk).
 //
 // Allt som rör sig ligger i refs (a.current); React renderas bara när
 // HUD:en (mätaren, knapparna) ändras.
@@ -57,7 +58,10 @@ function rensaDelad() {
 }
 // Bonusbana k (0–5) är öppen när värld k är klar i äventyret (den första
 // direkt), eller när oändligt läge har kommit så långt.
-const bonusOppen = (k, spar) => k === 0 || (spar.upplast || 1) > k * 5 || (spar.rundaBast?.niva || 0) > (k + 1) * 5
+const KULREGN = BONUS.findIndex((b) => b.id === 'kulregnet')
+// Världarnas bonusbanor öppnas efter varje värld; kulregnsbanorna öppnas
+// alla på en gång, samtidigt som Kulregnet.
+const bonusOppen = (k, spar) => (BONUS[k]?.familj === 'kulregn' ? bonusOppen(KULREGN, spar) : k === 0 || (spar.upplast || 1) > k * 5 || (spar.rundaBast?.niva || 0) > (k + 1) * 5)
 const BOOST = {
   spar: { ikon: '🔮', namn: 'Superspår', pris: 60 },
   kula: { ikon: '➕', namn: '+1 kula', pris: 90 },
@@ -123,6 +127,7 @@ export default function PinnbollGame() {
   const [slut, setSlut] = useState(null)
   const [kort, setKort] = useState(null) // resultatkort för bonus, runda och egna banor
   const [karta, setKarta] = useState(false)
+  const [hjalteVal, setHjalteVal] = useState(false)
   const [intro, setIntro] = useState(true)
   const [mastare, setMastare] = useState(null)
   const [notis, visaNotis] = useNotis()
@@ -165,6 +170,8 @@ export default function PinnbollGame() {
       smutsig: false,
       sistaVarnad: false,
       zonY: 24,
+      studs: new Map(),
+      kulTopp: 0,
     }
   }
 
@@ -235,7 +242,7 @@ export default function PinnbollGame() {
         case 'extraKula':
           s.kulPuls = s.t
           ljud.extraKula()
-          fx.text(W / 2, e.orsak === 'hink' ? 520 : 200, 'EXTRA KULA!', { storlek: 24, farg: '#86efac', liv: 1.3, stig: 40 })
+          fx.text(W / 2, e.orsak === 'hink' ? 520 : 200, e.orsak === 'lila' ? '🟣 EXTRA KULA!' : 'EXTRA KULA!', { storlek: 24, farg: '#86efac', liv: 1.3, stig: 40 })
           s.smutsig = true
           break
         case 'hink':
@@ -250,6 +257,30 @@ export default function PinnbollGame() {
           break
         case 'kraft':
           krafteffekt(e)
+          break
+        case 'studs': {
+          // en studsare i flipperspelet
+          s.studs.set(e.id, s.t)
+          ljud.studs(e.kvar)
+          fx.ring(e.x, e.y, '#ffffff', 26, 0.25, 3)
+          break
+        }
+        case 'small': {
+          // bomb, Storsmäll eller meteor
+          const f = e.orsak === 'bomb' ? ['#ffd43b', '#ff7a1a', '#ffffff'] : e.orsak === 'meteor' ? ['#ffb020', '#ff5a1f', '#fff7d6'] : ['#c8ffd8', '#4dff8a', '#ffffff']
+          ljud.small()
+          fx.skaka(e.orsak === 'bomb' ? 7 : 5)
+          fx.ring(e.x, e.y, f[1], e.radie, 0.45, 5)
+          fx.sprut(e.x, e.y, f, 18, { fart: 220, liv: 0.5, form: 'gnista', storlek: 2.4 })
+          break
+        }
+        case 'delning':
+          ljud.nyKula()
+          fx.text(e.x, e.y - 14, `×${e.nya.length + 1}`, { storlek: 15, farg: '#e0f2fe', liv: 0.7, stig: 20 })
+          fx.ring(e.x, e.y, '#e0f2fe', 24, 0.3, 2.5)
+          break
+        case 'guldhink':
+          fx.text(e.x, 500, `🏆 +${fmt(e.poang)}`, { storlek: 20, farg: '#fde047', liv: 1.4, stig: 40 })
           break
         case 'narSista':
           s.fokus = { kula: e.kula, id: e.id }
@@ -325,6 +356,17 @@ export default function PinnbollGame() {
   function krafteffekt(e) {
     const s = a.current
     const k = KRAFTER[e.kraft]
+    // nya kulor ur gröna (kulregnsbanorna och Kulregn): ett plopp och +n
+    // i stället för en ruta per grön
+    const nya = [...(e.nya || []), ...(e.regn || [])]
+    for (const [x, y] of nya) fx.sprut(x, y, ['#ffffff', '#c8ffd8', '#4dff8a'], 5, { fart: 90, liv: 0.35, storlek: 2 })
+    if (nya.length) fx.text(e.x, e.y - 14, `+${nya.length}`, { storlek: 15, farg: '#bbf7d0', liv: 0.8, stig: 24, studs: true })
+    if ((bana.multi || 1) > 1) {
+      ljud.nyKula()
+      fx.ring(e.x, e.y, '#4dff8a', 34, 0.4, 3)
+      s.smutsig = true
+      return
+    }
     ljud.kraft()
     setMastare({ text: k.namn, key: s.t })
     fx.ring(e.x, e.y, '#4dff8a', 48, 0.55, 4)
@@ -345,6 +387,7 @@ export default function PinnbollGame() {
 
   function skottSlut(e) {
     const s = a.current
+    s.kulTopp = 0
     ljud.virvel(false)
     if (!spel.feber) s.fokus = null
     const n = e.lista.length
@@ -417,7 +460,9 @@ export default function PinnbollGame() {
       const bast = sparRef.current.rundaBast || { niva: 0, poang: 0 }
       setSpar((sp) => ({ ...sp, rundaBast: { niva: Math.max(bast.niva, r.niva), poang: Math.max(bast.poang, total) } }))
       if (total > bast.poang) skickaNiva(ID_OANDLIG, total)
-      setKort({ typ: 'runda', poang, klar, bonus: Boolean(bana.bonus), kulorKvar: spel.kulorKvar, val: bana.bonus ? [] : bonusVal(r), runda: r, mynt, stilar, rensat: spel.rensat, total })
+      // efter en bonusbana: en skattkista med gratis uppgraderingar
+      const kista = bana.bonus ? oppnaKista(r).fick : null
+      setKort({ typ: 'runda', poang, klar, bonus: Boolean(bana.bonus), kulorKvar: spel.kulorKvar, val: bana.bonus ? [] : bonusVal(r), runda: r, mynt, stilar, rensat: spel.rensat, total, kista })
       return
     }
     if (bana.bonus) {
@@ -463,20 +508,49 @@ export default function PinnbollGame() {
     const k = kort
     if (!k) return
     let r = rundaKlar(k.runda, { poang: k.poang, kulorKvar: k.kulorKvar, bonus: k.bonus })
+    for (const kid of k.kista || []) r = valjBonus(r, kid)
     if (id) r = valjBonus(r, id)
     setSpar((sp) => ({ ...sp, runda: r }))
     setKort(null)
     setOmgang((o) => o + 1)
   }
 
+  // En ny runda börjar med att man väljer hjälte.
   function startaRunda(ny) {
-    if (ny || !sparRef.current.runda || sparRef.current.runda.slut) setSpar((sp) => ({ ...sp, runda: nyRunda() }))
+    if (ny || !sparRef.current.runda || sparRef.current.runda.slut) {
+      setKarta(false)
+      setKort(null)
+      setHjalteVal(true)
+      return
+    }
     setLage({ typ: 'oandlig' })
     setKarta(false)
     setVinst(null)
     setSlut(null)
     setKort(null)
     setOmgang((o) => o + 1)
+  }
+
+  function valjHjalte(id) {
+    setSpar((sp) => ({ ...sp, runda: nyRunda(undefined, id) }))
+    setHjalteVal(false)
+    setLage({ typ: 'oandlig' })
+    setKarta(false)
+    setVinst(null)
+    setSlut(null)
+    setKort(null)
+    setOmgang((o) => o + 1)
+  }
+
+  // Slå om valen (kostar ett omslag). Rundan sparas, så att samma val
+  // kommer tillbaka om man laddar om.
+  function slaOmVal() {
+    const k = kort
+    if (!k || !(k.runda.omslag > 0)) return
+    const r = slaOm(k.runda)
+    setSpar((sp) => ({ ...sp, runda: { ...sp.runda, omslag: r.omslag, slag: r.slag } }))
+    setKort({ ...k, runda: r, val: bonusVal(r) })
+    ljud.slant(true)
   }
 
   function startaBonus(k, efter = null) {
@@ -852,8 +926,13 @@ export default function PinnbollGame() {
       }
       const bt = s.blixt.get(o.id)
       if (bt != null && t - bt < 0.2) skal *= 1 + 0.4 * (1 - (t - bt) / 0.2)
+      const st = o.kick ? s.studs.get(o.id) : null
+      const studsK = st != null && t - st < 0.18 ? 1 - (t - st) / 0.18 : 0
+      if (studsK) skal *= 1 + 0.25 * studsK
       if (o.form === 'cirkel') R.ritaPinne(ctx, o.wx, o.wy, o.r, o.farg, lit, skal, alfa)
       else R.ritaTegel(ctx, o, o.farg, lit, 1 + (skal - 1) * 0.35, alfa)
+      if (o.kick && !o.borta) R.ritaStudsare(ctx, o, studsK, o.kickKvar / (o.kickAntal || 10))
+      if (o.bomb && !o.lit && !o.borta) R.ritaBomb(ctx, o, t)
     }
     if (ensam) {
       const [x, y] = mitt(ensam)
@@ -878,7 +957,8 @@ export default function PinnbollGame() {
     const typ = spel.eldNu ? 'eld' : spel.spokNu ? 'spok' : 'vanlig'
     for (const k of spel.kulor) R.ritaKula(ctx, k, s.spar.get(k.id) || [], typ)
 
-    R.ritaKanon(ctx, spel.vinkel, visaSikte, varld.ikon, t, spel.eldKvar > 0)
+    // i rundan sitter hjälten i kanonen
+    R.ritaKanon(ctx, spel.vinkel, visaSikte, (iRunda && !bana.bonus && hjalte(runda.hjalte)?.ikon) || varld.ikon, t, spel.eldKvar > 0)
     fx.rita(ctx)
     ctx.restore()
 
@@ -949,9 +1029,30 @@ export default function PinnbollGame() {
       text(ctx, txt, 10, ky, 10.5, farg, 'left')
       ky += 14
     }
-    if (spel.sparKvar > 0) chip(`🔮 Superspår ×${spel.sparKvar}`, '#bbf7d0')
+    if (spel.sparKvar > 99) chip('🔮 Siktet', '#bbf7d0')
+    else if (spel.sparKvar > 0) chip(`🔮 Superspår ×${spel.sparKvar}`, '#bbf7d0')
     if (spel.eldKvar > 0 || spel.eldNu) chip('🔥 Eldboll', '#fdba74')
     if (spel.spokKvar > 0 || spel.spokNu) chip('👻 Spöksboll', '#ddd6fe')
+
+    // kulräknaren när det är många kulor ute, med en ruta vid 10, 20, 30 …
+    const n = spel.kulor.length
+    if (n >= 3 && (spel.lage === 'skjuter' || spel.lage === 'feber')) {
+      if (n > s.kulTopp) {
+        const steg = Math.floor(n / 10) * 10
+        if (steg >= 10 && steg > Math.floor(s.kulTopp / 10) * 10) {
+          setMastare({ text: steg >= 50 ? `KULSTORM! ${steg} kulor` : steg >= 30 ? `KULREGN! ${steg} kulor` : `${steg} kulor!`, key: t, ms: 1500 })
+          ljud.multi(Math.min(10, steg / 5))
+        }
+        s.kulTopp = n
+        s.kulPulsN = t
+      }
+      const pk = Math.max(0, 1 - (t - (s.kulPulsN || 0)) / 0.25)
+      ctx.save()
+      ctx.translate(W - 30, 56)
+      ctx.scale(1 + pk * 0.3, 1 + pk * 0.3)
+      text(ctx, `×${n}`, 0, 0, 15 + Math.min(9, n / 5), n >= 30 ? '#fde047' : '#e0f2fe', 'center')
+      ctx.restore()
+    }
 
     // skottets poäng medan kulan är ute
     if ((spel.lage === 'skjuter' || spel.lage === 'feber') && spel.skottTraffar > 0) {
@@ -1145,7 +1246,7 @@ export default function PinnbollGame() {
               {bana.bonus ? (
                 '⚡ Bonusbana'
               ) : iRunda ? (
-                `∞ Oändligt läge · ${runda.kulor} kulor`
+                `∞ ${hjalte(runda.hjalte)?.ikon || ''} Oändligt läge · ${runda.kulor} kulor`
               ) : lage.typ === 'egen' ? (
                 lage.delad ? '🔗 Delad bana' : '✏️ Egen bana'
               ) : (
@@ -1164,10 +1265,10 @@ export default function PinnbollGame() {
         )}
         {mastare && (
           <div className={`pb-mastare${mastare.text === 'EXTREME FEVER!' ? ' feber' : ''}`} key={mastare.key}>
-            <Portratt varld={varld} />
+            <Portratt varld={iRunda && hjalte(runda.hjalte) ? VARLDAR[hjalte(runda.hjalte).varld] : varld} />
             <div>
               <b>{mastare.text}</b>
-              <small>{bana.bonus ? 'Bonusbana' : varld.mastare}</small>
+              <small>{bana.bonus ? 'Bonusbana' : iRunda && hjalte(runda.hjalte) ? hjalte(runda.hjalte).namn : varld.mastare}</small>
             </div>
           </div>
         )}
@@ -1236,6 +1337,7 @@ export default function PinnbollGame() {
           ljud={ljud}
           sparad={lage.typ === 'egen' && Boolean(lage.id)}
           onRundaVal={rundaVidare}
+          onSlaOm={slaOmVal}
           onFortsattRunda={fortsattRunda}
           onNyRunda={() => startaRunda(true)}
           onMeny={(flik) => {
@@ -1252,6 +1354,8 @@ export default function PinnbollGame() {
           onSpara={() => setLage((l) => ({ ...l, id: sparaEgen(l.data, l.id), delad: false }))}
         />
       )}
+
+      {hjalteVal && <HjalteVal onValj={valjHjalte} onStang={() => (setHjalteVal(false), setKarta(true))} />}
 
       {vinst && (
         <Vinstkort
@@ -1484,7 +1588,7 @@ function Oandligt({ spar, onRunda }) {
           ∞
         </div>
         <p>
-          Banorna byggs av sig själva och blir svårare för varje bana. Kulorna du har kvar följer med, och du får {NYA_KULOR} nya per bana. Efter varje bana väljer du en bonus, och var femte bana är en bonusbana som smäller.
+          Välj en hjälte och bli starkare för varje bana. Efter varje bana väljer du en uppgradering, och de flesta går att ta igen och igen: hinken växer, gröna blir fler och kulan blir större. Rätt kombination låser upp en evolution. Var femte bana är en bonusbana med en skattkista. Banorna blir svårare hela tiden, och kulorna du har kvar följer med.
         </p>
         {r ? (
           <>
@@ -1494,6 +1598,7 @@ function Oandligt({ spar, onRunda }) {
                 Bana {r.niva} · {r.kulor} kulor · {fmt(r.poang)} poäng
               </small>
             </button>
+            <Build runda={r} />
             <button className="ds-knapp ds-knapp-sek" onClick={() => onRunda(true)}>
               Ny runda
             </button>
@@ -1533,25 +1638,29 @@ function Oandligt({ spar, onRunda }) {
 }
 
 function Bonusbanor({ spar, onBonus }) {
+  const kort = (b, k) => {
+    const oppen = bonusOppen(k, spar)
+    const info = spar.bonus?.[b.id]
+    const v = VARLDAR[b.varld ?? k % VARLDAR.length]
+    const las = b.familj === 'kulregn' ? 'Öppnas med Kulregnet' : `Klara ${VARLDAR[k - 1]?.namn || 'förra världen'} i äventyret`
+    return (
+      <button key={b.id} className={`pb-bonuskort${b.familj ? ' kulregn' : ''}`} disabled={!oppen} onClick={() => onBonus(k)} style={{ '--h1': v.himmel[0], '--h2': v.himmel[1] }}>
+        <b>
+          {oppen ? b.ikon || '⚡' : '🔒'} {b.namn}
+        </b>
+        <small>{oppen ? b.text : las}</small>
+        {info && <em>Rekord {fmt(info.basta)}</em>}
+      </button>
+    )
+  }
   return (
     <div className="pb-karta-lista">
       <div className="pb-flik-info">Sikta rätt och se allt smälla. En ny bonusbana öppnas efter varje värld i äventyret.</div>
-      <div className="pb-bonuslista">
-        {BONUS.map((b, k) => {
-          const oppen = bonusOppen(k, spar)
-          const info = spar.bonus?.[b.id]
-          const v = VARLDAR[k % VARLDAR.length]
-          return (
-            <button key={b.id} className="pb-bonuskort" disabled={!oppen} onClick={() => onBonus(k)} style={{ '--h1': v.himmel[0], '--h2': v.himmel[1] }}>
-              <b>
-                {oppen ? '⚡' : '🔒'} {b.namn}
-              </b>
-              <small>{oppen ? b.text : `Klara ${VARLDAR[k - 1]?.namn || 'förra världen'} i äventyret`}</small>
-              {info && <em>Rekord {fmt(info.basta)}</em>}
-            </button>
-          )
-        })}
+      <div className="pb-bonuslista">{BONUS.map((b, k) => (b.familj ? null : kort(b, k)))}</div>
+      <div className="pb-flik-info pb-kulregn-rubrik">
+        <b>🎱 Kulregn</b> Varje grön pinne ger fler kulor, tills hela planen är full. Öppnas samtidigt som Kulregnet.
       </div>
+      <div className="pb-bonuslista">{BONUS.map((b, k) => (b.familj === 'kulregn' ? kort(b, k) : null))}</div>
     </div>
   )
 }
@@ -1605,7 +1714,88 @@ function Bygget({ spar, onBygg, onSpelaEgen, onDela, onTaBort }) {
   )
 }
 
-function Resultat({ kort, mynt, sparad, onRundaVal, onFortsattRunda, onNyRunda, onMeny, onIgen, onVidare, onRedigera, onSpara }) {
+// Ett uppgraderingskort: ikon, namn, nivå och vad nästa nivå gör.
+function UppgKort({ id, runda, disabled, onClick }) {
+  const u = UPPGRADERINGAR[id]
+  const n = runda.varig?.[id] || 0
+  const evo = u.grad < 4 ? ingarI(id).filter((e) => !(runda.varig?.[e.id] > 0)) : []
+  return (
+    <button className={`pb-uppg grad-${u.grad}`} disabled={disabled} onClick={onClick}>
+      <em>{u.grad === 4 ? '🌟 Evolution' : u.direkt ? GRADER[u.grad] : n ? `Nivå ${n} → ${n + 1}` : `Ny · ${GRADER[u.grad]}`}</em>
+      <span aria-hidden="true">{u.ikon}</span>
+      <b>{u.namn}</b>
+      <small>{u.text(n + 1)}</small>
+      {evo.length > 0 && (
+        <i className="pb-uppg-evo">
+          {evo.map((e) => `${e.ikon} ${e.namn}`).join(', ')}
+        </i>
+      )}
+    </button>
+  )
+}
+
+// Rundans build: hjälten och uppgraderingarna med nivåer.
+function Build({ runda, rubrik }) {
+  const h = hjalte(runda?.hjalte)
+  const lista = runda ? build(runda) : []
+  if (!h && !lista.length) return null
+  return (
+    <div className="pb-build" aria-label="Din build">
+      {rubrik && <small>Din build</small>}
+      <div>
+        {h && (
+          <span className="hjalte" title={h.namn}>
+            {h.ikon}
+          </span>
+        )}
+        {lista.map((u) => (
+          <span key={u.id} className={`grad-${u.grad}`} title={u.namn}>
+            {u.ikon}
+            {!u.max || u.max > 1 ? <b>{u.n}</b> : null}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Hjältevalet när en ny runda börjar.
+function HjalteVal({ onValj, onStang }) {
+  return (
+    <div className="ds-kort-bak" role="dialog" aria-modal="true" aria-label="Välj hjälte">
+      <div className="ds-kort pb-hjaltar">
+        <button className="pb-stang" onClick={onStang} aria-label="Stäng">
+          ✕
+        </button>
+        <div className="ds-kort-titel">Välj hjälte</div>
+        <div className="ds-kort-sub">Hjälten bestämmer vad gröna pinnar gör hela rundan</div>
+        <div className="pb-hjalte-lista">
+          {HJALTAR.map((h) => {
+            const v = VARLDAR[h.varld]
+            return (
+              <button key={h.id} onClick={() => onValj(h.id)} style={{ '--h1': v.himmel[0], '--h2': v.himmel[1] }}>
+                <Portratt varld={v} liten />
+                <b>{h.namn}</b>
+                <small>
+                  Grön: <strong>{KRAFTER[h.kraft].namn}</strong>
+                </small>
+                <span className="pb-hjalte-start">
+                  {Object.keys(h.start).map((id) => (
+                    <i key={id}>
+                      {UPPGRADERINGAR[id].ikon} {UPPGRADERINGAR[id].namn}
+                    </i>
+                  ))}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Resultat({ kort, mynt, sparad, onRundaVal, onSlaOm, onFortsattRunda, onNyRunda, onMeny, onIgen, onVidare, onRedigera, onSpara }) {
   const [klar, setKlar] = useState(false)
   useEffect(() => {
     const id = setTimeout(() => setKlar(true), 500)
@@ -1628,7 +1818,7 @@ function Resultat({ kort, mynt, sparad, onRundaVal, onFortsattRunda, onNyRunda, 
             Rundan <b>{fmt(kort.total)}</b>
           </span>
           <span>
-            Kulor <b>{kort.bonus ? `${kort.runda.kulor} + 3` : `${kort.kulorKvar} + ${NYA_KULOR}`}</b>
+            Kulor <b>{kort.bonus ? `${kort.runda.kulor} + 3` : `${kort.kulorKvar} + ${NYA_KULOR + (kort.runda.varig?.bank || 0)}`}</b>
           </span>
           <span>
             Mynt <b>+{kort.mynt}</b>
@@ -1636,21 +1826,39 @@ function Resultat({ kort, mynt, sparad, onRundaVal, onFortsattRunda, onNyRunda, 
           {chips}
         </div>
         {kort.bonus ? (
-          <button className="ds-knapp ds-knapp-stor" disabled={!klar} onClick={() => onRundaVal(null)}>
-            Vidare till bana {kort.runda.niva + 1}
-          </button>
+          <>
+            {kort.kista?.length > 0 && (
+              <div className="pb-kista">
+                <div className="pb-kista-ikon" aria-hidden="true">
+                  🎁
+                </div>
+                <div className="pb-val-rubrik">Skattkista! {kort.kista.length === 1 ? 'En uppgradering' : `${kort.kista.length} uppgraderingar`}</div>
+                <div className="pb-kista-fick">
+                  {kort.kista.map((id, i) => (
+                    <span key={i} className={`grad-${UPPGRADERINGAR[id].grad}`} style={{ animationDelay: `${0.3 + i * 0.35}s` }}>
+                      <i aria-hidden="true">{UPPGRADERINGAR[id].ikon}</i>
+                      {UPPGRADERINGAR[id].namn}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <button className="ds-knapp ds-knapp-stor" disabled={!klar} onClick={() => onRundaVal(null)}>
+              Vidare till bana {kort.runda.niva + 1}
+            </button>
+          </>
         ) : (
           <>
-            <div className="pb-val-rubrik">Välj en bonus till nästa bana</div>
-            <div className="pb-val">
+            <Build runda={kort.runda} />
+            <div className="pb-val-rubrik">Välj en uppgradering</div>
+            <div className={`pb-val${kort.val.length > 3 ? ' fyra' : ''}`}>
               {kort.val.map((id) => (
-                <button key={id} disabled={!klar} onClick={() => onRundaVal(id)}>
-                  <span>{BONUSAR[id].ikon}</span>
-                  <b>{BONUSAR[id].namn}</b>
-                  <small>{BONUSAR[id].text}</small>
-                </button>
+                <UppgKort key={`${kort.runda.slag || 0}-${id}`} id={id} runda={kort.runda} disabled={!klar} onClick={() => onRundaVal(id)} />
               ))}
             </div>
+            <button className="pb-litenknapp pb-omslag" disabled={!klar || !(kort.runda.omslag > 0)} onClick={onSlaOm}>
+              🎲 Slå om <b>{kort.runda.omslag || 0}</b>
+            </button>
           </>
         )}
       </>
@@ -1667,6 +1875,7 @@ function Resultat({ kort, mynt, sparad, onRundaVal, onFortsattRunda, onNyRunda, 
           {kort.rekord && <em>Rekord!</em>}
         </div>
         {!kort.rekord && kort.fore > 0 && <div className="pb-tavla-total">Ditt bästa: {fmt(kort.fore)}</div>}
+        <Build runda={kort.runda} rubrik />
         <button className="ds-knapp ds-knapp-stor ds-knapp-guld" disabled={!klar || mynt < FORTSATT_PRIS} onClick={onFortsattRunda}>
           <span>Fortsätt med 3 kulor</span>
           <span className="ds-knapp-pris">

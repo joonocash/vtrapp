@@ -157,12 +157,18 @@ function rotera(x, y, cx, cy, c, s) {
 // val: kulor (antal från start), kulBonus (10 000 per kula kvar när banan
 // är klar), hinkBredd, extraGrona (fler gröna pinnar), start ({ spar, eld,
 // spok, trippel } — krafter som är igång från början).
-export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, hinkBredd = HINK.bredd, extraGrona = 0, start = {} } = {}) {
+export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, hinkBredd = HINK.bredd, extraGrona = 0, start = {}, perk = {} } = {}) {
+  // hinken får inte bli bredare än att den hinner glida lite
+  hinkBredd = Math.min(hinkBredd, W - 40)
   const rnd = mulberry32(fro >>> 0)
   start = { ...(bana.start || {}), ...start }
   const grupper = (bana.grupper || []).map((g) => ({ ...g, c: 1, s: 0, ox: 0, oy: 0, w: g.w || 0, vx: 0, vy: 0, vinkel: 0 }))
   const objekt = bana.objekt.map((o, id) => {
     const ut = { ...o, id, farg: 'bla', lit: false, borta: false, nr: 0 }
+    if (o.kick) {
+      ut.kickKvar = o.kickAntal || 10
+      ut.kickT = -1
+    }
     if (o.form === 'bage') {
       ut.span = normVinkel(o.a1 - o.a0) || TVAPI
       ut.R = o.R
@@ -192,6 +198,12 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     if (g2) g2.farg = 'gron'
     // fler gröna (en bonus i oändligt läge)
     for (const o of ovriga.filter((q) => q.farg === 'bla').slice(0, extraGrona)) o.farg = 'gron'
+  }
+  // roguelike: Bomber — blå pinnar som smäller när de träffas
+  if (perk.bomber) {
+    const bla = objekt.filter((o) => o.farg === 'bla' && o.form === 'cirkel' && !o.kick)
+    blanda(bla, rnd)
+    for (const o of bla.slice(0, 2 * perk.bomber)) o.bomb = true
   }
 
   const spel = {
@@ -230,6 +242,8 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     hinkX: W / 2,
     hinkVx: 0,
     rensat: false,
+    perk,
+    lilor: [], // fler lila pinnar (roguelike: Lila lycka)
   }
 
   function blanda(a, r) {
@@ -318,13 +332,22 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   const skottPoang = () => spel.skottSumma * spel.skottTraffar
 
   function valjLila() {
-    if (spel.lila && !spel.lila.lit && !spel.lila.borta) spel.lila.farg = 'bla'
+    for (const l of [spel.lila, ...(spel.lilor || [])]) if (l && !l.lit && !l.borta) l.farg = 'bla'
     spel.lila = null
+    spel.lilor = []
     let bla = objekt.filter((o) => !o.borta && !o.lit && o.farg === 'bla' && !o.ejOrange)
     if (!bla.length) bla = objekt.filter((o) => !o.borta && !o.lit && o.farg === 'bla')
     if (!bla.length) return
     spel.lila = bla[Math.floor(rnd() * bla.length)]
     spel.lila.farg = 'lila'
+    // Lila lycka nivå 2 och uppåt: fler lila per skott
+    for (let i = 1; i < (perk.lila || 0); i++) {
+      const fria = bla.filter((o) => o.farg === 'bla')
+      if (!fria.length) break
+      const l = fria[Math.floor(rnd() * fria.length)]
+      l.farg = 'lila'
+      spel.lilor.push(l)
+    }
   }
   valjLila()
 
@@ -341,7 +364,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     }
     const m = mult()
     const bas = spel.feber ? FEBER_POANG[o.farg] : POANG[o.farg] * m
-    const varde = bas * (spel.trippelKvar > 0 ? 3 : 1)
+    const varde = Math.round(bas * (spel.trippelKvar > 0 ? 3 : 1) * (1 + 0.25 * (perk.poang || 0)))
     spel.skottSumma += varde
     spel.skottTraffar++
     if (spel.skottTraffar === 50 && !spel.stilar.includes('mega')) stil('mega', handelser)
@@ -370,6 +393,18 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       if (k.glid >= 12 && !spel.stilar.includes('glid')) stil('glid', handelser)
     }
     if (spel.skottOrange >= 10 && !spel.stilar.includes('orangeattack')) stil('orangeattack', handelser)
+    // roguelike: Delning — första träffen i skottet delar kulan
+    if (k && perk.delning && spel.skottTraffar === 1) handelser.push({ typ: 'delning', x: mx, y: my, nya: nyaKulor(o, k, perk.delning, 'dela') })
+    // Lila lycka: lila pinnar ger en kula
+    if (o.farg === 'lila' && perk.lila) {
+      spel.kulorKvar++
+      handelser.push({ typ: 'extraKula', orsak: 'lila' })
+    }
+    if (o.bomb) {
+      small(o, perk.fyrverkeri ? 85 : 58, handelser, 'bomb')
+      if (perk.fyrverkeri) nyaKulor(o, k, 1, 'stjarna')
+    }
+    if (perk.meteor && spel.eldNu && k && o.farg === 'orange') small(o, 42, handelser, 'meteor')
     // en grön som tänds av en annan grön smäll smäller lite senare, så att
     // kedjereaktionen syns som en våg
     if (o.farg === 'gron') {
@@ -399,20 +434,14 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     spel.grontSkott = (spel.grontSkott || 0) + 1
     if (spel.grontSkott === 2) stil('dubbelkraft', handelser)
     if (spel.grontSkott === 5) stil('kedja', handelser)
+    // roguelike: Kulregn ger kulor ur varje grön, Storsmäll tänder runt den
+    if (perk.kulregn) ut.regn = nyaKulor(o, k, 2, 'stjarna')
+    if (perk.smalla && namn !== 'small') small(o, 40 + 15 * perk.smalla, handelser, 'smalla')
     if (namn === 'spar') spel.sparKvar += KRAFTER.spar.skott
     else if (namn === 'eld') spel.eldKvar += 1
-    else if (namn === 'spok') spel.spokKvar = 1
-    else if (namn === 'multi') {
-      const fran = k || spel.kulor[0]
-      // bana.multi: fler kulor per grön (bonusbanan Kulregnet), högst 40 åt gången
-      const antal = Math.min(bana.multi || 1, 40 - spel.kulor.length)
-      for (let i = 0; i < antal && fran; i++) {
-        const sida = i % 2 ? -1 : 1
-        const ny = nyKula(gx + 3 * sida, gy - 10, (-fran.vx * 0.9 || 120) * (i ? -0.7 : 1) + sida * i * 40, -Math.abs(fran.vy) * 0.6 - 80 - i * 30)
-        spel.kulor.push(ny)
-        ut.nyKula = ny.id
-      }
-    } else if (namn === 'small') {
+    else if (namn === 'spok') spel.spokKvar = Math.max(spel.spokKvar, 1)
+    else if (namn === 'multi') ut.nya = nyaKulor(o, k, bana.multi || 1, bana.multiStil)
+    else if (namn === 'small') {
       ut.tanda = []
       for (const p of objekt) {
         if (p.lit || p.borta || p === o) continue
@@ -436,6 +465,83 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
 
   /* -------------------------------------------------------------- kulor */
 
+  // Nya kulor ur objektet o (en grön, eller en träff som delar kulan).
+  // Högst bana.maxKulor (40) åt gången. stil säger var de kommer ifrån:
+  //   (inget)  sprutar ut från den gröna, åt sidorna
+  //   regn     faller från himlen, på slumpade ställen
+  //   fontan   skjuts rakt upp ur den gröna, som en fontän
+  //   stjarna  far ut åt alla håll, som popcorn
+  //   dela     kulan delar sig: nya kulor rullar av åt båda sidor
+  function nyaKulor(o, k, n, stil) {
+    const fran = k || spel.kulor[0]
+    const [gx, gy] = mitt(o)
+    const tak = Math.min(bana.maxKulor || 40, 60)
+    const antal = Math.min(n, tak - spel.kulor.length)
+    const avst = (o.form === 'cirkel' ? o.r : o.tj) + (fran ? fran.r : KULA_R) + 2
+    const a0 = stil === 'stjarna' ? rnd() * TVAPI : 0
+    const nya = []
+    for (let i = 0; i < antal; i++) {
+      let ny = null
+      if (stil === 'regn') {
+        ny = nyKula(24 + rnd() * (W - 48), 70, (rnd() - 0.5) * 90, 30 + rnd() * 90)
+      } else if (stil === 'fontan') {
+        const v = -Math.PI / 2 + (i - (antal - 1) / 2) * 0.5 + (rnd() - 0.5) * 0.25
+        const fart = 390 + rnd() * 90
+        ny = nyKula(gx + Math.cos(v) * avst, gy + Math.sin(v) * avst, Math.cos(v) * fart, Math.sin(v) * fart)
+      } else if (stil === 'stjarna') {
+        const v = a0 + (i * TVAPI) / antal
+        const fart = 280 + rnd() * 80
+        ny = nyKula(gx + Math.cos(v) * avst, gy + Math.sin(v) * avst, Math.cos(v) * fart, Math.sin(v) * fart - 90)
+      } else if (stil === 'dela') {
+        const sida = i % 2 ? -1 : 1
+        const ut = 1 + Math.floor(i / 2) * 0.5
+        ny = nyKula(gx + sida * avst * 0.8, gy + 3, sida * (55 + rnd() * 30) * ut, 20 + rnd() * 30)
+      } else if (fran) {
+        const sida = i % 2 ? -1 : 1
+        ny = nyKula(gx + 3 * sida, gy - 10, (-fran.vx * 0.9 || 120) * (i ? -0.7 : 1) + sida * i * 40, -Math.abs(fran.vy) * 0.6 - 80 - i * 30)
+      }
+      if (!ny) break
+      spel.kulor.push(ny)
+      nya.push([ny.x, ny.y])
+    }
+    return nya
+  }
+
+  // En smäll runt objektet o: allt inom radien tänds (gröna i kedja).
+  // typ: 'bomb' (en bombpinne), 'smalla' (Storsmäll) eller 'meteor'.
+  function small(o, radie, handelser, typ) {
+    const [gx, gy] = mitt(o)
+    const tanda = []
+    for (const p of objekt) {
+      if (p.lit || p.borta || p === o) continue
+      const [qx, qy] = narmast(p, gx, gy)
+      if (Math.hypot(qx - gx, qy - gy) < radie) tanda.push(p.id)
+    }
+    handelser.push({ typ: 'small', orsak: typ, x: gx, y: gy, radie, tanda })
+    for (const id of tanda) tand(objekt[id], handelser, null, true)
+  }
+
+  // Studsare (o.kick, som i ett flipperspel): kulan skjuts iväg med minst
+  // o.kick px/s, hur långsamt den än kom. Efter o.kickAntal studsar är
+  // studsaren slut och försvinner, så att skottet till slut tar slut.
+  function studsare(o, k, nx, ny, qx, qy, handelser) {
+    const ut = k.vx * nx + k.vy * ny
+    if (ut < o.kick) {
+      k.vx += (o.kick - ut) * nx
+      k.vy += (o.kick - ut) * ny
+    }
+    k.mjuk = false
+    // en studs räknas en gång även om kulan nuddar flera delsteg i rad
+    if (spel.skottTid - o.kickT < 0.05) return
+    o.kickT = spel.skottTid
+    o.kickKvar--
+    handelser.push({ typ: 'studs', id: o.id, x: qx, y: qy, kvar: o.kickKvar })
+    if (o.kickKvar <= 0) {
+      o.borta = true
+      handelser.push({ typ: 'fast', id: o.id })
+    }
+  }
+
   let nastaKula = 1
   function nyKula(x, y, vx, vy) {
     return {
@@ -444,7 +550,8 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       y,
       vx,
       vy,
-      r: spel.eldNu ? KULA_R * 1.35 : KULA_R,
+      // eldbollen är stor (Meteorregn ännu större), Jättekula gör alla större
+      r: KULA_R * (spel.eldNu ? (perk.meteor ? 2.6 : 1.8) : 1 + 0.15 * (perk.jatte || 0)),
       senastTraff: -10,
       glid: 0,
       mjuk: false,
@@ -479,7 +586,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     spel.eldNu = spel.eldKvar > 0
     if (spel.eldNu) spel.eldKvar--
     spel.spokNu = spel.spokKvar > 0
-    spel.spokKvar = 0
+    if (spel.spokNu) spel.spokKvar--
     spel.sparNu = spel.sparKvar > 0
     if (spel.sparNu) spel.sparKvar--
     const vx = Math.cos(spel.vinkel) * FYSIK.STARTFART
@@ -489,8 +596,38 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     return true
   }
 
+  // roguelike: Magneten drar kulan mot närmaste otända orange, Hinkmagneten
+  // drar den mot hinken längst ner.
+  let magnetMal = []
+  function dras(k, dt) {
+    if (perk.magnet) {
+      const R = 60 + 15 * perk.magnet
+      let bast = null
+      let bd = R
+      for (const o of magnetMal) {
+        if (o.lit || o.borta) continue
+        const [qx, qy] = narmast(o, k.x, k.y)
+        const d = Math.hypot(qx - k.x, qy - k.y)
+        if (d < bd) {
+          bd = d
+          bast = [qx, qy]
+        }
+      }
+      if (bast && bd > 1) {
+        const a = (300 + 150 * perk.magnet) * dt
+        k.vx += ((bast[0] - k.x) / bd) * a
+        k.vy += ((bast[1] - k.y) / bd) * a
+      }
+    }
+    if (perk.hinkmagnet && k.y > 400 && !spel.feber && !spel.eldNu) {
+      const dx = spel.hinkX - k.x
+      k.vx += Math.sign(dx) * Math.min(Math.abs(dx) * 6, 200 * perk.hinkmagnet) * dt
+    }
+  }
+
   // En kula ett delsteg. Returnerar 'ut' om den lämnade planen nedtill.
   function flytta(k, dt, handelser, simulera) {
+    if (!simulera && (perk.magnet || perk.hinkmagnet)) dras(k, dt)
     k.vy += FYSIK.G * dt
     k.x += k.vx * dt
     k.y += k.vy * dt
@@ -562,6 +699,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       }
       kontakt = o
       tand(o, handelser, k)
+      if (o.kick) studsare(o, k, nx, ny, qx, qy, handelser)
     }
     // hinken: kanter studsar, öppningen fångar
     if (!simulera && !spel.feber && !spel.eldNu && !(spel.spokNu && !k.spokad)) {
@@ -585,6 +723,12 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       }
       if (k.y > hy + 4 && Math.abs(k.x - spel.hinkX) < spel.hinkBredd / 2 - 2) {
         spel.kulorKvar++
+        // roguelike: Guldhinken ger två kulor och poäng
+        if (perk.guldhink) {
+          spel.kulorKvar++
+          spel.poang += 25000
+          handelser.push({ typ: 'guldhink', x: k.x, poang: 25000 })
+        }
         spel.hinkSkott = true
         handelser.push({ typ: 'hink', kula: k.id, x: k.x })
         handelser.push({ typ: 'extraKula', orsak: 'hink' })
@@ -638,6 +782,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     if (spel.lage !== 'skjuter' && spel.lage !== 'feber') return handelser
     if (!spel.kulor.length && !spel.kedjeKo.length) return handelser
     spel.skottTid += dt
+    if (perk.magnet) magnetMal = objekt.filter((o) => o.farg === 'orange' && !o.lit && !o.borta)
     for (let i = spel.kulor.length - 1; i >= 0; i--) {
       const k = spel.kulor[i]
       const fart = Math.hypot(k.vx, k.vy)
@@ -821,11 +966,12 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   function spara() {
     const st = {}
     for (const f of FALT) st[f] = spel[f]
-    st.obj = objekt.map((o) => [o.farg, o.lit, o.borta, o.nr])
+    st.obj = objekt.map((o) => [o.farg, o.lit, o.borta, o.nr, o.kickKvar])
     st.kulor = spel.kulor.map((k) => ({ ...k }))
     st.lista = spel.lista.map((o) => o.id)
     st.stilar = [...spel.stilar]
     st.lila = spel.lila ? spel.lila.id : -1
+    st.lilor = spel.lilor.map((o) => o.id)
     st.fack = spel.fack ? [...spel.fack] : null
     st.narSista = spel.narSista
     st.kedjeKo = spel.kedjeKo.map((x) => ({ ...x }))
@@ -833,11 +979,12 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   }
   function ladda(st) {
     for (const f of FALT) spel[f] = st[f]
-    st.obj.forEach(([farg, lit, borta, nr], i) => Object.assign(objekt[i], { farg, lit, borta, nr }))
+    st.obj.forEach(([farg, lit, borta, nr, kickKvar], i) => Object.assign(objekt[i], { farg, lit, borta, nr, kickKvar }))
     spel.kulor = st.kulor.map((k) => ({ ...k }))
     spel.lista = st.lista.map((id) => objekt[id])
     spel.stilar = [...st.stilar]
     spel.lila = st.lila >= 0 ? objekt[st.lila] : null
+    spel.lilor = (st.lilor || []).map((id) => objekt[id])
     spel.fack = st.fack ? [...st.fack] : null
     spel.narSista = st.narSista
     spel.kedjeKo = (st.kedjeKo || []).map((x) => ({ ...x }))
