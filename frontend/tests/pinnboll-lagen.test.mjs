@@ -2,10 +2,10 @@
 // rundans regler och baneditorn. Kör: node frontend/tests/pinnboll-lagen.test.mjs
 
 import assert from 'node:assert/strict'
-import { skapaSpel, spelaSkott, botSkott, W, H, STARTKULOR, HINK } from '../src/rotspel/games/pinnboll/motor.js'
+import { skapaSpel, spelaSkott, botSkott, W, H, STARTKULOR, HINK, KULA_R, KRAFTER } from '../src/rotspel/games/pinnboll/motor.js'
 import { BONUS, hamtaBonus } from '../src/rotspel/games/pinnboll/bonus.js'
 import { genereraBana } from '../src/rotspel/games/pinnboll/generator.js'
-import { nyRunda, rundaBana, spelVal, rundaKlar, bonusVal, valjBonus, BONUSAR, NYA_KULOR, arBonus } from '../src/rotspel/games/pinnboll/runda.js'
+import { nyRunda, rundaBana, spelVal, rundaKlar, bonusVal, valjBonus, slaOm, oppnaKista, mojlig, build, antalVal, HJALTAR, UPPGRADERINGAR, BONUSAR, NYA_KULOR, arBonus } from '../src/rotspel/games/pinnboll/runda.js'
 import { byggEgen, dragTillObjekt, koda, avkoda, kanSpelas, dragVid, MIN_OBJEKT } from '../src/rotspel/games/pinnboll/editor.js'
 import { geomAvst } from '../src/rotspel/games/pinnboll/former.js'
 import { mulberry32 } from '../src/rotspel/games/delat/rng.js'
@@ -27,7 +27,10 @@ function skott(b, v, fro = 1) {
 /* ------------------------------------------------------------ bonusbanor */
 
 test(`${BONUS.length} bonusbanor med fasta färger, orange och gröna`, () => {
-  assert.equal(BONUS.length, 6)
+  assert.equal(BONUS.length, 16)
+  // äventyrets sex först (efter varje värld), sedan tio kulregnsbanor
+  assert.deepEqual(BONUS.slice(0, 6).map((d) => d.familj || null), [null, null, null, null, null, null])
+  assert.equal(BONUS.filter((d) => d.familj === 'kulregn' && d.kraft === 'multi').length, 10)
   for (const d of BONUS)
     for (const variant of [0, 1]) {
       const b = hamtaBonus(d.id, variant)
@@ -44,7 +47,7 @@ test(`${BONUS.length} bonusbanor med fasta färger, orange och gröna`, () => {
 })
 
 test('bonusbanorna smäller: de flesta skott ger Extreme Fever och tänder nästan allt', () => {
-  const krav = { kulbanan: 0.9, kedjan: 0.85, spiralen: 0.85, kulregnet: 0.2, eldsolen: 0.8, skateparken: 0.8 }
+  const krav = { kulbanan: 0.9, kedjan: 0.85, spiralen: 0.85, kulregnet: 0.2, eldsolen: 0.8, skateparken: 0.8, skyfallet: 0.7, fontanen: 0.45, popcornen: 0.5, flipperspelet: 0.3, kulhjulen: 0.35, plinkot: 0.5, studsmattan: 0.3, kaskaden: 0.45, galaxen: 0.3, kulstormen: 0.4 }
   for (const d of BONUS) {
     const b = hamtaBonus(d.id, 0)
     let feber = 0
@@ -89,6 +92,77 @@ test('Kulregnet: två nya kulor per grön, aldrig fler än 40 samtidigt', () => 
   assert.ok(mest >= 9, `som mest ${mest} kulor`)
 })
 
+test('kulregnsbanorna fyller planen med kulor, men aldrig fler än taket', () => {
+  for (const d of BONUS.filter((x) => x.familj === 'kulregn')) {
+    const b = hamtaBonus(d.id, 1)
+    const tak = d.maxKulor || 40
+    const mest = []
+    for (const v of [0.5, 0.9, 1.3, 1.57, 1.8, 2.2, 2.6]) {
+      const s = skapaSpel(b, { fro: 3 })
+      s.sikta(v)
+      s.skjut()
+      let m = 0
+      for (let i = 0; i < 60 * 45 && (s.lage === 'skjuter' || s.lage === 'feber'); i++) {
+        s.steg(1 / 60)
+        m = Math.max(m, s.kulor.length)
+      }
+      assert.ok(m <= tak, `${d.id}: ${m} kulor`)
+      assert.ok(s.lage !== 'skjuter' && s.lage !== 'feber', `${d.id}: skottet tog slut`)
+      mest.push(m)
+    }
+    mest.sort((a, b) => a - b)
+    assert.ok(mest[3] >= 15, `${d.id}: som mest ${mest.join(',')} kulor`)
+  }
+})
+
+test('kulregnsstilarna: regn från himlen, fontän uppåt, kulan delar sig', () => {
+  const forsta = (id) => {
+    const s = skapaSpel(hamtaBonus(id, 0), { fro: 1 })
+    s.sikta(Math.PI / 2)
+    s.skjut()
+    for (let i = 0; i < 60 * 20; i++) for (const e of s.steg(1 / 60)) if (e.typ === 'kraft' && e.nya.length) return { e, s }
+    return null
+  }
+  const regn = forsta('skyfallet')
+  assert.equal(regn.e.nya.length, 3)
+  assert.ok(regn.e.nya.every(([, y]) => y === 70), 'regnet kommer uppifrån')
+  const fontan = forsta('fontanen')
+  assert.ok(fontan.s.kulor.slice(-2).every((k) => k.vy < -200), 'fontänen sprutar uppåt')
+  const dela = forsta('plinkot')
+  assert.ok(dela.s.kulor.slice(-3).every((k) => k.vy > 0), 'delade kulor rullar av nedåt')
+  assert.equal(hamtaBonus('kulstormen').maxKulor, 60)
+})
+
+test('studsare: skjuter iväg kulan och försvinner när de är utslitna', () => {
+  // en enda studsare rakt under kanonen: kulan studsar upp tre gånger
+  const bana = { namn: 'Prov', fasta: true, grupper: [], objekt: [{ typ: 'pinne', form: 'cirkel', x: 180, y: 300, r: 13, kick: 360, kickAntal: 3, farg0: 'bla' }, { typ: 'pinne', form: 'cirkel', x: 40, y: 500, r: 7.5, farg0: 'orange' }] }
+  const s = skapaSpel(bana, { fro: 1 })
+  s.sikta(Math.PI / 2)
+  s.skjut()
+  const studsar = []
+  for (let i = 0; i < 60 * 20 && s.lage === 'skjuter'; i++)
+    for (const e of s.steg(1 / 60)) if (e.typ === 'studs') studsar.push({ ...e, vy: s.kulor[0]?.vy ?? 0, borta: s.objekt[0].borta })
+  assert.equal(studsar.length, 3)
+  for (const e of studsar) assert.ok(e.vy <= -360 * 0.9, `studsen ger fart uppåt (${e.vy})`)
+  assert.deepEqual(studsar.map((e) => e.kvar), [2, 1, 0])
+  assert.ok(studsar[2].borta, 'utsliten studsare försvinner')
+  assert.notEqual(s.lage, 'skjuter', 'skottet tar slut')
+  // flipperspelet: studsarna studsar många gånger i ett skott
+  const f = skapaSpel(hamtaBonus('flipperspelet', 0), { fro: 2 })
+  const h = spelaSkott(f, 1.4)
+  assert.ok(h.filter((e) => e.typ === 'studs').length >= 10)
+})
+
+test('Kulhjulen och Galaxen snurrar, och speglade snurrar åt andra hållet', () => {
+  for (const id of ['kulhjulen', 'galaxen']) {
+    const a = hamtaBonus(id, 0)
+    const b = hamtaBonus(id, 1)
+    assert.ok(a.grupper.length >= 1 && a.grupper.every((g) => g.typ === 'rotera'))
+    assert.deepEqual(b.grupper.map((g) => Math.sign(g.w)), a.grupper.map((g) => -Math.sign(g.w)))
+    assert.ok(a.objekt.some((o) => o.grupp != null))
+  }
+})
+
 test('Eldsolen börjar med en eldboll, och långa skott tar slut', () => {
   const s = skapaSpel(hamtaBonus('eldsolen', 0), { fro: 1 })
   assert.equal(s.eldKvar, 1)
@@ -108,7 +182,7 @@ test('generatorn: giltiga banor, samma frö ger samma bana', () => {
     assert.ok(b.namn && b.namn.length > 3, `namn ${b.namn}`)
     assert.ok(b.objekt.length >= 55 && b.objekt.length <= 150, `${b.namn}: ${b.objekt.length} objekt`)
     const kand = b.objekt.filter((o) => !o.ejOrange).length
-    assert.ok(b.orange >= 12 && b.orange <= Math.min(25, kand), `${b.namn}: ${b.orange} orange av ${kand}`)
+    assert.ok(b.orange >= 12 && b.orange <= Math.min(niva <= 10 ? 25 : 40, kand), `${b.namn}: ${b.orange} orange av ${kand}`)
     for (const o of b.objekt) if (o.form === 'cirkel') assert.ok(o.x >= 14 && o.x <= W - 14 && o.y >= 92 && o.y <= 548, `${b.namn}: pinne utanför`)
     for (const g of b.grupper) assert.ok(['rotera', 'pendel', 'glid', 'bana'].includes(g.typ))
     const pinnar = b.objekt.filter((o) => o.form === 'cirkel' && o.grupp == null)
@@ -120,6 +194,8 @@ test('generatorn: giltiga banor, samma frö ger samma bana', () => {
 
 test('generatorn: svårare för varje bana, och boten klarar de första', () => {
   assert.ok(genereraBana(5, { niva: 1 }).orange < genereraBana(5, { niva: 12 }).orange)
+  // i oändligt läge fortsätter det efter 25 orange, eftersom man blir starkare
+  assert.ok(genereraBana(5, { niva: 30 }).orange > 25)
   let rorliga = 0
   for (let i = 0; i < 20; i++) rorliga += genereraBana(i * 31, { niva: 8 }).grupper.length > 0 ? 1 : 0
   assert.ok(rorliga >= 6, `rörliga delar i ${rorliga} av 20 svåra banor`)
@@ -158,28 +234,142 @@ test('rundan: kulorna följer med, fem nya per bana, bonusbana var femte', () =>
   assert.notDeepEqual(rundaBana({ ...r, niva: 7 }).objekt, rundaBana({ ...r, niva: 8 }).objekt)
 })
 
-test('rundan: tre olika bonusar att välja mellan, och de gör vad de säger', () => {
-  const r = nyRunda(7)
+test('rundan: hjälten bestämmer vad gröna gör och ger en första uppgradering', () => {
+  assert.equal(HJALTAR.length, 6)
+  for (const h of HJALTAR) {
+    assert.ok(KRAFTER[h.kraft], h.id)
+    const r = nyRunda(5, h.id)
+    assert.equal(r.hjalte, h.id)
+    assert.deepEqual(r.varig, h.start)
+    for (const n of [1, 2, 7]) assert.equal(rundaBana({ ...r, niva: n }).kraft, h.kraft)
+    // bonusbanorna behåller sin egen kraft
+    assert.equal(rundaBana({ ...r, niva: 20 }).kraft, 'multi')
+    for (const id of Object.keys(h.start)) assert.ok(UPPGRADERINGAR[id], id)
+  }
+  // en gammal runda utan hjälte fungerar som förut
+  const gammal = { ...nyRunda(5), hjalte: undefined }
+  assert.ok(rundaBana(gammal).kraft)
+})
+
+test('rundan: olika uppgraderingar att välja mellan, och de gör vad de säger', () => {
+  const r = nyRunda(7, 'glod')
   for (let n = 1; n < 30; n++) {
     const val = bonusVal({ ...r, niva: n })
     assert.equal(val.length, 3)
     assert.equal(new Set(val).size, 3)
-    for (const id of val) assert.ok(BONUSAR[id])
+    for (const id of val) assert.ok(UPPGRADERINGAR[id] && mojlig(r, id))
   }
+  assert.equal(BONUSAR, UPPGRADERINGAR)
   assert.equal(valjBonus(r, 'kulor').kulor, r.kulor + 3)
-  const eld = valjBonus(r, 'eld')
+  assert.equal(valjBonus(r, 'omslag').omslag, r.omslag + 2)
+  // Eldkula: de första skotten på varje bana är eldbollar, och eldbollen är stor
+  const eld = valjBonus(r, 'eldkula')
   const bana = rundaBana(eld)
   const s = skapaSpel(bana, { fro: 1, ...spelVal(eld, bana) })
-  assert.equal(s.eldKvar, 1)
+  assert.equal(s.eldKvar, 2)
+  s.sikta(1.2)
+  s.skjut()
+  assert.ok(s.kulor[0].r >= KULA_R * 1.7, 'stor eldboll')
+  // inget tak för hinken och de gröna
   let hink = r
-  for (let i = 0; i < 5; i++) hink = valjBonus(hink, 'hink')
-  assert.equal(hink.varig.hink, 5)
-  assert.ok(!bonusVal({ ...hink, varig: { hink: 3, gron: 3 } }).some((id) => id === 'hink' || id === 'gron'), 'fulla bonusar erbjuds inte')
-  const s2 = skapaSpel(bana, { fro: 1, ...spelVal({ ...r, varig: { hink: 2, gron: 2 } }, bana) })
-  assert.equal(s2.hinkBredd, HINK.bredd + 28)
-  assert.equal(s2.objekt.filter((o) => o.farg === 'gron').length, 4)
-  // ingen kulbonus i rundan (kulorna följer ju med i stället)
+  for (let i = 0; i < 12; i++) hink = valjBonus(valjBonus(hink, 'hink'), 'gron')
+  assert.equal(hink.varig.hink, 12)
+  assert.equal(hink.varig.gron, 12)
+  assert.ok(mojlig(hink, 'hink') && mojlig(hink, 'gron'))
+  const s2 = skapaSpel(bana, { fro: 1, ...spelVal(hink, bana) })
+  assert.equal(s2.hinkBredd, HINK.bredd + 14 * 12)
+  assert.equal(s2.objekt.filter((o) => o.farg === 'gron').length, 14)
+  // hinken växer inte ut ur planen
+  const jatte = skapaSpel(bana, { fro: 1, ...spelVal({ ...r, varig: { hink: 60 } }, bana) })
+  assert.ok(jatte.hinkBredd <= W - 40)
+  // det som har ett tak erbjuds inte när det är fullt
+  const fullt = { ...r, varig: { sikte: 1, jatte: 4, tur: 3 } }
+  for (let n = 1; n < 40; n++) assert.ok(!bonusVal({ ...fullt, niva: n }).some((id) => ['sikte', 'jatte', 'tur'].includes(id)))
+  // Tur ger fyra val
+  assert.equal(antalVal({ ...r, varig: { tur: 1 } }), 4)
+  assert.equal(bonusVal({ ...r, varig: { tur: 1 } }).length, 4)
+  // Kulbanken ger fler kulor efter varje bana
+  assert.equal(rundaKlar({ ...r, varig: { bank: 3 } }, { poang: 0, kulorKvar: 2, bonus: false }).kulor, 2 + NYA_KULOR + 3)
   assert.equal(spelVal(r, bana).kulBonus, false)
+})
+
+test('rundan: evolutioner, omslag och skattkistan', () => {
+  const r = nyRunda(9, 'konfekt')
+  assert.ok(!mojlig(r, 'kulregn'), 'evolutionen kräver sina delar')
+  const nara = { ...r, varig: { delning: 2, gron: 2 } }
+  assert.ok(mojlig(nara, 'kulregn'))
+  // en möjlig evolution erbjuds alltid
+  let sett = 0
+  for (let n = 1; n <= 20; n++) if (bonusVal({ ...nara, niva: n }).includes('kulregn')) sett++
+  assert.equal(sett, 20, `evolutionen visades ${sett} av 20 gånger`)
+  assert.ok(!mojlig(valjBonus(nara, 'kulregn'), 'kulregn'), 'en evolution tas bara en gång')
+  for (const [id, u] of Object.entries(UPPGRADERINGAR)) if (u.krav) for (const k of Object.keys(u.krav)) assert.ok(UPPGRADERINGAR[k] && !UPPGRADERINGAR[k].krav, `${id}: ${k}`)
+  // omslag: nya val, samma varje gång, och kostar ett omslag
+  const val = bonusVal({ ...r, niva: 3 })
+  const om = slaOm({ ...r, niva: 3 })
+  assert.equal(om.omslag, r.omslag - 1)
+  assert.deepEqual(bonusVal(om), bonusVal(slaOm({ ...r, niva: 3 })))
+  let olika = 0
+  for (let n = 1; n <= 10; n++) if (bonusVal({ ...r, niva: n }).join() !== bonusVal(slaOm({ ...r, niva: n })).join()) olika++
+  assert.ok(olika >= 8, 'omslaget ger andra val')
+  assert.equal(slaOm({ ...r, omslag: 0 }).omslag, 0)
+  assert.deepEqual(val, bonusVal({ ...r, niva: 3 }))
+  // skattkistan: 1–3 uppgraderingar, inga direkta
+  for (let n = 5; n <= 50; n += 5) {
+    const k = oppnaKista({ ...r, niva: n })
+    assert.ok(k.fick.length >= 1 && k.fick.length <= 3)
+    assert.ok(k.fick.every((id) => !UPPGRADERINGAR[id].direkt))
+    assert.equal(new Set(k.fick).size, k.fick.length, "olika saker i kistan")
+    assert.ok(build(k.runda).length >= build(r).length)
+  }
+})
+
+test('uppgraderingarna i motorn: jättekula, delning, bomber, magnet, lila och Kulregn', () => {
+  const bana = genereraBana(77, { niva: 6 })
+  const spela = (perk, start = {}) => {
+    const s = skapaSpel(bana, { fro: 4, perk, start })
+    s.sikta(1.35)
+    s.skjut()
+    const h = []
+    let mest = 0
+    for (let i = 0; i < 60 * 45 && (s.lage === 'skjuter' || s.lage === 'feber'); i++) {
+      h.push(...s.steg(1 / 60))
+      mest = Math.max(mest, s.kulor.length)
+    }
+    return { s, h, mest }
+  }
+  const vanlig = spela({})
+  assert.equal(vanlig.mest, 1)
+  const jatte = skapaSpel(bana, { fro: 4, perk: { jatte: 4 } })
+  jatte.skjut()
+  assert.ok(Math.abs(jatte.kulor[0].r - KULA_R * 1.6) < 1e-9)
+  const del = spela({ delning: 3 })
+  assert.ok(del.h.some((e) => e.typ === 'delning' && e.nya.length === 3))
+  assert.ok(del.mest >= 4)
+  const bomb = spela({ bomber: 3 })
+  assert.equal(bomb.s.objekt.filter((o) => o.bomb).length, 6)
+  const lila = skapaSpel(bana, { fro: 4, perk: { lila: 3 } })
+  assert.equal(lila.objekt.filter((o) => o.farg === 'lila').length, 3)
+  // Kulregn: varje grön skjuter ut två kulor, även med en annan kraft
+  const regn = spela({ kulregn: 1 })
+  const krafter = regn.h.filter((e) => e.typ === 'kraft')
+  if (krafter.length) assert.ok(krafter.every((e) => e.regn.length === 2))
+  // Poängregn: mer poäng för samma träff
+  const pa = spela({ poang: 4 })
+  const forsta = (x) => x.h.find((e) => e.typ === 'traff').poang
+  assert.equal(forsta(pa), forsta(vanlig) * 2)
+  // magneten drar kulan till sig: fler orange tänds i snitt
+  let utan = 0
+  let med = 0
+  for (let i = 0; i < 16; i++) {
+    const v = 0.35 + i * 0.16
+    for (const [perk, add] of [[{}, (n) => (utan += n)], [{ magnet: 4 }, (n) => (med += n)]]) {
+      const s = skapaSpel(bana, { fro: 4, perk })
+      spelaSkott(s, v)
+      add(s.orangeTraffade)
+    }
+  }
+  assert.ok(med > utan, `magnet ${med} orange mot ${utan} utan`)
 })
 
 /* ------------------------------------------------------------ editorn */

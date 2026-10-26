@@ -256,6 +256,59 @@
 .pb-val button:active:not(:disabled) { transform: scale(0.97); }
 .pb-val button:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px #ff9a3c; }
 
+/* oändligt läge: uppgraderingar, build, skattkista och hjältar */
+.grad-1 { --gradf: #93c5fd; }
+.grad-2 { --gradf: #c4b5fd; }
+.grad-3 { --gradf: #fdba74; }
+.grad-4 { --gradf: #fde047; }
+.pb-val button:nth-child(4) { animation-delay: 240ms; }
+.pb-val button.pb-uppg { grid-template-columns: 38px 1fr; grid-template-rows: auto auto auto auto; row-gap: 1px; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--gradf) 55%, transparent); }
+.pb-val.fyra button.pb-uppg { padding: 6px 10px; }
+.pb-uppg span { grid-row: 1 / span 4; font-size: 24px; }
+.pb-uppg em { font-style: normal; font-size: 9.5px; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gradf); }
+.pb-uppg b, .pb-uppg small, .pb-uppg em, .pb-uppg i { grid-column: 2; }
+.pb-uppg-evo { font-style: normal; font-size: 10.5px; font-weight: 700; color: #fcd34d; }
+.pb-uppg-evo::before { content: 'Del av '; color: var(--dim); font-weight: 600; }
+.pb-val button.grad-3 { background: linear-gradient(180deg, #3a2a1c, var(--panel)); }
+.pb-val button.grad-4 {
+  background: linear-gradient(160deg, #3b2f0b, #2a1650); box-shadow: inset 0 0 0 2px #fde047, 0 0 18px rgba(253, 224, 71, 0.35);
+  animation: ds-kort-in 420ms cubic-bezier(.34,1.56,.64,1) both, pb-evo 1.6s ease-in-out 420ms infinite;
+}
+@keyframes pb-evo { 50% { box-shadow: inset 0 0 0 2px #fff3b0, 0 0 28px rgba(253, 224, 71, 0.6); } }
+.pb-omslag { width: 100%; margin-top: 8px; flex: none; }
+.pb-omslag b { color: var(--text); }
+.pb-build { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 8px; }
+.pb-build small { font-size: 11px; font-weight: 800; color: var(--dim); }
+.pb-build > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; }
+.pb-build span { position: relative; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; font-size: 16px; background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1.5px var(--gradf, rgba(255, 255, 255, 0.2)); }
+.pb-build span.hjalte { background: radial-gradient(circle at 40% 35%, #fff6c8, #fbbf24); }
+.pb-build span b { position: absolute; right: -4px; bottom: -4px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; font-size: 9.5px; line-height: 15px; font-weight: 900; background: #0f172a; color: #fff; box-shadow: 0 0 0 1.5px var(--gradf); }
+.pb-kista { margin-top: 6px; text-align: center; }
+.pb-kista-ikon { font-size: 44px; line-height: 1.1; animation: pb-kista 0.9s cubic-bezier(.34,1.56,.64,1) both; }
+@keyframes pb-kista { 0% { transform: scale(0.3) rotate(-20deg); opacity: 0; } 60% { transform: scale(1.2) rotate(8deg); opacity: 1; } 100% { transform: none; } }
+.pb-kista .pb-val-rubrik { margin-top: 2px; }
+.pb-kista-fick { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 8px; }
+.pb-kista-fick span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 12px; font-size: 13px; font-weight: 800; background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1.5px var(--gradf); animation: ds-kort-in 420ms cubic-bezier(.34,1.56,.64,1) both; }
+.pb-kista-fick i { font-style: normal; font-size: 18px; }
+.pb-hjaltar { position: relative; }
+.pb-hjaltar .pb-stang { position: absolute; top: 10px; right: 10px; }
+.pb-hjalte-lista { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.pb-hjalte-lista button {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 6px; border-radius: 14px; text-align: center;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--h1) 45%, #1a2140), color-mix(in srgb, var(--h2) 30%, #121830));
+  box-shadow: inset 0 0 0 1px rgba(253, 230, 138, 0.3); animation: ds-kort-in 420ms cubic-bezier(.34,1.56,.64,1) both;
+}
+.pb-hjalte-lista button:active { transform: scale(0.97); }
+.pb-hjalte-lista .pb-portratt.liten { width: 42px; height: 42px; box-shadow: 0 0 0 2px #ffd43b; }
+.pb-hjalte-lista .pb-portratt.emoji.liten { font-size: 24px; }
+.pb-hjalte-lista b { font-size: 13.5px; }
+.pb-hjalte-lista small { font-size: 11px; color: rgba(255, 255, 255, 0.8); }
+.pb-hjalte-start { display: flex; flex-direction: column; gap: 1px; }
+.pb-hjalte-start i { font-style: normal; font-size: 11px; font-weight: 800; color: #fde68a; }
+.pb-kulregn-rubrik { margin-top: 12px; }
+.pb-kulregn-rubrik b { margin-right: 4px; color: #bbf7d0; }
+.pb-bonuskort.kulregn { box-shadow: inset 0 0 0 1px rgba(134, 239, 172, 0.45); }
+
 /* ---------------------------------------------------------------- baneditorn */
 
 .pb-editor { display: flex; flex-direction: column; gap: 6px; padding-top: 2px; scroll-margin-top: 6px; }

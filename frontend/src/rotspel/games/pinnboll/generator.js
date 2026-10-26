@@ -271,7 +271,9 @@ function forsok(fro, niva) {
   }
   objekt.push(...fyll, ...(spegel ? spegla(fyll) : []))
 
-  const orange = Math.min(25, 12 + Math.floor(niva * 1.3))
+  // fler orange för varje bana upp till 25 (som i Peggle), och i oändligt
+  // läge sedan en till varannan bana (högst 40), eftersom man blir starkare
+  const orange = Math.min(40, 12 + Math.floor(niva * 1.3), 25 + Math.max(0, Math.floor((niva - 10) / 2)))
   const { objekt: ut, orange: antal, kandidater } = byggObjekt(objekt, { orange })
   // banan heter efter sitt största motiv
   const huvud = namn.reduce((a, c) => (c[1] > a[1] ? c : a), ['Banan', 0])[0]

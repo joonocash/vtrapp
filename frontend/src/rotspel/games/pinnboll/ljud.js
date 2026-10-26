@@ -99,6 +99,22 @@ export function skapaPinnLjud() {
       ton(f * 2, 0.3, 'triangle', 0.08, 0.12)
     },
 
+    // En ny kula ur en grön pinne (kulregn): ett litet plopp uppåt.
+    nyKula() {
+      if (l.strypt('nyKula', 45)) return
+      const f = 520 + Math.random() * 260
+      ton(f, 0.09, 'sine', 0.07, 0, f * 1.8)
+      ton(f * 2, 0.05, 'triangle', 0.02, 0.02)
+    },
+
+    // En studsare i flipperspelet: "boing", lite lägre när den är sliten.
+    studs(kvar = 10) {
+      if (l.strypt('studs', 40)) return
+      const f = 260 + Math.min(10, kvar) * 18
+      ton(f, 0.12, 'square', 0.035, 0, f * 2.2)
+      ton(f * 1.5, 0.08, 'sine', 0.05, 0.01)
+    },
+
     kraft() {
       ton(330, 0.35, 'sawtooth', 0.04, 0, 1320)
       ton(660, 0.3, 'triangle', 0.08, 0.15)
