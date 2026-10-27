@@ -107,6 +107,18 @@ export function skapaPinnLjud() {
       ton(f * 2, 0.05, 'triangle', 0.02, 0.02)
     },
 
+    // Kulkaos: guld (ett litet klirr) och kedjeblixten (ett sprak).
+    mynt() {
+      if (l.strypt('mynt', 50)) return
+      ton(1318.5, 0.07, 'square', 0.025)
+      ton(1975.5, 0.12, 'triangle', 0.035, 0.05)
+    },
+    blixt() {
+      if (l.strypt('blixt', 60)) return
+      brus(0.12, 0.06, 4000, 0, 9000)
+      ton(880, 0.08, 'sawtooth', 0.025, 0, 220)
+    },
+
     // En studsare i flipperspelet: "boing", lite lägre när den är sliten.
     studs(kvar = 10) {
       if (l.strypt('studs', 40)) return

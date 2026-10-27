@@ -162,7 +162,9 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   hinkBredd = Math.min(hinkBredd, W - 40)
   const rnd = mulberry32(fro >>> 0)
   start = { ...(bana.start || {}), ...start }
-  const grupper = (bana.grupper || []).map((g) => ({ ...g, c: 1, s: 0, ox: 0, oy: 0, w: g.w || 0, vx: 0, vy: 0, vinkel: 0 }))
+  // Kulkaos: Snigelslem gör att allt som rör sig går hälften så fort
+  const lugn = perk.snigel ? 0.5 : 1
+  const grupper = (bana.grupper || []).map((g) => ({ ...g, c: 1, s: 0, ox: 0, oy: 0, w: (g.w || 0) * lugn, T: g.T ? g.T / lugn : g.T, vx: 0, vy: 0, vinkel: 0 }))
   const objekt = bana.objekt.map((o, id) => {
     const ut = { ...o, id, farg: 'bla', lit: false, borta: false, nr: 0 }
     if (o.kick) {
@@ -175,36 +177,52 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     }
     return ut
   })
-  let antalOrange
-  if (bana.fasta) {
-    for (const o of objekt) o.farg = o.farg0 || 'bla'
-    antalOrange = objekt.filter((o) => o.farg === 'orange').length
-  } else {
-    // 25 orange bland de som får vara orange, två gröna bland resten
-    const kandidater = objekt.filter((o) => !o.ejOrange)
-    antalOrange = Math.min(bana.orange ?? ANTAL_ORANGE, kandidater.length)
-    blanda(kandidater, rnd)
-    for (let i = 0; i < antalOrange; i++) kandidater[i].farg = 'orange'
-    // gröna bara där kulan når (ejOrange = inbyggd i en sluten ring)
-    let ovriga = objekt.filter((o) => o.farg === 'bla' && !o.ejOrange)
-    if (ovriga.length < 2) ovriga = objekt.filter((o) => o.farg === 'bla')
-    blanda(ovriga, rnd)
-    // gröna: helst en i övre och en i undre halvan
-    const ovre = ovriga.filter((o) => (o.y ?? o.cy ?? o.y1) < 330)
-    const undre = ovriga.filter((o) => (o.y ?? o.cy ?? o.y1) >= 330)
-    const g1 = ovre[0] || ovriga[0]
-    const g2 = undre.find((o) => o !== g1) || ovriga.find((o) => o !== g1)
-    if (g1) g1.farg = 'gron'
-    if (g2) g2.farg = 'gron'
-    // fler gröna (en bonus i oändligt läge)
-    for (const o of ovriga.filter((q) => q.farg === 'bla').slice(0, extraGrona)) o.farg = 'gron'
+  let antalOrange = 0
+  // Färgerna: fasta (bestämda i banan) eller slumpade. Bossen färgas aldrig.
+  // Körs igen när en bossbana fylls på (aterstall).
+  function farga() {
+    const med = objekt.filter((o) => !o.boss && !o.hard && !o.borta)
+    if (bana.fasta) {
+      for (const o of med) o.farg = o.farg0 || 'bla'
+      antalOrange = med.filter((o) => o.farg === 'orange').length
+    } else {
+      for (const o of med) o.farg = 'bla'
+      // 25 orange bland de som får vara orange, två gröna bland resten
+      const kandidater = med.filter((o) => !o.ejOrange)
+      antalOrange = Math.min(bana.orange ?? ANTAL_ORANGE, kandidater.length)
+      blanda(kandidater, rnd)
+      for (let i = 0; i < antalOrange; i++) kandidater[i].farg = 'orange'
+      // gröna bara där kulan når (ejOrange = inbyggd i en sluten ring)
+      let ovriga = med.filter((o) => o.farg === 'bla' && !o.ejOrange)
+      if (ovriga.length < 2) ovriga = med.filter((o) => o.farg === 'bla')
+      blanda(ovriga, rnd)
+      // gröna: helst en i övre och en i undre halvan
+      const ovre = ovriga.filter((o) => (o.y ?? o.cy ?? o.y1) < 330)
+      const undre = ovriga.filter((o) => (o.y ?? o.cy ?? o.y1) >= 330)
+      const g1 = ovre[0] || ovriga[0]
+      const g2 = undre.find((o) => o !== g1) || ovriga.find((o) => o !== g1)
+      if (g1) g1.farg = 'gron'
+      if (g2) g2.farg = 'gron'
+      // fler gröna (en bonus i oändligt läge)
+      for (const o of ovriga.filter((q) => q.farg === 'bla').slice(0, extraGrona)) o.farg = 'gron'
+    }
+    // roguelike: Bomber — blå pinnar som smäller när de träffas
+    if (perk.bomber) {
+      for (const o of med) o.bomb = false
+      const bla = med.filter((o) => o.farg === 'bla' && o.form === 'cirkel' && !o.kick)
+      blanda(bla, rnd)
+      for (const o of bla.slice(0, 2 * perk.bomber)) o.bomb = true
+    }
+    // Kulkaos: guldpinnar ger guld när de träffas
+    const guldpinnar = (bana.guldpinnar || 0) + 2 * (perk.guldpinnar || 0)
+    if (guldpinnar) {
+      for (const o of med) o.guld = false
+      const bla = med.filter((o) => o.farg === 'bla' && o.form === 'cirkel' && !o.kick && !o.bomb)
+      blanda(bla, rnd)
+      for (const o of bla.slice(0, guldpinnar)) o.guld = true
+    }
   }
-  // roguelike: Bomber — blå pinnar som smäller när de träffas
-  if (perk.bomber) {
-    const bla = objekt.filter((o) => o.farg === 'bla' && o.form === 'cirkel' && !o.kick)
-    blanda(bla, rnd)
-    for (const o of bla.slice(0, 2 * perk.bomber)) o.bomb = true
-  }
+  farga()
 
   const spel = {
     bana,
@@ -244,6 +262,11 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     rensat: false,
     perk,
     lilor: [], // fler lila pinnar (roguelike: Lila lycka)
+    guld: 0, // Kulkaos: guld som samlats på banan
+    // Kulkaos: bossen (bana.boss = { hp }) tar skada efter varje skott
+    bossHp: bana.boss ? bana.boss.hp : 0,
+    bossMax: bana.boss ? bana.boss.hp : 0,
+    bossTraffar: 0,
   }
 
   function blanda(a, r) {
@@ -335,8 +358,8 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     for (const l of [spel.lila, ...(spel.lilor || [])]) if (l && !l.lit && !l.borta) l.farg = 'bla'
     spel.lila = null
     spel.lilor = []
-    let bla = objekt.filter((o) => !o.borta && !o.lit && o.farg === 'bla' && !o.ejOrange)
-    if (!bla.length) bla = objekt.filter((o) => !o.borta && !o.lit && o.farg === 'bla')
+    let bla = objekt.filter((o) => !o.borta && !o.lit && o.farg === 'bla' && !o.ejOrange && !o.boss && !o.hard)
+    if (!bla.length) bla = objekt.filter((o) => !o.borta && !o.lit && o.farg === 'bla' && !o.boss && !o.hard)
     if (!bla.length) return
     spel.lila = bla[Math.floor(rnd() * bla.length)]
     spel.lila.farg = 'lila'
@@ -364,7 +387,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     }
     const m = mult()
     const bas = spel.feber ? FEBER_POANG[o.farg] : POANG[o.farg] * m
-    const varde = Math.round(bas * (spel.trippelKvar > 0 ? 3 : 1) * (1 + 0.25 * (perk.poang || 0)))
+    const varde = Math.round(bas * (spel.trippelKvar > 0 ? 3 : 1) * (1 + 0.25 * (perk.poang || 0)) * (perk.diamant && o.farg === 'orange' ? 2 : 1))
     spel.skottSumma += varde
     spel.skottTraffar++
     if (spel.skottTraffar === 50 && !spel.stilar.includes('mega')) stil('mega', handelser)
@@ -405,6 +428,18 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       if (perk.fyrverkeri) nyaKulor(o, k, 1, 'stjarna')
     }
     if (perk.meteor && spel.eldNu && k && o.farg === 'orange') small(o, 42, handelser, 'meteor')
+    // Kulkaos: guld, blixtar, stjärnfall och kulfabriken
+    if (o.guld) {
+      guld(perk.midas ? 10 : 5, mx, my, handelser)
+      if (perk.midas) small(o, 48, handelser, 'guld')
+    }
+    if (o.farg === 'orange' && (perk.honung || perk.midas)) guld((perk.honung ? 1 : 0) + (perk.midas ? 2 : 0), mx, my, handelser)
+    if (k && o.farg === 'orange' && perk.blixt) blixt(o, perk.blixt + (perk.blixtstorm ? 3 : 0), perk.blixtstorm ? 170 : 110, handelser)
+    if (o.farg === 'gron' && perk.stjarnfall) {
+      const or = objekt.filter((p) => p.farg === 'orange' && !p.lit && !p.borta)
+      if (or.length) blixt(o, 1, 9999, handelser, [or[Math.floor(rnd() * or.length)]])
+    }
+    if (k && perk.kulfabrik && spel.skottTraffar % Math.max(6, 14 - 2 * perk.kulfabrik) === 0) handelser.push({ typ: 'delning', x: mx, y: my, nya: nyaKulor(o, k, 1, 'stjarna') })
     // en grön som tänds av en annan grön smäll smäller lite senare, så att
     // kedjereaktionen syns som en våg
     if (o.farg === 'gron') {
@@ -412,7 +447,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       else kraft(o, handelser, k)
     }
     // sista orange: Extreme Fever
-    if (o.farg === 'orange' && orangeKvar() === 0 && !spel.feber) {
+    if (o.farg === 'orange' && orangeKvar() === 0 && !spel.feber && !bana.boss) {
       spel.feber = true
       spel.lage = 'feber'
       spel.narSista = null
@@ -437,6 +472,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     // roguelike: Kulregn ger kulor ur varje grön, Storsmäll tänder runt den
     if (perk.kulregn) ut.regn = nyaKulor(o, k, 2, 'stjarna')
     if (perk.smalla && namn !== 'small') small(o, 40 + 15 * perk.smalla, handelser, 'smalla')
+    if (perk.karamell && spel.grontSkott === 1) small(o, 72, handelser, 'smalla')
     if (namn === 'spar') spel.sparKvar += KRAFTER.spar.skott
     else if (namn === 'eld') spel.eldKvar += 1
     else if (namn === 'spok') spel.spokKvar = Math.max(spel.spokKvar, 1)
@@ -521,6 +557,33 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     for (const id of tanda) tand(objekt[id], handelser, null, true)
   }
 
+  // Kulkaos: guld (gånger guldfaktorn från uppgraderingar och reliker).
+  function guld(n, x, y, handelser) {
+    const g = Math.max(1, Math.round(n * (perk.guldFaktor || 1)))
+    spel.guld += g
+    handelser.push({ typ: 'guld', n: g, x, y })
+  }
+
+  // Kulkaos: Kedjeblixten — från o till de n närmaste otända inom radien
+  // (eller till mal om de är givna).
+  function blixt(o, n, radie, handelser, mal = null) {
+    const [x, y] = mitt(o)
+    let lista = mal
+    if (!lista) {
+      lista = []
+      for (const p of objekt) {
+        if (p.lit || p.borta || p.boss || p.hard || p === o) continue
+        const [px, py] = mitt(p)
+        const d = Math.hypot(px - x, py - y)
+        if (d < radie) lista.push([d, p])
+      }
+      lista = lista.sort((a, b) => a[0] - b[0]).slice(0, n).map((q) => q[1])
+    }
+    if (!lista.length) return
+    handelser.push({ typ: 'blixt', x, y, till: lista.map((p) => mitt(p)) })
+    for (const p of lista) tand(p, handelser, null, true)
+  }
+
   // Studsare (o.kick, som i ett flipperspel): kulan skjuts iväg med minst
   // o.kick px/s, hur långsamt den än kom. Efter o.kickAntal studsar är
   // studsaren slut och försvinner, så att skottet till slut tar slut.
@@ -551,7 +614,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       vx,
       vy,
       // eldbollen är stor (Meteorregn ännu större), Jättekula gör alla större
-      r: KULA_R * (spel.eldNu ? (perk.meteor ? 2.6 : 1.8) : 1 + 0.15 * (perk.jatte || 0)),
+      r: KULA_R * (spel.eldNu ? (perk.meteor ? 2.6 : perk.eldstor ? 2.2 : 1.8) : 1 + 0.15 * (perk.jatte || 0)),
       senastTraff: -10,
       glid: 0,
       mjuk: false,
@@ -583,8 +646,10 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     spel.stilar = []
     spel.grontSkott = 0
     spel.hinkSkott = false
-    spel.eldNu = spel.eldKvar > 0
-    if (spel.eldNu) spel.eldKvar--
+    // Kulkaos: Glödkolet gör var femte skott till en eldboll
+    const glod = Boolean(perk.glodkol) && spel.skott % 5 === 0
+    spel.eldNu = spel.eldKvar > 0 || glod
+    if (spel.eldKvar > 0 && !glod) spel.eldKvar--
     spel.spokNu = spel.spokKvar > 0
     if (spel.spokNu) spel.spokKvar--
     spel.sparNu = spel.sparKvar > 0
@@ -592,6 +657,12 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     const vx = Math.cos(spel.vinkel) * FYSIK.STARTFART
     const vy = Math.sin(spel.vinkel) * FYSIK.STARTFART
     spel.kulor = [nyKula(KANON.x + Math.cos(spel.vinkel) * 22, KANON.y + Math.sin(spel.vinkel) * 22, vx, vy)]
+    // Kulkaos: spegelkula (Tvilling, Spegeln) och fler kulor per skott
+    const fler = []
+    if (perk.tvilling || (perk.spegel && spel.skott === 1)) fler.push(Math.PI - spel.vinkel + (Math.abs(spel.vinkel - Math.PI / 2) < 0.05 ? 0.1 : 0))
+    for (let i = 1; i <= (perk.flerskott || 0); i++) fler.push(spel.vinkel + (i % 2 ? 1 : -1) * 0.13 * Math.ceil(i / 2))
+    for (const v of fler) spel.kulor.push(nyKula(KANON.x + Math.cos(v) * 22, KANON.y + Math.sin(v) * 22, Math.cos(v) * FYSIK.STARTFART, Math.sin(v) * FYSIK.STARTFART))
+    spel.bossTraffar = 0
     spel.lage = spel.feber ? 'feber' : 'skjuter'
     return true
   }
@@ -628,7 +699,8 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   // En kula ett delsteg. Returnerar 'ut' om den lämnade planen nedtill.
   function flytta(k, dt, handelser, simulera) {
     if (!simulera && (perk.magnet || perk.hinkmagnet)) dras(k, dt)
-    k.vy += FYSIK.G * dt
+    // Kulkaos: Fjäderlätt och Ugglan Klok ger lägre gravitation
+    k.vy += FYSIK.G * (perk.grav || 1) * dt
     k.x += k.vx * dt
     k.y += k.vy * dt
     if (k.x < k.r) {
@@ -676,8 +748,13 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
         nx /= d
         ny /= d
       }
-      if (eld) {
+      if (eld && !o.boss && !o.hard) {
         // eldbollen bränner igenom: tänd utan att studsa
+        tand(o, handelser, k)
+        continue
+      }
+      // Kulkaos: Genomborr — kulan går rakt igenom blå pinnar
+      if (perk.genom && o.farg === 'bla' && o.form === 'cirkel' && !o.kick && !o.boss) {
         tand(o, handelser, k)
         continue
       }
@@ -698,11 +775,28 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
         k.mjuk = -vn < 150
       }
       kontakt = o
+      if (o.boss || o.hard) {
+        // Kulkaos: bossen och hårda saker (krabbans klor) tänds aldrig. Kulan
+        // studsar alltid iväg ordentligt från bossen, och varje träff räknas.
+        const min = o.boss ? 260 : o.kick || 0
+        const ut = k.vx * nx + k.vy * ny
+        if (ut < min) {
+          k.vx += (min - ut) * nx
+          k.vy += (min - ut) * ny
+          k.mjuk = false
+        }
+        if (o.boss && spel.skottTid - (k.bossT ?? -1) > 0.12) {
+          k.bossT = spel.skottTid
+          spel.bossTraffar++
+          handelser.push({ typ: 'bossTraff', id: o.id, x: qx, y: qy })
+        }
+        continue
+      }
       tand(o, handelser, k)
       if (o.kick) studsare(o, k, nx, ny, qx, qy, handelser)
     }
     // hinken: kanter studsar, öppningen fångar
-    if (!simulera && !spel.feber && !spel.eldNu && !(spel.spokNu && !k.spokad)) {
+    if (!simulera && spel.hinkBredd > 0 && !spel.feber && !spel.eldNu && !(spel.spokNu && !k.spokad)) {
       const hy = HINK.y
       for (const sida of [-1, 1]) {
         const ex = spel.hinkX + sida * (spel.hinkBredd / 2)
@@ -755,6 +849,13 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
           }
         }
       }
+    }
+    // Kulkaos: Studsgolvet — kulan studsar upp från golvet några gånger
+    if (!simulera && perk.golv && (k.golv || 0) < perk.golv && k.y > H - k.r - 2 && k.vy > 0 && !spel.feber) {
+      k.y = H - k.r - 2
+      k.vy = -Math.max(Math.abs(k.vy) * 0.8, 380)
+      k.golv = (k.golv || 0) + 1
+      handelser.push({ typ: 'golv', x: k.x })
     }
     if (k.y > H + k.r + 4) {
       if (!simulera && spel.spokNu && !k.spokad) {
@@ -822,7 +923,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
           let bast = null
           let bd = Infinity
           for (const o of objekt) {
-            if (o.borta) continue
+            if (o.borta || o.boss || o.hard) continue
             const [qx, qy, tj] = narmast(o, k.x, k.y)
             const dd = Math.hypot(qx - k.x, qy - k.y) - tj
             if (dd < bd) {
@@ -894,7 +995,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     // ett skott utan träffar: slant om en extra kula
     let slant = null
     if (spel.skottTraffar === 0 && !spel.feber && !spel.hinkSkott) {
-      slant = rnd() < 0.5
+      slant = Boolean(perk.lyckoslant) || rnd() < 0.5
       if (slant) spel.kulorKvar++
     }
     const lista = spel.lista.map((o) => o.id)
@@ -902,6 +1003,37 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     const kvarAllt = objekt.filter((o) => !o.borta).length
     handelser.push({ typ: 'skottSlut', lista, poang: sp, traffar: spel.skottTraffar, slant })
     spel.narSista = null
+    // Kulkaos: bossen tar skada av allt skottet tände och av varje träff
+    if (bana.boss && !spel.feber) {
+      const vikt = { bla: 1, orange: 2, gron: 3, lila: 5 }
+      let skada = spel.bossTraffar * 4
+      for (const o of spel.lista) skada += vikt[o.farg] || 1
+      skada = Math.round(skada * (1 + 0.2 * (perk.jagare || 0)) * (perk.kronan ? 2 : 1))
+      spel.bossHp = Math.max(0, spel.bossHp - skada)
+      handelser.push({ typ: 'bossSkada', skada, hp: spel.bossHp, max: spel.bossMax })
+      if (spel.bossHp <= 0) {
+        spel.lage = 'klar'
+        handelser.push({ typ: 'bossDod' })
+        handelser.push({ typ: 'banaKlar', fack: 0, kulor: spel.kulorKvar, kulBonus: 0, poang: spel.poang })
+        return
+      }
+      // när det mesta är borta fylls planen på igen
+      const alla = objekt.filter((o) => !o.boss && !o.hard)
+      if (alla.filter((o) => !o.borta).length < alla.length * 0.4) {
+        for (const o of alla) {
+          o.borta = false
+          o.lit = false
+        }
+        farga()
+        spel.antalOrange = antalOrange
+        handelser.push({ typ: 'aterstall' })
+      }
+    }
+    // Kulkaos: Spelautomaten — ibland kostar skottet ingen kula
+    if (perk.spelautomat && !spel.feber && rnd() < 0.12) {
+      spel.kulorKvar++
+      handelser.push({ typ: 'gratisKula' })
+    }
     if (spel.feber) {
       if (kvarAllt === 0 && !spel.rensat) {
         spel.rensat = true
@@ -962,11 +1094,11 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   }
 
   // Ögonblicksbild (för botarna som provar vinklar). Slumpen sparas inte.
-  const FALT = ['t', 'lage', 'vinkel', 'kulorKvar', 'iKanonen', 'poang', 'orangeTraffade', 'skott', 'skottSumma', 'skottTraffar', 'skottOrange', 'skottTid', 'extraGivna', 'kraftNamn', 'sparKvar', 'eldKvar', 'spokKvar', 'trippelKvar', 'feber', 'hinkX', 'hinkVx', 'rensat', 'eldNu', 'spokNu', 'sparNu', 'grontSkott', 'feberFack', 'hinkSkott']
+  const FALT = ['t', 'lage', 'vinkel', 'kulorKvar', 'iKanonen', 'poang', 'orangeTraffade', 'skott', 'skottSumma', 'skottTraffar', 'skottOrange', 'skottTid', 'extraGivna', 'kraftNamn', 'sparKvar', 'eldKvar', 'spokKvar', 'trippelKvar', 'feber', 'hinkX', 'hinkVx', 'rensat', 'eldNu', 'spokNu', 'sparNu', 'grontSkott', 'feberFack', 'hinkSkott', 'guld', 'bossHp', 'bossTraffar', 'antalOrange']
   function spara() {
     const st = {}
     for (const f of FALT) st[f] = spel[f]
-    st.obj = objekt.map((o) => [o.farg, o.lit, o.borta, o.nr, o.kickKvar])
+    st.obj = objekt.map((o) => [o.farg, o.lit, o.borta, o.nr, o.kickKvar, o.bomb, o.guld])
     st.kulor = spel.kulor.map((k) => ({ ...k }))
     st.lista = spel.lista.map((o) => o.id)
     st.stilar = [...spel.stilar]
@@ -979,7 +1111,8 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   }
   function ladda(st) {
     for (const f of FALT) spel[f] = st[f]
-    st.obj.forEach(([farg, lit, borta, nr, kickKvar], i) => Object.assign(objekt[i], { farg, lit, borta, nr, kickKvar }))
+    st.obj.forEach(([farg, lit, borta, nr, kickKvar, bomb, guld], i) => Object.assign(objekt[i], { farg, lit, borta, nr, kickKvar, bomb, guld }))
+    antalOrange = spel.antalOrange
     spel.kulor = st.kulor.map((k) => ({ ...k }))
     spel.lista = st.lista.map((id) => objekt[id])
     spel.stilar = [...st.stilar]
