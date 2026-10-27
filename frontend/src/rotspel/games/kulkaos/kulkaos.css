@@ -1,0 +1,155 @@
+/* Kulkaos — det som inte kommer från Pinnbollen eller delat. */
+
+.kk-rot {
+  --accent: #ff9a3c;
+  --guld: #fde047;
+  padding-top: 8px;
+  min-height: 420px;
+}
+
+/* ---------------------------------------------------------- huvudmenyn */
+
+.kk-meny { display: flex; flex-direction: column; gap: 10px; }
+.kk-logga { position: relative; overflow: hidden; padding: 18px 12px 12px; border-radius: 18px; text-align: center; background: radial-gradient(120% 90% at 50% 0%, #3b1d6e, #141a33 70%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.kk-logga h2 { position: relative; margin: 0; font-size: 42px; font-weight: 900; letter-spacing: -0.03em; line-height: 1; background: linear-gradient(180deg, #fff6c8, #ffd43b 50%, #ff7a1a); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 3px 0 rgba(90, 30, 0, 0.6)); }
+.kk-logga p { position: relative; margin: 4px 0 0; font-size: 12.5px; font-weight: 700; color: #c7d2fe; }
+.kk-logga-kulor { position: absolute; inset: 0; pointer-events: none; }
+.kk-logga-kulor i {
+  position: absolute; top: -14px; left: calc(6% + var(--i) * 11%); width: 10px; height: 10px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, #cbd5e1 55%, #475569);
+  animation: kk-regn calc(1.6s + var(--i) * 0.17s) linear calc(var(--i) * -0.4s) infinite;
+}
+@keyframes kk-regn { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: 1; } 100% { transform: translateY(170px); opacity: 0.2; } }
+@media (prefers-reduced-motion: reduce) { .kk-logga-kulor i { animation: none; opacity: 0.3; } }
+.kk-benrad { position: relative; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.kk-benrad span { padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 900; background: rgba(0, 0, 0, 0.3); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.kk-startknappar { display: grid; gap: 8px; }
+.kk-startknappar .ds-knapp-sek { margin-top: 0; }
+.kk-dagens { width: 100%; flex-direction: column; gap: 1px; background: linear-gradient(180deg, #a5b4fc, #6366f1); box-shadow: 0 4px 0 #3730a3, 0 10px 24px -10px #6366f1; color: #0b1020; }
+.kk-flikar { grid-template-columns: repeat(5, 1fr); padding: 0; }
+.kk-flikar button { font-size: 10.5px; }
+
+.kk-lista { display: grid; gap: 6px; }
+.kk-rad { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); }
+.kk-rad > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; line-height: 1.25; }
+.kk-rad b { font-size: 14px; }
+.kk-rad small { font-size: 11.5px; color: var(--dim); }
+.kk-rad.last { opacity: 0.75; }
+.kk-rad.last .kk-portratt { filter: grayscale(1) brightness(0.7); }
+.kk-rad.klar { background: linear-gradient(90deg, rgba(250, 204, 21, 0.14), rgba(255, 255, 255, 0.04)); }
+.kk-radikon { width: 34px; flex-shrink: 0; font-size: 24px; text-align: center; }
+.kk-las { color: #fcd34d !important; }
+.kk-vann { font-style: normal; font-size: 11px; color: #fde047; }
+.kk-kop { flex-shrink: 0; min-width: 70px; padding: 8px 10px; border-radius: 12px; font-size: 12.5px; font-weight: 900; color: #0b1020; background: linear-gradient(180deg, #fde68a, #f59e0b); box-shadow: 0 3px 0 #92400e; }
+.kk-kop:disabled { opacity: 0.4; filter: grayscale(0.6); }
+.kk-kop:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #92400e; }
+.kk-pips { display: flex; gap: 3px; margin-top: 2px; }
+.kk-pips i { width: 14px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); }
+.kk-pips i.pa { background: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.6); }
+.kk-belo { flex-shrink: 0; font-size: 12px; font-weight: 900; color: #fde68a; }
+.kk-belo.klar { color: #86efac; font-size: 18px; }
+.kk-samling { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; }
+.kk-samlad { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--gradf, #fff) 45%, transparent); text-align: center; }
+.kk-samlad span { font-size: 22px; }
+.kk-samlad small { font-size: 9.5px; font-weight: 700; color: var(--dim); line-height: 1.15; }
+.kk-samlad.osedd { opacity: 0.45; box-shadow: none; }
+
+.kk-portratt { width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 2px #ffd43b; background: #fff; }
+.kk-portratt.emoji { display: inline-grid; place-items: center; font-size: 24px; background: radial-gradient(circle at 40% 35%, #fff6c8, #fbbf24); }
+
+/* ---------------------------------------------------------- korten */
+
+.kk-rot .ds-kort-bak { overflow-y: auto; place-items: start center; }
+.kk-sida { display: grid; place-items: start center; }
+.kk-sida .ds-kort { width: min(100%, 420px); }
+.kk-sida .kk-hjaltar, .kk-sida .kk-feberlista { max-height: none; }
+.kk-rot .ds-kort { margin: auto 0; padding: 14px 14px 12px; }
+.kk-kort .ds-kort-titel { font-size: 27px; }
+.kk-kort .pb-tavla-knappar { margin-top: 10px; }
+.kk-kort .pb-litenknapp { width: 100%; margin-top: 8px; flex: 1; height: auto; min-height: 32px; padding: 6px 8px; }
+.kk-kort .pb-tavla-knappar .pb-litenknapp { margin-top: 0; }
+.kk-farlig { color: #fca5a5 !important; box-shadow: inset 0 0 0 1.5px rgba(248, 113, 113, 0.45) !important; }
+.kk-stor-ikon { font-size: 52px; line-height: 1.1; margin: 6px 0; animation: pb-kista 0.9s cubic-bezier(.34,1.56,.64,1) both; }
+.kk-tips { display: block; margin-top: 6px; font-size: 11px; color: var(--dim); }
+.kk-resurser { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+.kk-resurser span { padding: 3px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 900; background: rgba(0, 0, 0, 0.28); }
+.kk-build .kk-relikchip { box-shadow: inset 0 0 0 1.5px #f472b6; background: rgba(244, 114, 182, 0.12); }
+.kk-build-lista { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; text-align: left; max-height: 46vh; overflow-y: auto; }
+.kk-build-lista li { display: grid; grid-template-columns: 28px 1fr; column-gap: 6px; padding: 5px 6px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); }
+.kk-build-lista li span { grid-row: span 2; font-size: 18px; text-align: center; }
+.kk-build-lista li b { font-size: 13px; }
+.kk-build-lista li small { font-size: 11px; color: var(--dim); }
+.kk-build-lista .kk-tom { display: block; text-align: center; color: var(--dim); font-size: 12px; }
+
+.kk-uppg-vagga { position: relative; }
+.kk-uppg-vagga > .pb-uppg { width: 100%; }
+.kk-slang { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 9px; font-size: 14px; background: rgba(0, 0, 0, 0.35); opacity: 0.75; }
+.kk-slang:hover { opacity: 1; background: rgba(127, 29, 29, 0.7); }
+.kk-pris { grid-column: 2; justify-self: start; margin-top: 3px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 900; color: #0b1020; background: #fde047; }
+.pb-val button.sald, .kk-uppg-vagga.sald button { opacity: 0.4; }
+.pb-val button.kk-relik { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, #f472b6 70%, transparent); background: linear-gradient(180deg, #3a1d36, var(--panel)); }
+.pb-val button:disabled:not(.sald) { opacity: 0.6; }
+.kk-varor { max-height: 52vh; overflow-y: auto; padding: 2px; }
+
+.kk-akt { display: flex; justify-content: center; gap: 4px; margin: 10px 0 2px; }
+.kk-akt i { display: grid; place-items: center; width: 30px; height: 10px; border-radius: 5px; font-size: 9px; font-style: normal; background: rgba(255, 255, 255, 0.1); }
+.kk-akt i.klar { background: #4ade80; }
+.kk-akt i.nu { background: #fde047; box-shadow: 0 0 10px rgba(253, 224, 71, 0.7); animation: kk-puls 1s ease-in-out infinite; }
+.kk-akt i:last-child { width: 30px; height: 18px; font-size: 12px; background: rgba(239, 68, 68, 0.3); }
+@keyframes kk-puls { 50% { transform: scale(1.12); } }
+.kk-dorrar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; margin: 10px 0 6px; }
+.kk-dorr {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 150px; padding: 14px 6px 10px; border-radius: 40px 40px 12px 12px; text-align: center;
+  background: linear-gradient(180deg, #3b2a1a, #24170d); box-shadow: inset 0 0 0 2px #a16207, inset 0 -8px 0 rgba(0, 0, 0, 0.25), 0 8px 18px -8px rgba(0, 0, 0, 0.8);
+  animation: ds-kort-in 420ms cubic-bezier(.34,1.56,.64,1) both;
+}
+.kk-dorr:nth-child(2) { animation-delay: 80ms; }
+.kk-dorr:nth-child(3) { animation-delay: 160ms; }
+.kk-dorr span { font-size: 32px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
+.kk-dorr b { font-size: 14px; }
+.kk-dorr em { font-style: normal; font-size: 10.5px; font-weight: 800; color: #fca5a5; }
+.kk-dorr small { font-size: 10.5px; line-height: 1.25; color: #e7d9c4; }
+.kk-dorr:active:not(:disabled) { transform: scale(0.96); }
+.kk-dorr:hover:not(:disabled) { box-shadow: inset 0 0 0 2px #fde047, 0 0 18px rgba(253, 224, 71, 0.35); }
+.kk-dorr.elit { background: linear-gradient(180deg, #3b1414, #1f0b0b); box-shadow: inset 0 0 0 2px #dc2626, 0 8px 18px -8px rgba(0, 0, 0, 0.8); }
+.kk-dorr.boss { min-height: 170px; background: linear-gradient(180deg, #4c0519, #1f0410); box-shadow: inset 0 0 0 2.5px #f43f5e, 0 0 24px rgba(244, 63, 94, 0.45); }
+.kk-dorr.boss span { font-size: 46px; animation: kk-puls 1.2s ease-in-out infinite; }
+.kk-dorr.kulregn { background: linear-gradient(180deg, #14324a, #0b1a2a); box-shadow: inset 0 0 0 2px #38bdf8, 0 8px 18px -8px rgba(0, 0, 0, 0.8); }
+.kk-dorr.butik { background: linear-gradient(180deg, #14352a, #0b1f18); box-shadow: inset 0 0 0 2px #34d399, 0 8px 18px -8px rgba(0, 0, 0, 0.8); }
+.kk-dorr.kista { background: linear-gradient(180deg, #3d3410, #211b06); box-shadow: inset 0 0 0 2px #facc15, 0 8px 18px -8px rgba(0, 0, 0, 0.8); }
+.kk-dorr.handelse { background: linear-gradient(180deg, #2e1a4a, #170d26); box-shadow: inset 0 0 0 2px #a78bfa, 0 8px 18px -8px rgba(0, 0, 0, 0.8); }
+.kk-dorr.vila { background: linear-gradient(180deg, #3d1f0b, #1f1006); box-shadow: inset 0 0 0 2px #fb923c, 0 8px 18px -8px rgba(0, 0, 0, 0.8); }
+
+.kk-handelseval { display: grid; gap: 8px; margin-top: 12px; }
+.kk-handelseval .ds-knapp { width: 100%; }
+.kk-svar { margin: 14px 4px 6px; font-size: 15px; font-weight: 700; line-height: 1.4; color: #fff7d6; }
+.kk-ben { margin-top: 4px; font-size: 24px; font-weight: 900; color: #fde68a; }
+.kk-ben small { display: block; font-size: 12px; color: var(--dim); }
+.kk-nya { display: grid; gap: 5px; margin-top: 10px; }
+.kk-nya > span { display: flex; flex-direction: column; padding: 7px 10px; border-radius: 12px; font-size: 13px; font-weight: 800; background: linear-gradient(90deg, rgba(250, 204, 21, 0.2), rgba(255, 255, 255, 0.05)); animation: ds-kort-in 420ms cubic-bezier(.34,1.56,.64,1) both; }
+.kk-nya b { color: #fde047; }
+.kk-nya small { font-size: 11.5px; color: #bbf7d0; }
+
+.kk-hjaltar { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; max-height: 62vh; overflow-y: auto; padding: 2px; }
+.kk-hjalte { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 9px 6px; border-radius: 14px; text-align: center; background: linear-gradient(180deg, var(--panel2), var(--panel)); box-shadow: inset 0 0 0 1.5px rgba(253, 230, 138, 0.3); }
+.kk-hjalte b { font-size: 13px; line-height: 1.15; }
+.kk-hjalte em { font-style: normal; font-size: 10.5px; font-weight: 800; color: #86efac; }
+.kk-hjalte small { font-size: 10.5px; line-height: 1.25; color: var(--dim); }
+.kk-hjalte.last { opacity: 0.6; }
+.kk-hjalte.last .kk-portratt { filter: grayscale(1); }
+.kk-hjalte:active:not(:disabled) { transform: scale(0.97); }
+.kk-feberlista { display: grid; gap: 6px; margin-top: 10px; max-height: 60vh; overflow-y: auto; }
+.kk-feber { display: grid; grid-template-columns: 1fr auto; text-align: left; padding: 8px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.06); box-shadow: inset 0 0 0 1.5px rgba(248, 113, 113, 0.3); }
+.kk-feber b { font-size: 14px; }
+.kk-feber small { grid-column: 1; font-size: 11.5px; color: var(--dim); }
+.kk-feber em { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-style: normal; font-size: 12px; font-weight: 900; color: #fde68a; }
+
+/* ---------------------------------------------------------- spelplanen */
+
+.kk-guldchip { padding: 5px 10px; border-radius: 999px; font-size: 13px; font-weight: 900; color: var(--guld); background: var(--panel); box-shadow: inset 0 0 0 1px rgba(253, 224, 71, 0.35); white-space: nowrap; }
+.kk-bossbar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; height: 30px; margin-bottom: 6px; padding: 0 10px; border-radius: 12px; background: linear-gradient(90deg, #4c0519, #1f0b16); box-shadow: inset 0 0 0 1px rgba(244, 63, 94, 0.5); }
+.kk-bossbar b { font-size: 13px; white-space: nowrap; }
+.kk-bossbar > div { height: 10px; border-radius: 5px; overflow: hidden; background: rgba(0, 0, 0, 0.45); }
+.kk-bossbar i { display: block; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #f43f5e, #fb923c); transition: width 600ms cubic-bezier(.2,.9,.3,1.2); }
+.kk-bossbar span { font-size: 13px; font-weight: 900; font-variant-numeric: tabular-nums; color: #fecaca; }
+.kk-scen { min-height: 70vh; border-radius: 16px; padding: 0 0 8px; background: radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--h1, #3b1d6e) 50%, #141a33), #0b1020 70%); }
