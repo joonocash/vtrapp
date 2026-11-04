@@ -446,6 +446,8 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       if (kedja) spel.kedjeKo.push({ t: spel.skottTid + KEDJA_DT, id: o.id })
       else kraft(o, handelser, k)
     }
+    // Kulkaos: sista orange på en bossbana — Orangestormen
+    if (o.farg === 'orange' && bana.boss && !spel.storm && orangeKvar() === 0) storm(handelser)
     // sista orange: Extreme Fever
     if (o.farg === 'orange' && orangeKvar() === 0 && !spel.feber && !bana.boss) {
       spel.feber = true
@@ -454,6 +456,23 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       spel.fack = FACK_POANG.map((p) => p)
       handelser.push({ typ: 'feberStart', id: o.id, x: mx, y: my })
     }
+  }
+
+  // Kulkaos: Orangestormen. Alla orange på en bossbana är tända: varje
+  // orange pinne och varje kula ute flyger som en raket rakt in i bossen.
+  // Kulorna är förbrukade (inget att vänta på), och planen fylls på efter
+  // skottet. Ingen Extreme Fever och ingen slow motion på bossbanor.
+  function storm(handelser) {
+    spel.storm = true
+    const boss = objekt.find((p) => p.boss)
+    const fran = objekt.filter((p) => p.farg === 'orange' && p.lit).map(mitt)
+    const kulor = spel.kulor.map((k) => [k.x, k.y])
+    let skada = 3 * fran.length + 4 * kulor.length
+    skada = Math.round(skada * (1 + 0.2 * (perk.jagare || 0)) * (perk.kronan ? 2 : 1))
+    spel.bossHp = Math.max(0, spel.bossHp - skada)
+    spel.kulor.length = 0
+    spel.narSista = null
+    handelser.push({ typ: 'bossStorm', skada, hp: spel.bossHp, max: spel.bossMax, fran, kulor, till: boss ? [boss.wx, boss.wy] : [W / 2, 200] })
   }
 
   function stil(id, handelser) {
@@ -886,6 +905,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     if (perk.magnet) magnetMal = objekt.filter((o) => o.farg === 'orange' && !o.lit && !o.borta)
     for (let i = spel.kulor.length - 1; i >= 0; i--) {
       const k = spel.kulor[i]
+      if (!k) continue // Orangestormen tog alla kulor mitt i steget
       const fart = Math.hypot(k.vx, k.vy)
       if (fart > MAXFART) {
         k.vx *= MAXFART / fart
@@ -894,13 +914,19 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       const n = Math.max(2, Math.ceil((Math.max(fart, 1) * dt) / (k.r * 0.4)))
       const d = dt / n
       let ut = false
+      let tagen = false
       for (let s = 0; s < n; s++) {
         const r = flytta(k, d, handelser, false)
+        if (spel.kulor[i] !== k) {
+          tagen = true
+          break
+        }
         if (r === 'ut') {
           ut = true
           break
         }
       }
+      if (tagen) continue
       if (ut) {
         if (spel.feber && spel.fack) {
           const idx = Math.max(0, Math.min(spel.fack.length - 1, Math.floor(k.x / (W / spel.fack.length))))
@@ -941,8 +967,8 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
           }
         }
       }
-      // på väg mot sista orange? (för zoomen)
-      if (!spel.feber) sistaKoll(k, handelser)
+      // på väg mot sista orange? (för zoomen; inte på bossbanor)
+      if (!spel.feber && !bana.boss) sistaKoll(k, handelser)
     }
     // kedjereaktionen: smällar som väntar på sin tur
     while (spel.kedjeKo.length && spel.kedjeKo[0].t <= spel.skottTid) kraft(objekt[spel.kedjeKo.shift().id], handelser, null)
@@ -1017,9 +1043,10 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
         handelser.push({ typ: 'banaKlar', fack: 0, kulor: spel.kulorKvar, kulBonus: 0, poang: spel.poang })
         return
       }
-      // när det mesta är borta fylls planen på igen
+      // efter Orangestormen, eller när det mesta är borta, fylls planen på
       const alla = objekt.filter((o) => !o.boss && !o.hard)
-      if (alla.filter((o) => !o.borta).length < alla.length * 0.4) {
+      if (spel.storm || orangeKvar() === 0 || alla.filter((o) => !o.borta).length < alla.length * 0.4) {
+        spel.storm = false
         for (const o of alla) {
           o.borta = false
           o.lit = false
@@ -1094,7 +1121,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   }
 
   // Ögonblicksbild (för botarna som provar vinklar). Slumpen sparas inte.
-  const FALT = ['t', 'lage', 'vinkel', 'kulorKvar', 'iKanonen', 'poang', 'orangeTraffade', 'skott', 'skottSumma', 'skottTraffar', 'skottOrange', 'skottTid', 'extraGivna', 'kraftNamn', 'sparKvar', 'eldKvar', 'spokKvar', 'trippelKvar', 'feber', 'hinkX', 'hinkVx', 'rensat', 'eldNu', 'spokNu', 'sparNu', 'grontSkott', 'feberFack', 'hinkSkott', 'guld', 'bossHp', 'bossTraffar', 'antalOrange']
+  const FALT = ['t', 'lage', 'vinkel', 'kulorKvar', 'iKanonen', 'poang', 'orangeTraffade', 'skott', 'skottSumma', 'skottTraffar', 'skottOrange', 'skottTid', 'extraGivna', 'kraftNamn', 'sparKvar', 'eldKvar', 'spokKvar', 'trippelKvar', 'feber', 'hinkX', 'hinkVx', 'rensat', 'eldNu', 'spokNu', 'sparNu', 'grontSkott', 'feberFack', 'hinkSkott', 'guld', 'bossHp', 'bossTraffar', 'antalOrange', 'storm']
   function spara() {
     const st = {}
     for (const f of FALT) st[f] = spel[f]
