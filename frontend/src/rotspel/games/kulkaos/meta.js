@@ -8,7 +8,7 @@
 // Samlingen visar allt man har hittat. Feber 1–10 är svårighetsnivåerna,
 // och dagens runda är samma för alla en dag, med en egen topplista.
 
-import { HJALTAR, UPPGRADERINGAR, RELIKER, HJALTE_PRIS } from './innehall.js'
+import { HJALTAR, UPPGRADERINGAR, allaReliker, KULTYPER, ARKANOR, HJALTE_PRIS } from './innehall.js'
 import { benFor, MAX_FEBER, build } from './runda.js'
 
 export const ID = 'kulkaos'
@@ -26,7 +26,7 @@ export const START_META = {
   stats: { rundor: 0, vinster: 0, bossar: 0, maxRum: 0, maxPoang: 0, kopt: 0 },
   feber: 0, // högsta upplåsta Feber
   vunnaFeber: {}, // hjälte → högsta Feber man vunnit på
-  samling: { uppg: {}, reliker: {}, hjaltar: {} },
+  samling: { uppg: {}, reliker: {}, hjaltar: {}, kulor: {}, arkanor: {}, bossar: {} },
   runda: null,
   dag: null, // datumet dagens runda senast räknades
   dagPoang: 0,
@@ -88,8 +88,8 @@ export function kopHjalte(m, id) {
 // kolla({ r, m }) — r är rundan (kan saknas), m metan. las: vad som låses upp.
 export const UTMANINGAR = [
   { id: 'forsta', ikon: '🎱', namn: 'Första kaoset', text: 'Spela klart en runda', ben: 20, kolla: ({ m }) => m.stats.rundor >= 1 },
-  { id: 'akt1', ikon: '🐀', namn: 'Råttfångare', text: 'Besegra Råttkungen (klara akt 1)', ben: 50, las: { hjalte: 'svea', uppg: 'blixt' }, kolla: ({ r }) => r?.bossar >= 1 },
-  { id: 'akt2', ikon: '🦀', namn: 'Krabbkokare', text: 'Besegra Krabban Klo (klara akt 2)', ben: 80, las: { hjalte: 'hopp' }, kolla: ({ r }) => r?.bossar >= 2 },
+  { id: 'akt1', ikon: '🐀', namn: 'Råttfångare', text: 'Besegra bossen i akt 1', ben: 50, las: { hjalte: 'svea', uppg: 'blixt' }, kolla: ({ r }) => r?.bossar >= 1 },
+  { id: 'akt2', ikon: '🦀', namn: 'Krabbkokare', text: 'Besegra bossen i akt 2', ben: 80, las: { hjalte: 'hopp' }, kolla: ({ r }) => r?.bossar >= 2 },
   { id: 'seger', ikon: '🏆', namn: 'Kulkungen', text: 'Vinn en runda (klara akt 3)', ben: 150, las: { hjalte: 'kalle', feber: 1 }, kolla: ({ r }) => Boolean(r?.seger) },
   { id: 'kulor30', ikon: '🐙', namn: 'Kulhav', text: 'Ha 30 kulor ute samtidigt', ben: 40, las: { hjalte: 'atta' }, kolla: ({ r }) => r?.stats.maxKulor >= 30 },
   { id: 'kulor40', ikon: '🌪️', namn: 'Kulstorm', text: 'Ha 40 kulor ute samtidigt', ben: 60, kolla: ({ r }) => r?.stats.maxKulor >= 40 },
@@ -97,6 +97,10 @@ export const UTMANINGAR = [
   { id: 'langskott', ikon: '🦉', namn: 'Långflygaren', text: 'Ett skott som varar i 20 sekunder', ben: 30, las: { hjalte: 'klok' }, kolla: ({ r }) => r?.stats.langsta >= 20 },
   { id: 'guld200', ikon: '🐝', namn: 'Guldgruvan', text: 'Ha 200 guld samtidigt', ben: 40, las: { hjalte: 'blom' }, kolla: ({ r }) => r?.stats.maxGuld >= 200 },
   { id: 'eld40', ikon: '🐲', namn: 'Pyroman', text: 'Bränn 40 pinnar med eldbollar i en runda', ben: 40, las: { hjalte: 'glod' }, kolla: ({ r }) => r?.stats.eldTand >= 40 },
+  { id: 'fusion', ikon: '🧪', namn: 'Kulkemisten', text: 'Smält ihop två kulor till en fusion', ben: 50, kolla: ({ r }) => (r?.stats.fusioner || 0) >= 1 },
+  { id: 'vaska5', ikon: '🎒', namn: 'Full väska', text: 'Ha fem specialkulor i kulväskan', ben: 60, kolla: ({ r }) => (r?.vaska || []).filter((k) => k.typ !== 'vanlig').length >= 5 },
+  { id: 'kaosdraken', ikon: '🐉', namn: 'Drakdräparen', text: 'Besegra Kaosdraken', ben: 100, kolla: ({ r }) => (r?.besegrade || []).includes('draken') },
+  { id: 'kop20', ikon: '🦚', namn: 'Slösaren', text: 'Köp 20 saker i butiker (totalt)', ben: 80, las: { hjalte: 'slosa' }, kolla: ({ r, m }) => m.stats.kopt + (r?.stats.kopt || 0) >= 20 },
   { id: 'kop8', ikon: '🦊', namn: 'Storhandlaren', text: 'Köp 8 saker i butiker (totalt)', ben: 40, las: { hjalte: 'raven' }, kolla: ({ r, m }) => m.stats.kopt + (r?.stats.kopt || 0) >= 8 },
   { id: 'rundor10', ikon: '🐢', namn: 'Envis', text: 'Spela klart 10 rundor', ben: 60, las: { hjalte: 'seg' }, kolla: ({ m }) => m.stats.rundor >= 10 },
   { id: 'evolution', ikon: '🌟', namn: 'Evolution!', text: 'Ta din första evolution', ben: 50, las: { uppg: 'kulfabrik' }, kolla: ({ r }) => r?.stats.evolutioner >= 1 },
@@ -149,9 +153,15 @@ export function avslutaRunda(m, r) {
     uppg: { ...m.samling.uppg },
     reliker: { ...m.samling.reliker },
     hjaltar: { ...m.samling.hjaltar, [r.hjalte]: (m.samling.hjaltar[r.hjalte] || 0) + 1 },
+    kulor: { ...m.samling.kulor },
+    arkanor: { ...m.samling.arkanor },
+    bossar: { ...m.samling.bossar },
   }
   for (const u of build(r)) samling.uppg[u.id] = Math.max(samling.uppg[u.id] || 0, u.n)
   for (const id of r.reliker) samling.reliker[id] = (samling.reliker[id] || 0) + 1
+  for (const k of r.vaska || []) if (k.typ !== 'vanlig') samling.kulor[k.typ] = Math.max(samling.kulor[k.typ] || 0, k.niva)
+  for (const id of r.arkanor || []) samling.arkanor[id] = (samling.arkanor[id] || 0) + 1
+  for (const id of r.besegrade || []) samling.bossar[id] = (samling.bossar[id] || 0) + 1
   const stats = {
     rundor: m.stats.rundor + 1,
     vinster: m.stats.vinster + (r.seger ? 1 : 0),
@@ -187,5 +197,7 @@ export function dagensRunda(datum) {
   return { fro, hjalte: HJALTAR[fro % HJALTAR.length].id, feber: 2, dag: datum, meta: { upplast: Object.keys(UPPGRADERINGAR).filter((id) => UPPGRADERINGAR[id].las) } }
 }
 
-export const antalReliker = Object.keys(RELIKER).length
+export const antalReliker = Object.keys(allaReliker).length
+export const antalKulor = Object.keys(KULTYPER).length - 1
+export const antalArkanor = Object.keys(ARKANOR).length
 export const antalUppg = Object.keys(UPPGRADERINGAR).length

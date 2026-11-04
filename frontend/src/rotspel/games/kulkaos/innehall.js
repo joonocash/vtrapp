@@ -16,19 +16,20 @@
 export const NYA_KULOR = 4
 
 export const HJALTAR = [
-  { id: 'happy', namn: 'Happy', ikon: '🐶', kraft: 'spar', start: { sikte: 1, hink: 1 }, nya: 5, text: 'Allrounder. Siktet och större hink från start, och en extra kula efter varje bana' },
-  { id: 'konfekt', namn: 'Kaninen Konfekt', ikon: '🐰', kraft: 'multi', perk: { tvilling: 1 }, nya: 2, text: 'Varje skott skjuter en spegelkula åt andra hållet. Bara två nya kulor per bana' },
-  { id: 'katten', namn: 'Rymdkatten', ikon: '🐱', kraft: 'small', start: { bomber: 2 }, text: 'Fyra bomber på varje bana från start, och gröna smäller' },
-  { id: 'svea', namn: 'Spöket Svea', ikon: '👻', kraft: 'spok', spokAlltid: true, ingenHink: true, text: 'Alla kulor kommer tillbaka uppifrån en gång. Men det finns ingen hink', las: 'akt1' },
+  { id: 'happy', namn: 'Happy', ikon: '🐶', kraft: 'spar', start: { sikte: 1, hink: 1 }, kula: 'cell', nya: 5, text: 'Allrounder. Siktet och större hink från start, och en extra kula efter varje bana' },
+  { id: 'konfekt', namn: 'Kaninen Konfekt', ikon: '🐰', kraft: 'multi', perk: { tvilling: 1 }, kula: 'agg', nya: 2, text: 'Varje skott skjuter en spegelkula åt andra hållet. Bara två nya kulor per bana' },
+  { id: 'katten', namn: 'Rymdkatten', ikon: '🐱', kraft: 'small', start: { bomber: 2 }, kula: 'jord', text: 'Fyra bomber på varje bana från start, och gröna smäller' },
+  { id: 'svea', namn: 'Spöket Svea', ikon: '👻', kraft: 'spok', spokAlltid: true, ingenHink: true, kula: 'spoke', text: 'Alla kulor kommer tillbaka uppifrån en gång. Men det finns ingen hink', las: 'akt1' },
   { id: 'glod', namn: 'Draken Glöd', ikon: '🐲', kraft: 'eld', start: { eldkula: 1 }, perk: { eldstor: 1 }, nya: 3, text: 'Första skottet på varje bana är en jättestor eldboll. En kula mindre per bana', las: 'eld40' },
   { id: 'blom', namn: 'Biet Blom', ikon: '🐝', kraft: 'blomma', start: { magnet: 1 }, perk: { honung: 1 }, text: 'Magnet från start, och varje orange pinne ger guld', las: 'guld200' },
   { id: 'taggis', namn: 'Igelkotten Taggis', ikon: '🦔', kraft: 'small', perk: { genom: 1 }, text: 'Kulan går rakt igenom blå pinnar och studsar bara på resten', las: 'traffar60' },
   { id: 'atta', namn: 'Bläckfisken Åtta', ikon: '🐙', kraft: 'multi', perk: { flerskott: 2 }, startKulor: 7, nya: 1, text: 'Skjuter tre kulor åt gången. Börjar med sju kulor och får bara en ny per bana', las: 'kulor30' },
-  { id: 'klok', namn: 'Ugglan Klok', ikon: '🦉', kraft: 'spar', start: { sikte: 1 }, perk: { grav: 0.65 }, text: 'Kulan svävar: lägre tyngdkraft och långt siktspår', las: 'langskott' },
+  { id: 'klok', namn: 'Ugglan Klok', ikon: '🦉', kraft: 'spar', start: { sikte: 1 }, perk: { grav: 0.65 }, kula: 'laser', text: 'Kulan svävar: lägre tyngdkraft och långt siktspår', las: 'langskott' },
   { id: 'hopp', namn: 'Grodan Hopp', ikon: '🐸', kraft: 'small', perk: { golv: 2 }, text: 'Kulan studsar upp från golvet två gånger per skott', las: 'akt2' },
   { id: 'raven', namn: 'Räven Rik', ikon: '🦊', kraft: 'blomma', guldX: 2, rabatt: 0.25, valFarre: 1, text: 'Dubbelt guld och 25 % billigare butik, men ett val färre på korten', las: 'kop8' },
-  { id: 'seg', namn: 'Sköldpaddan Seg', ikon: '🐢', kraft: 'spok', start: { jatte: 2 }, startKulor: 18, nya: 2, text: 'Börjar med 18 kulor och en jättekula, men får bara två nya per bana', las: 'rundor10' },
+  { id: 'seg', namn: 'Sköldpaddan Seg', ikon: '🐢', kraft: 'spok', start: { jatte: 2 }, kula: 'jarn', startKulor: 18, nya: 2, text: 'Börjar med 18 kulor och en jättekula, men får bara två nya per bana', las: 'rundor10' },
   { id: 'kalle', namn: 'Kaos-Kalle', ikon: '🃏', kraft: 'slump', auto: true, text: 'Ny grön kraft varje bana och två gratis uppgraderingar, men du väljer aldrig själv', las: 'seger' },
+  { id: 'slosa', namn: 'Påfågeln Slösa', ikon: '🦚', kraft: 'multi', perk: { slosa: 1 }, startKulor: 14, nya: 2, text: 'Slösaren: skjuter alla kulor på en gång (högst tio) och får tillbaka hälften efter skottet. Bara två nya per bana', las: 'kop20' },
 ]
 export const hjalte = (id) => HJALTAR.find((h) => h.id === id) || HJALTAR[0]
 export const HJALTE_PRIS = 250 // ben, för den som hellre köper än klarar utmaningen
@@ -70,6 +71,12 @@ export const UPPGRADERINGAR = {
   kulfabrik: { ikon: '🏭', namn: 'Kulfabriken', grad: 3, max: 3, las: 'evolution', text: (n) => `Var ${14 - 2 * n}:e träff i ett skott ger en ny kula` },
   flerskott: { ikon: '🔱', namn: 'Extrakanon', grad: 3, max: 2, las: 'miljon', text: (n) => `Varje skott skjuter ${n + 1} kulor` },
   genom: { ikon: '📌', namn: 'Genomborr', grad: 3, max: 1, las: 'rensat5', text: () => 'Kulan går rakt igenom blå pinnar' },
+  flipper: { ikon: '🕹️', namn: 'Flipperbenen', grad: 3, max: 1, text: () => 'Två flipprar längst ner. Håll in för att slå upp kulan igen' },
+  pyramid: { ikon: '🔺', namn: 'Pyramiden', grad: 3, max: 1, text: () => 'Hinken blir dubbelt så bred och får pyramidväggar som studsar upp kulorna' },
+  zen: { ikon: '🧘', namn: 'Zenskottet', grad: 2, max: 3, text: (n) => `Kanonen vrider sig lite mot det bästa skottet nära ditt (±${2 * n}°)` },
+  sno: { ikon: '☃️', namn: 'Snöbollen', grad: 2, max: 3, text: (n) => `Kulan växer för varje träff, och varje träff ger ${n} % mer poäng resten av skottet` },
+  ranta: { ikon: '📈', namn: 'Räntan', grad: 1, max: 5, text: (n) => `+${2 * n} % poäng för varje 10 guld du har (högst +${50 * n} %)` },
+  kritfler: { ikon: '⚡', namn: 'Kritpinnar', grad: 1, max: 4, text: (n) => `${n} ${n === 1 ? 'kritpinne' : 'kritpinnar'} till på varje bana` },
 
   // evolutioner
   meteor: { ikon: '☄️', namn: 'Meteorregn', grad: 4, max: 1, krav: { eldkula: 2, jatte: 2 }, text: () => 'Eldbollarna blir enorma, och varje orange de bränner smäller' },
@@ -79,6 +86,7 @@ export const UPPGRADERINGAR = {
   blixtstorm: { ikon: '🌩️', namn: 'Blixtstormen', grad: 4, max: 1, krav: { blixt: 2, magnet: 2 }, text: () => 'Blixtarna når längre och slår ner i tre pinnar till' },
   midas: { ikon: '🏅', namn: 'Kung Midas', grad: 4, max: 1, krav: { guldnos: 2, guldpinnar: 2 }, text: () => 'Orange pinnar ger guld, och guldpinnar smäller' },
   kulkanon: { ikon: '💫', namn: 'Kulkanonen', grad: 4, max: 1, krav: { flerskott: 1, delning: 2 }, text: () => 'Två kulor till i varje skott, och delningen fördubblas' },
+  snostorm: { ikon: '🌨️', namn: 'Snöstormen', grad: 4, max: 1, krav: { sno: 2, zen: 1 }, text: () => 'Snöbollen växer dubbelt så fort, och Zenskottet letar dubbelt så brett' },
 }
 export const GRADER = { 1: 'Vanlig', 2: 'Sällsynt', 3: 'Episk', 4: 'Evolution' }
 
@@ -108,4 +116,62 @@ export const RELIKER = {
   stjarnfall: { ikon: '🌠', namn: 'Stjärnfallet', grad: 3, text: 'Varje grön pinne skjuter en stjärna som tänder en orange' },
   kronan: { ikon: '👑', namn: 'Kronan', grad: 3, text: 'Bossar tar dubbel skada' },
   trolldryck: { ikon: '🧪', namn: 'Trolldrycken', grad: 3, text: 'Uppgraderingar med tak får ett steg till' },
+  // växande reliker: blir starkare för varje boss och elitbana du slår
+  pokal: { ikon: '🏆', namn: 'Segerpokalen', grad: 2, vaxer: true, text: '+15 % skada på bossar för varje elitbana och boss du har slagit', varde: (r) => `+${15 * (r.elitKlara + r.bossar)} %` },
+  palt: { ikon: '🥋', namn: 'Krigarbältet', grad: 2, vaxer: true, text: 'En kula till efter varje bana för varje boss du har slagit', varde: (r) => `+${r.bossar} kulor` },
+  parm: { ikon: '📒', namn: 'Samlarpärmen', grad: 2, vaxer: true, text: '+4 % poäng för varje nivå på dina uppgraderingar', varde: (r) => `+${4 * Object.values(r.varig).reduce((a, b) => a + b, 0)} %` },
+  kalv: { ikon: '🐄', namn: 'Guldkalven', grad: 2, vaxer: true, text: '+10 % guld för varje elitbana du har klarat', varde: (r) => `+${10 * r.elitKlara} %` },
+  kopia: { ikon: '🪆', namn: 'Kopiaturen', grad: 3, text: 'Kopierar din senaste relik: den räknas två gånger' },
+}
+
+// Bossreliker: varje boss släpper sin egen. De finns inte i butiken eller i kistor.
+export const BOSSRELIKER = {
+  ost: { ikon: '🧀', namn: 'Ostbiten', boss: 'rattkungen', text: 'Tre kulor till efter varje bana' },
+  nat: { ikon: '🕸️', namn: 'Spindelnätet', boss: 'spindeln', text: 'Kulan studsar upp från golvet en gång till varje skott' },
+  skal: { ikon: '🐚', namn: 'Krabbskalet', boss: 'krabban', text: 'Hinken är 50 % bredare, och varje kula i hinken ger 10 guld' },
+  fjader: { ikon: '🪶', namn: 'Stormfjädern', boss: 'stormfageln', text: '20 % lägre tyngdkraft, och siktspåret når längre' },
+  trollkula: { ikon: '🔮', namn: 'Trollkulan', boss: 'trollet', text: 'Alla kulor i kulväskan går upp en nivå (högst 4)' },
+  drakhjarta: { ikon: '❤️‍🔥', namn: 'Drakhjärtat', boss: 'draken', text: 'Var tredje skott är en eldboll, och eldbollar gör dubbel skada på bossar' },
+}
+export const allaReliker = { ...RELIKER, ...Object.fromEntries(Object.entries(BOSSRELIKER).map(([id, r]) => [id, { ...r, grad: 4 }])) }
+
+// Kultyperna i kulväskan (som orbarna i Peglin och bollarna i Ball x Pit).
+// Varje skott tar nästa kula ur väskan. Samma kultyp igen = en nivå till
+// (högst 3). Två kultyper som passar ihop kan slås ihop till en fusion.
+export const VASKA_MAX = 5
+export const KULTYPER = {
+  vanlig: { ikon: '⚪', namn: 'Vanlig kula', farg: '#e2e8f0', text: () => 'En helt vanlig kula' },
+  cell: { ikon: '🦠', namn: 'Cellkula', farg: '#4ade80', text: (n) => `Delar sig vid träff, ${n === 1 ? 'en gång' : `${n} gånger`} (upp till ${2 ** n} kulor)` },
+  agg: { ikon: '🥚', namn: 'Äggsäck', farg: '#fef3c7', text: (n) => `Spricker i ${n + 1}–${n + 3} småkulor vid första träffen` },
+  laser: { ikon: '🔴', namn: 'Laserkula', farg: '#f87171', text: (n) => (n === 1 ? 'Första träffen skjuter en laser längs raden' : `De ${n} första träffarna skjuter en laser: raden, sedan kolumnen`) },
+  jord: { ikon: '🪨', namn: 'Jordbävning', farg: '#d6a46b', text: (n) => (n === 1 ? 'Första träffen skakar loss allt runt omkring' : `De ${n} första träffarna skakar loss allt runt omkring`) },
+  jarn: { ikon: '⚙️', namn: 'Järnkula', farg: '#94a3b8', text: (n) => `Stor och tung, ${1.5 + 0.5 * n} gånger skadan på bossar` },
+  spoke: { ikon: '👻', namn: 'Spökkula', farg: '#ddd6fe', text: (n) => `Flyger rakt igenom allt och kommer tillbaka uppifrån ${n === 1 ? 'en gång' : `${n} gånger`}` },
+  // fusioner
+  bomb: { ikon: '💣', namn: 'Bomben', farg: '#fb923c', fusion: ['jarn', 'jord'], text: () => 'Exploderar stort vid de fem första träffarna' },
+  bikupa: { ikon: '🐝', namn: 'Bikupan', farg: '#facc15', fusion: ['cell', 'agg'], text: () => 'Var tredje träff släpper ut en ny småkula (upp till tolv)' },
+  korslaser: { ikon: '✚', namn: 'Korslasern', farg: '#ef4444', fusion: ['laser', 'jord'], text: () => 'De fem första träffarna skjuter laser i både raden och kolumnen' },
+  fantom: { ikon: '👁️', namn: 'Fantomen', farg: '#c4b5fd', fusion: ['spoke', 'laser'], text: () => 'En jättestor spökkula som tänder allt i sin väg och kommer tillbaka två gånger' },
+  lonnmordare: { ikon: '🗡️', namn: 'Lönnmördaren', farg: '#a78bfa', fusion: ['jarn', 'spoke'], text: () => 'Flyger igenom allt, även bossen, och varje passage räknas tre gånger' },
+  hagel: { ikon: '🔫', namn: 'Hagelbössan', farg: '#cbd5e1', fusion: ['cell', 'jarn'], text: () => 'Första träffen skjuter fem snabba järnkulor framåt' },
+  spokagg: { ikon: '🐣', namn: 'Spökägget', farg: '#e9d5ff', fusion: ['agg', 'spoke'], text: () => 'Kläcks till fyra–sex små spökkulor som flyger genom allt' },
+}
+export const BASKULOR = ['cell', 'agg', 'laser', 'jord', 'jarn', 'spoke']
+export const FUSIONER = Object.keys(KULTYPER).filter((id) => KULTYPER[id].fusion)
+
+// Arkanorna (som i Vampire Survivors): en regelbrytande kraft i början av
+// varje akt. Man väljer en av tre.
+export const ARKANOR = {
+  tvilling: { ikon: '♊', namn: 'Tvillingarna', text: 'Varje skott skjuter en spegelkula åt andra hållet' },
+  moln: { ikon: '☁️', namn: 'Molnet', text: 'Var tredje skott regnar det fyra kulor från himlen' },
+  midas: { ikon: '👑', namn: 'Midas', text: 'Dubbelt så mycket guld' },
+  drapare: { ikon: '⚔️', namn: 'Bossdråparen', text: 'Bossarna börjar med 30 % mindre liv' },
+  hjarta: { ikon: '🎒', namn: 'Kulväskans hjärta', text: 'Alla kulor i kulväskan går upp en nivå (högst 4)' },
+  grona: { ikon: '🟢', namn: 'Den gröna vågen', text: 'Tre gröna pinnar till på varje bana' },
+  eld: { ikon: '🔥', namn: 'Evig eld', text: 'De tre första skotten på varje bana är eldbollar' },
+  aska: { ikon: '⚡', namn: 'Åskguden', text: 'Varje orange som träffas skickar en blixt till två pinnar' },
+  magnet: { ikon: '🧲', namn: 'Magnetstormen', text: 'Magnet och Hinkmagnet på högsta nivån' },
+  kristall: { ikon: '💎', namn: 'Kristallen', text: 'Tre kritpinnar till på varje bana' },
+  hal: { ikon: '🌀', namn: 'Svarta hålet', text: 'Ett svart hål på varje bana' },
+  kalla: { ikon: '💰', namn: 'Rikedomens källa', text: 'En kula till efter varje bana för varje 75 guld du har (högst tre)' },
 }

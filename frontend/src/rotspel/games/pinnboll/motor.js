@@ -44,6 +44,10 @@ const KEDJA_DT = 0.09 // tid mellan smällarna i en kedjereaktion
 const LANG_TID = 14 // efter så här länge i ett skott försvinner tända saker som kulan rör
 
 export const HINK = { bredd: 56, hojd: 20, y: H - 22, fart: (2 * Math.PI) / 6.5 }
+// Kulkaos: Flipperbenen. Vänster led; den högra är spegelvänd.
+export const FLIPPER = { x: 8, y: 534, L: 92, vila: 0.27, lyft: 0.85, fart: 16 }
+// Kulkaos: hur långt ett svart hål drar
+export const HAL_R = 95
 export const FACK_POANG = [10000, 50000, 100000, 50000, 10000]
 export const FACK_TOPP = H - 48
 
@@ -157,15 +161,48 @@ function rotera(x, y, cx, cy, c, s) {
 // val: kulor (antal från start), kulBonus (10 000 per kula kvar när banan
 // är klar), hinkBredd, extraGrona (fler gröna pinnar), start ({ spar, eld,
 // spok, trippel } — krafter som är igång från början).
-export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, hinkBredd = HINK.bredd, extraGrona = 0, start = {}, perk = {} } = {}) {
+export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, hinkBredd = HINK.bredd, extraGrona = 0, start = {}, perk = {}, vaska = null } = {}) {
   // hinken får inte bli bredare än att den hinner glida lite
   hinkBredd = Math.min(hinkBredd, W - 40)
   const rnd = mulberry32(fro >>> 0)
   start = { ...(bana.start || {}), ...start }
+  // Kulkaos: Flipperbenen och Pyramiden är egna objekt i egna grupper
+  const egnaGrupper = [...(bana.grupper || [])]
+  let basObjekt = bana.objekt
+  if (perk.flipper) {
+    const g = egnaGrupper.length
+    const iZon = (o) => {
+      const [x, y] = o.form === 'cirkel' ? [o.x, o.y] : o.form === 'segment' ? [(o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2] : [o.cx, o.cy + o.R]
+      // bara det som ligger i vägen när flipprarna slår upp
+      const iVag = (px) => {
+        const dx = Math.abs(x - px)
+        const d = Math.hypot(dx, y - FLIPPER.y)
+        return d < FLIPPER.L + 14 && y > FLIPPER.y - Math.sin(FLIPPER.lyft - FLIPPER.vila) * dx - 20
+      }
+      return !o.boss && (iVag(FLIPPER.x) || iVag(W - FLIPPER.x))
+    }
+    basObjekt = [
+      ...basObjekt.filter((o) => !iZon(o)),
+      { typ: 'tegel', form: 'segment', x1: FLIPPER.x, y1: FLIPPER.y, x2: FLIPPER.x + FLIPPER.L * Math.cos(FLIPPER.vila), y2: FLIPPER.y + FLIPPER.L * Math.sin(FLIPPER.vila), tj: 6.5, hard: true, flipper: true, grupp: g },
+      { typ: 'tegel', form: 'segment', x1: W - FLIPPER.x, y1: FLIPPER.y, x2: W - FLIPPER.x - FLIPPER.L * Math.cos(FLIPPER.vila), y2: FLIPPER.y + FLIPPER.L * Math.sin(FLIPPER.vila), tj: 6.5, hard: true, flipper: true, grupp: g + 1 },
+    ]
+    egnaGrupper.push({ typ: 'flipper', cx: FLIPPER.x, cy: FLIPPER.y, upp: -FLIPPER.lyft }, { typ: 'flipper', cx: W - FLIPPER.x, cy: FLIPPER.y, upp: FLIPPER.lyft })
+  }
+  if (perk.pyramid && hinkBredd > 0) {
+    // två sluttande studsväggar på hinkens kanter, som glider med hinken
+    const g = egnaGrupper.length
+    const b = hinkBredd / 2
+    basObjekt = [
+      ...basObjekt,
+      { typ: 'tegel', form: 'segment', x1: W / 2 - b - 3, y1: HINK.y - 6, x2: W / 2 - b - 46, y2: HINK.y + 20, tj: 5, hard: true, kick: 380, pyramid: true, grupp: g },
+      { typ: 'tegel', form: 'segment', x1: W / 2 + b + 3, y1: HINK.y - 6, x2: W / 2 + b + 46, y2: HINK.y + 20, tj: 5, hard: true, kick: 380, pyramid: true, grupp: g },
+    ]
+    egnaGrupper.push({ typ: 'glid', ax: W / 2 - b - 8, T: (2 * Math.PI) / HINK.fart, fas: 0 })
+  }
   // Kulkaos: Snigelslem gör att allt som rör sig går hälften så fort
   const lugn = perk.snigel ? 0.5 : 1
-  const grupper = (bana.grupper || []).map((g) => ({ ...g, c: 1, s: 0, ox: 0, oy: 0, w: (g.w || 0) * lugn, T: g.T ? g.T / lugn : g.T, vx: 0, vy: 0, vinkel: 0 }))
-  const objekt = bana.objekt.map((o, id) => {
+  const grupper = egnaGrupper.map((g) => (g.typ === 'flipper' ? { ...g, c: 1, s: 0, ox: 0, oy: 0, vinkel: 0, omega: 0 } : { ...g, c: 1, s: 0, ox: 0, oy: 0, w: (g.w || 0) * lugn, T: g.T ? g.T / lugn : g.T, vx: 0, vy: 0, vinkel: 0 }))
+  const objekt = basObjekt.map((o, id) => {
     const ut = { ...o, id, farg: 'bla', lit: false, borta: false, nr: 0 }
     if (o.kick) {
       ut.kickKvar = o.kickAntal || 10
@@ -221,6 +258,28 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       blanda(bla, rnd)
       for (const o of bla.slice(0, guldpinnar)) o.guld = true
     }
+    // Kulkaos: kritpinnar (dubbla poäng och skada resten av skottet),
+    // förnyare (allt borttaget kommer tillbaka) och slempinnar (tål två träffar)
+    const sarskilda = [
+      ['krit', (bana.kritpinnar || 0) + (perk.krit || 0)],
+      ['forny', bana.fornyare || 0],
+      ['slem', bana.slempinnar || 0],
+    ]
+    if (sarskilda.some(([, n]) => n > 0)) {
+      for (const o of med) {
+        o.krit = false
+        o.forny = false
+        o.slem = 0
+      }
+      const bla = med.filter((o) => o.farg === 'bla' && o.form === 'cirkel' && !o.kick && !o.bomb && !o.guld)
+      blanda(bla, rnd)
+      let i = 0
+      for (const [namn, n] of sarskilda)
+        for (let j = 0; j < n && i < bla.length; j++, i++) {
+          if (namn === 'slem') bla[i].slem = 1
+          else bla[i][namn] = true
+        }
+    }
   }
   farga()
 
@@ -240,6 +299,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     skott: 0,
     // skottets räknare
     skottSumma: 0,
+    skottBas: 0, // poängen utan Kulkaos poängfaktorer: det extrakulorna räknas på
     skottTraffar: 0,
     skottOrange: 0,
     skottTid: 0,
@@ -267,6 +327,15 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     bossHp: bana.boss ? bana.boss.hp : 0,
     bossMax: bana.boss ? bana.boss.hp : 0,
     bossTraffar: 0,
+    bossSkold: 0, // bossattacken Skölden tar upp skada
+    bossXNu: 1, // skottets bosskada (järnkulan)
+    krit: false, // en kritpinne är träffad i skottet
+    fornyNu: false, // en förnyare är träffad i skottet
+    slosaN: 0, // Slösaren: kulor i skottet
+    flipperUppe: false,
+    vaska, // kulväskan: kultypen i varje skott, i tur och ordning
+    kulTyp: null, // skottets kultyp
+    hal: (bana.svartaHal || []).map((h) => ({ ...h, redo: true })),
   }
 
   function blanda(a, r) {
@@ -299,6 +368,15 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
         g.oy = Math.sin(k) * g.R - Math.sin(g.fas || 0) * g.R
         g.vx = -Math.sin(k) * g.R * (TVAPI / g.T)
         g.vy = Math.cos(k) * g.R * (TVAPI / g.T)
+      } else if (g.typ === 'flipper') {
+        // Kulkaos: flipprarna slår upp när spelaren håller in
+        const dt = Math.max(0, t - (g.tf ?? t))
+        g.tf = t
+        const mal = spel?.flipperUppe ? g.upp : 0
+        const fore = g.vinkel || 0
+        const steg = FLIPPER.fart * dt
+        g.vinkel = fore + Math.max(-steg, Math.min(steg, mal - fore))
+        g.omega = dt > 0 ? (g.vinkel - fore) / dt : 0
       }
       g.c = Math.cos(g.vinkel || 0)
       g.s = Math.sin(g.vinkel || 0)
@@ -308,7 +386,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
 
   function placera(o) {
     const g = o.grupp != null ? grupper[o.grupp] : null
-    const roterar = g && (g.typ === 'rotera' || g.typ === 'pendel')
+    const roterar = g && (g.typ === 'rotera' || g.typ === 'pendel' || g.typ === 'flipper')
     const ox = g && !roterar ? g.ox : 0
     const oy = g && !roterar ? g.oy : 0
     if (o.form === 'cirkel') {
@@ -343,7 +421,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   function ytfart(o, qx, qy) {
     const g = o.grupp != null ? grupper[o.grupp] : null
     if (!g) return [0, 0]
-    if (g.typ === 'rotera' || g.typ === 'pendel') return [-g.omega * (qy - g.cy), g.omega * (qx - g.cx)]
+    if (g.typ === 'rotera' || g.typ === 'pendel' || g.typ === 'flipper') return [-g.omega * (qy - g.cy), g.omega * (qx - g.cx)]
     return [g.vx, g.vy]
   }
 
@@ -387,12 +465,27 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     }
     const m = mult()
     const bas = spel.feber ? FEBER_POANG[o.farg] : POANG[o.farg] * m
-    const varde = Math.round(bas * (spel.trippelKvar > 0 ? 3 : 1) * (1 + 0.25 * (perk.poang || 0)) * (perk.diamant && o.farg === 'orange' ? 2 : 1))
+    // Kulkaos: kritpinnen ger dubbla poäng resten av skottet
+    if (o.krit && !spel.krit) {
+      spel.krit = true
+      const [kx, ky] = mitt(o)
+      handelser.push({ typ: 'krit', id: o.id, x: kx, y: ky })
+    }
+    if (o.forny && !spel.fornyNu) {
+      spel.fornyNu = true
+      const [fx, fy] = mitt(o)
+      handelser.push({ typ: 'fornyTraff', id: o.id, x: fx, y: fy })
+    }
+    const sno = perk.sno ? 1 + Math.min(1, 0.012 * perk.sno * spel.skottTraffar) : 1
+    const grund = bas * (spel.trippelKvar > 0 ? 3 : 1) * (1 + 0.25 * (perk.poang || 0)) * (o.farg === 'orange' ? Math.pow(2, perk.diamant || 0) : 1)
+    const varde = Math.round(grund * (spel.krit ? 2 : 1) * sno * (perk.poangX || 1))
     spel.skottSumma += varde
+    // kritpinnar, snöbollen och poängfaktorerna ger poäng, inte extrakulor
+    spel.skottBas += Math.round(grund)
     spel.skottTraffar++
     if (spel.skottTraffar === 50 && !spel.stilar.includes('mega')) stil('mega', handelser)
     const fore = spel.extraGivna
-    while (spel.extraGivna < EXTRA_KULA_VID.length && skottPoang() >= EXTRA_KULA_VID[spel.extraGivna]) spel.extraGivna++
+    while (spel.extraGivna < EXTRA_KULA_VID.length && spel.skottBas * spel.skottTraffar >= EXTRA_KULA_VID[spel.extraGivna]) spel.extraGivna++
     const [mx, my] = mitt(o)
     handelser.push({ typ: 'traff', id: o.id, farg: o.farg, poang: varde, mult: m, nr: spel.skottTraffar, x: mx, y: my, skott: skottPoang(), tegel: o.typ === 'tegel' })
     for (let i = fore; i < spel.extraGivna; i++) {
@@ -437,8 +530,10 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     if (k && o.farg === 'orange' && perk.blixt) blixt(o, perk.blixt + (perk.blixtstorm ? 3 : 0), perk.blixtstorm ? 170 : 110, handelser)
     if (o.farg === 'gron' && perk.stjarnfall) {
       const or = objekt.filter((p) => p.farg === 'orange' && !p.lit && !p.borta)
-      if (or.length) blixt(o, 1, 9999, handelser, [or[Math.floor(rnd() * or.length)]])
+      for (let i = 0; i < perk.stjarnfall && or.length; i++) blixt(o, 1, 9999, handelser, or.splice(Math.floor(rnd() * or.length), 1))
     }
+    // Kulkaos: Snöbollen växer för varje träff
+    if (k && perk.sno && !k.typ?.endsWith('baby') && k.r < k.r0 * (1.3 + 0.3 * perk.sno)) k.r = Math.min(k.r0 * (1.3 + 0.3 * perk.sno), k.r + KULA_R * 0.035 * perk.sno)
     if (k && perk.kulfabrik && spel.skottTraffar % Math.max(6, 14 - 2 * perk.kulfabrik) === 0) handelser.push({ typ: 'delning', x: mx, y: my, nya: nyaKulor(o, k, 1, 'stjarna') })
     // en grön som tänds av en annan grön smäll smäller lite senare, så att
     // kedjereaktionen syns som en våg
@@ -467,12 +562,23 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     const boss = objekt.find((p) => p.boss)
     const fran = objekt.filter((p) => p.farg === 'orange' && p.lit).map(mitt)
     const kulor = spel.kulor.map((k) => [k.x, k.y])
-    let skada = 3 * fran.length + 4 * kulor.length
-    skada = Math.round(skada * (1 + 0.2 * (perk.jagare || 0)) * (perk.kronan ? 2 : 1))
+    const skada = bossSkada(3 * fran.length + 4 * kulor.length)
     spel.bossHp = Math.max(0, spel.bossHp - skada)
     spel.kulor.length = 0
     spel.narSista = null
     handelser.push({ typ: 'bossStorm', skada, hp: spel.bossHp, max: spel.bossMax, fran, kulor, till: boss ? [boss.wx, boss.wy] : [W / 2, 200] })
+  }
+
+  // Skada på bossen: Bossjägaren, Kronan, kritpinnen, järnkulan, reliker
+  // och Drakhjärtat. Skölden (en bossattack) tar upp det den kan.
+  function bossSkada(bas) {
+    let skada = Math.round(bas * (1 + 0.2 * (perk.jagare || 0)) * Math.pow(2, perk.kronan || 0) * (spel.krit ? 2 : 1) * spel.bossXNu * (perk.bossX || 1) * (perk.drakhjarta && spel.eldNu ? 2 : 1))
+    if (spel.bossSkold > 0) {
+      const tar = Math.min(spel.bossSkold, skada)
+      spel.bossSkold -= tar
+      skada -= tar
+    }
+    return skada
   }
 
   function stil(id, handelser) {
@@ -491,7 +597,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     // roguelike: Kulregn ger kulor ur varje grön, Storsmäll tänder runt den
     if (perk.kulregn) ut.regn = nyaKulor(o, k, 2, 'stjarna')
     if (perk.smalla && namn !== 'small') small(o, 40 + 15 * perk.smalla, handelser, 'smalla')
-    if (perk.karamell && spel.grontSkott === 1) small(o, 72, handelser, 'smalla')
+    if (perk.karamell && spel.grontSkott === 1) small(o, 60 + 12 * perk.karamell, handelser, 'smalla')
     if (namn === 'spar') spel.sparKvar += KRAFTER.spar.skott
     else if (namn === 'eld') spel.eldKvar += 1
     else if (namn === 'spok') spel.spokKvar = Math.max(spel.spokKvar, 1)
@@ -626,7 +732,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
 
   let nastaKula = 1
   function nyKula(x, y, vx, vy) {
-    return {
+    const k = {
       id: nastaKula++,
       x,
       y,
@@ -645,17 +751,176 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       spokad: false,
       hinkStuds: false,
     }
+    k.r0 = k.r
+    return k
+  }
+
+  // Kulkaos: kultyperna i kulväskan. kt = { typ, niva }.
+  //   cell        delar sig vid träff (niva + 1 generationer)
+  //   agg         spricker i småkulor vid första träffen
+  //   laser       träffen tänder hela raden, sedan kolumnen …
+  //   jord        jordbävning: tänder allt runt träffen
+  //   jarn        tung och stor, dubbel skada på bossar (mer med nivån)
+  //   spoke       flyger rakt igenom allt och kommer tillbaka uppifrån
+  //   fusioner: bomb, bikupa, korslaser, fantom, lonnmordare, hagel, spokagg
+  function geTyp(k, kt) {
+    if (!kt || !kt.typ || kt.typ === 'vanlig') return k
+    const n = kt.niva || 1
+    k.typ = kt.typ
+    if (kt.typ === 'cell') k.dela = n
+    else if (kt.typ === 'agg') k.agg = n
+    else if (kt.typ === 'laser') k.laser = n
+    else if (kt.typ === 'jord') {
+      k.jord = n
+      k.jordR = 34 + 8 * n
+    } else if (kt.typ === 'jarn') {
+      k.r *= 1.3
+      k.tung = 1.2
+      k.bossX = 1.5 + 0.5 * n
+    } else if (kt.typ === 'spoke') {
+      k.genom = true
+      k.ater = n
+    } else if (kt.typ === 'bomb') {
+      k.jord = 5
+      k.jordR = 62
+      k.bomb = true
+    } else if (kt.typ === 'bikupa') k.bikupa = 12
+    else if (kt.typ === 'korslaser') {
+      k.laser = 5
+      k.kors = true
+    } else if (kt.typ === 'fantom') {
+      k.genom = true
+      k.ater = 2
+      k.r *= 2.2
+    } else if (kt.typ === 'lonnmordare') {
+      k.genom = true
+      k.genomBoss = true
+      k.ater = 1
+      k.bossX = 2
+    } else if (kt.typ === 'hagel') k.hagel = true
+    else if (kt.typ === 'spokagg') {
+      k.agg = 3
+      k.aggSpoke = true
+    }
+    k.r0 = k.r
+    return k
+  }
+
+  const kulTak = () => Math.min(bana.maxKulor || 40, 60)
+
+  // En småkula (från äggsäckar, bikupor och hagel).
+  function baby(x, y, vx, vy, spoke = false) {
+    const b = nyKula(x, y, vx, vy)
+    b.r = b.r0 = KULA_R * 0.72
+    b.typ = spoke ? 'spokbaby' : 'baby'
+    if (spoke) b.genom = true
+    spel.kulor.push(b)
+    return b
+  }
+
+  // Laserstrålen: tänder allt i raden (eller kolumnen), och träffar bossen.
+  function laser(x, y, horisontell, handelser) {
+    const tanda = []
+    let boss = false
+    for (const p of objekt) {
+      if (p.lit || p.borta || p.hard) continue
+      const [px, py] = mitt(p)
+      const d = horisontell ? Math.abs(py - y) : Math.abs(px - x)
+      if (p.boss) {
+        if (d < p.r) boss = true
+        continue
+      }
+      if (d < 12) tanda.push(p.id)
+    }
+    if (boss) spel.bossTraffar += 2
+    handelser.push({ typ: 'laser', x, y, horisontell, boss })
+    for (const id of tanda) tand(objekt[id], handelser, null, true)
+  }
+
+  // Det kultypen gör när den träffar något (o).
+  function kulEffekt(k, o, handelser) {
+    const t = spel.skottTid
+    if (k.agg) {
+      // äggsäcken spricker i småkulor
+      const n = Math.max(0, Math.min(k.agg + 1 + Math.floor(rnd() * 3), kulTak() - spel.kulor.length + 1))
+      const a0 = rnd() * TVAPI
+      for (let i = 0; i < n; i++) {
+        const v = a0 + (i * TVAPI) / n
+        const f = 260 + rnd() * 80
+        baby(k.x + Math.cos(v) * 4, k.y + Math.sin(v) * 4, Math.cos(v) * f, Math.sin(v) * f - 90, k.aggSpoke)
+      }
+      handelser.push({ typ: 'agg', x: k.x, y: k.y, n, spoke: Boolean(k.aggSpoke) })
+      k.agg = 0
+      k.borta = true
+      return
+    }
+    if (t - (k.effT ?? -1) < 0.08) return
+    let gjort = false
+    if (k.dela > 0 && spel.kulor.length < kulTak()) {
+      const c = nyKula(k.x, k.y, -k.vx * 0.9 + (rnd() - 0.5) * 80, k.vy - 40 - rnd() * 60)
+      c.typ = 'cell'
+      c.r = c.r0 = k.r
+      c.dela = --k.dela
+      c.effT = t
+      spel.kulor.push(c)
+      handelser.push({ typ: 'cell', x: k.x, y: k.y })
+      gjort = true
+    }
+    if (k.laser > 0) {
+      const [mx, my] = mitt(o)
+      if (k.kors) {
+        laser(mx, my, true, handelser)
+        laser(mx, my, false, handelser)
+      } else {
+        laser(mx, my, !k.laserV, handelser)
+        k.laserV = !k.laserV
+      }
+      k.laser--
+      gjort = true
+    }
+    if (k.jord > 0) {
+      small(o, k.jordR, handelser, k.bomb ? 'bomb' : 'jord')
+      k.jord--
+      gjort = true
+    }
+    if (k.bikupa > 0) {
+      k.bikupaN = (k.bikupaN || 0) + 1
+      if (k.bikupaN % 3 === 0 && spel.kulor.length < kulTak()) {
+        const v = rnd() * TVAPI
+        baby(k.x, k.y, Math.cos(v) * 240, Math.sin(v) * 240 - 100)
+        k.bikupa--
+        handelser.push({ typ: 'cell', x: k.x, y: k.y })
+        gjort = true
+      }
+    }
+    if (k.hagel) {
+      // hagelgeväret: fem snabba järnkulor framåt
+      k.hagel = false
+      const v0 = Math.atan2(k.vy, k.vx)
+      for (let i = 0; i < 5 && spel.kulor.length < kulTak(); i++) {
+        const v = v0 + (i - 2) * 0.22
+        const b = baby(k.x, k.y, Math.cos(v) * 620, Math.sin(v) * 620)
+        b.r = b.r0 = KULA_R * 0.85
+        b.typ = 'jarnbaby'
+      }
+      handelser.push({ typ: 'hagel', x: k.x, y: k.y })
+      gjort = true
+    }
+    if (gjort) k.effT = t
   }
 
   function sikta(v) {
     spel.vinkel = Math.max(Math.PI * 0.035, Math.min(Math.PI * 0.965, v))
   }
 
+  // händelser från skjut() kommer med i nästa steg()
+  const handelser0 = []
   function skjut() {
     if (spel.lage !== 'siktar' || !spel.iKanonen) return false
     spel.iKanonen = false
     spel.skott++
     spel.skottSumma = 0
+    spel.skottBas = 0
     spel.skottTraffar = 0
     spel.skottOrange = 0
     spel.skottTid = 0
@@ -665,8 +930,14 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     spel.stilar = []
     spel.grontSkott = 0
     spel.hinkSkott = false
-    // Kulkaos: Glödkolet gör var femte skott till en eldboll
-    const glod = Boolean(perk.glodkol) && spel.skott % 5 === 0
+    spel.krit = false
+    spel.fornyNu = false
+    spel.bossXNu = 1
+    for (const h of spel.hal) h.redo = true
+    // Kulkaos: Glödkolet gör var femte skott till en eldboll (två Glödkol:
+    // var fjärde), Drakhjärtat var tredje
+    const period = perk.drakhjarta ? 3 : perk.glodkol ? Math.max(3, 6 - perk.glodkol) : 0
+    const glod = period > 0 && spel.skott % period === 0
     spel.eldNu = spel.eldKvar > 0 || glod
     if (spel.eldKvar > 0 && !glod) spel.eldKvar--
     spel.spokNu = spel.spokKvar > 0
@@ -675,12 +946,29 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     if (spel.sparNu) spel.sparKvar--
     const vx = Math.cos(spel.vinkel) * FYSIK.STARTFART
     const vy = Math.sin(spel.vinkel) * FYSIK.STARTFART
-    spel.kulor = [nyKula(KANON.x + Math.cos(spel.vinkel) * 22, KANON.y + Math.sin(spel.vinkel) * 22, vx, vy)]
+    // Kulkaos: skottets kultyp ur kulväskan, i tur och ordning
+    spel.kulTyp = spel.vaska?.length ? spel.vaska[(spel.skott - 1) % spel.vaska.length] : null
+    const kanonKula = (v, typ = true) => {
+      const k = nyKula(KANON.x + Math.cos(v) * 22, KANON.y + Math.sin(v) * 22, Math.cos(v) * FYSIK.STARTFART, Math.sin(v) * FYSIK.STARTFART)
+      return typ && !spel.eldNu ? geTyp(k, spel.kulTyp) : k
+    }
+    spel.kulor = [kanonKula(spel.vinkel)]
+    if (spel.kulor[0].bossX) spel.bossXNu = spel.kulor[0].bossX
     // Kulkaos: spegelkula (Tvilling, Spegeln) och fler kulor per skott
     const fler = []
     if (perk.tvilling || (perk.spegel && spel.skott === 1)) fler.push(Math.PI - spel.vinkel + (Math.abs(spel.vinkel - Math.PI / 2) < 0.05 ? 0.1 : 0))
     for (let i = 1; i <= (perk.flerskott || 0); i++) fler.push(spel.vinkel + (i % 2 ? 1 : -1) * 0.13 * Math.ceil(i / 2))
-    for (const v of fler) spel.kulor.push(nyKula(KANON.x + Math.cos(v) * 22, KANON.y + Math.sin(v) * 22, Math.cos(v) * FYSIK.STARTFART, Math.sin(v) * FYSIK.STARTFART))
+    for (const v of fler) spel.kulor.push(kanonKula(v))
+    // Kulkaos: Slösaren skjuter alla kulor på en gång (högst 10) i en solfjäder
+    spel.slosaN = 0
+    if (perk.slosa && !spel.feber) {
+      const n = Math.min(10, spel.kulorKvar + 1)
+      for (let i = 1; i < n; i++) spel.kulor.push(kanonKula(spel.vinkel + (i % 2 ? 1 : -1) * 0.09 * Math.ceil(i / 2), false))
+      spel.kulorKvar -= n - 1
+      spel.slosaN = n
+    }
+    // Kulkaos: arkanan Molnet — var tredje skott regnar fyra kulor från himlen
+    if (perk.moln && spel.skott % 3 === 0) handelser0.push({ typ: 'moln', nya: nyaKulor({ form: 'cirkel', wx: W / 2, wy: 70, r: 1 }, spel.kulor[0], 4, 'regn') })
     spel.bossTraffar = 0
     spel.lage = spel.feber ? 'feber' : 'skjuter'
     return true
@@ -718,8 +1006,29 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   // En kula ett delsteg. Returnerar 'ut' om den lämnade planen nedtill.
   function flytta(k, dt, handelser, simulera) {
     if (!simulera && (perk.magnet || perk.hinkmagnet)) dras(k, dt)
-    // Kulkaos: Fjäderlätt och Ugglan Klok ger lägre gravitation
-    k.vy += FYSIK.G * (perk.grav || 1) * dt
+    // Kulkaos: Fjäderlätt och Ugglan Klok ger lägre gravitation, järnkulan högre
+    k.vy += FYSIK.G * (perk.grav || 1) * (k.tung || 1) * dt
+    // Kulkaos: svarta hål drar kulorna till sig, tänder allt runt sig och
+    // spottar ut kulan igen (en gång per skott och hål)
+    for (const h of spel.hal) {
+      const dx = h.x - k.x
+      const dy = h.y - k.y
+      const d = Math.hypot(dx, dy)
+      if (d > HAL_R || d < 1e-6) continue
+      const a = 1300 * (1 - d / HAL_R) * dt
+      k.vx += (dx / d) * a
+      k.vy += (dy / d) * a
+      if (!simulera && d < 12 && h.redo) {
+        h.redo = false
+        small({ form: 'cirkel', wx: h.x, wy: h.y, r: 1 }, 66, handelser, 'hal')
+        const v = -Math.PI / 2 + (rnd() - 0.5) * 1.6
+        k.x = h.x + Math.cos(v) * 16
+        k.y = h.y + Math.sin(v) * 16
+        k.vx = Math.cos(v) * 430
+        k.vy = Math.sin(v) * 430
+        handelser.push({ typ: 'svartHal', x: h.x, y: h.y })
+      }
+    }
     k.x += k.vx * dt
     k.y += k.vy * dt
     if (k.x < k.r) {
@@ -767,9 +1076,20 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
         nx /= d
         ny /= d
       }
-      if (eld && !o.boss && !o.hard) {
-        // eldbollen bränner igenom: tänd utan att studsa
+      if ((eld || k.genom) && !o.boss && !o.hard) {
+        // eldbollen bränner igenom (och spökkulan flyger igenom): tänd utan att studsa
         tand(o, handelser, k)
+        if (k.typ) kulEffekt(k, o, handelser)
+        if (k.borta) return 'borta'
+        continue
+      }
+      // Kulkaos: Lönnmördaren flyger rakt igenom bossen, och varje passage räknas tre gånger
+      if (k.genomBoss && o.boss) {
+        if (spel.skottTid - (k.bossT ?? -1) > 0.25) {
+          k.bossT = spel.skottTid
+          spel.bossTraffar += 3
+          handelser.push({ typ: 'bossTraff', id: o.id, x: qx, y: qy })
+        }
         continue
       }
       // Kulkaos: Genomborr — kulan går rakt igenom blå pinnar
@@ -794,6 +1114,23 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
         k.mjuk = -vn < 150
       }
       kontakt = o
+      // Kulkaos: en slempinne tål en träff till: kulan studsar högt i stället
+      if (o.slem > 0 && !o.lit) {
+        const ut = k.vx * nx + k.vy * ny
+        if (ut < 300) {
+          k.vx += (300 - ut) * nx
+          k.vy += (300 - ut) * ny
+        }
+        k.mjuk = false
+        if (spel.skottTid - (o.slemT ?? -1) > 0.15) {
+          o.slemT = spel.skottTid
+          o.slem--
+          spel.skottSumma += POANG.bla
+          spel.skottBas += POANG.bla
+          handelser.push({ typ: 'slem', id: o.id, x: qx, y: qy })
+        }
+        continue
+      }
       if (o.boss || o.hard) {
         // Kulkaos: bossen och hårda saker (krabbans klor) tänds aldrig. Kulan
         // studsar alltid iväg ordentligt från bossen, och varje träff räknas.
@@ -813,9 +1150,11 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       }
       tand(o, handelser, k)
       if (o.kick) studsare(o, k, nx, ny, qx, qy, handelser)
+      if (k.typ) kulEffekt(k, o, handelser)
+      if (k.borta) return 'borta'
     }
     // hinken: kanter studsar, öppningen fångar
-    if (!simulera && spel.hinkBredd > 0 && !spel.feber && !spel.eldNu && !(spel.spokNu && !k.spokad)) {
+    if (!simulera && spel.hinkBredd > 0 && !spel.feber && !spel.eldNu && !(spel.spokNu && !k.spokad) && !(k.ater > 0)) {
       const hy = HINK.y
       for (const sida of [-1, 1]) {
         const ex = spel.hinkX + sida * (spel.hinkBredd / 2)
@@ -843,6 +1182,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
           handelser.push({ typ: 'guldhink', x: k.x, poang: 25000 })
         }
         spel.hinkSkott = true
+        if (perk.hinkGuld) guld(perk.hinkGuld, k.x, HINK.y - 10, handelser)
         handelser.push({ typ: 'hink', kula: k.id, x: k.x })
         handelser.push({ typ: 'extraKula', orsak: 'hink' })
         if (k.hinkStuds) stil('hinkskicklig', handelser)
@@ -877,6 +1217,15 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       handelser.push({ typ: 'golv', x: k.x })
     }
     if (k.y > H + k.r + 4) {
+      // Kulkaos: spökkulan kommer tillbaka uppifrån (en gång per nivå)
+      if (!simulera && k.ater > 0) {
+        k.ater--
+        k.spokad = true
+        k.y = -k.r
+        k.vy = Math.min(k.vy, 260)
+        handelser.push({ typ: 'spok', kula: k.id, x: k.x })
+        return null
+      }
       if (!simulera && spel.spokNu && !k.spokad) {
         // spöksbollen: tillbaka uppifrån en gång
         k.spokad = true
@@ -892,7 +1241,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   }
 
   function steg(dt) {
-    const handelser = []
+    const handelser = handelser0.splice(0)
     spel.t += dt
     uppdateraGrupper(spel.t)
     // hinken glider fram och tillbaka
@@ -918,6 +1267,12 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       for (let s = 0; s < n; s++) {
         const r = flytta(k, d, handelser, false)
         if (spel.kulor[i] !== k) {
+          tagen = true
+          break
+        }
+        if (r === 'borta') {
+          // äggsäcken sprack: kulan finns inte längre
+          spel.kulor.splice(i, 1)
           tagen = true
           break
         }
@@ -1026,17 +1381,41 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     }
     const lista = spel.lista.map((o) => o.id)
     for (const o of spel.lista) o.borta = true
+    // Kulkaos: förnyaren — allt som är borta kommer tillbaka, som blå pinnar
+    let fornyade = 0
+    if (spel.fornyNu && !spel.feber) {
+      for (const o of objekt) {
+        if (!o.borta || o.boss || o.hard) continue
+        Object.assign(o, { borta: false, lit: false, farg: 'bla', krit: false, forny: false, guld: false, bomb: false, slem: 0 })
+        fornyade++
+      }
+    }
+    // Kulkaos: stenarna (en bossattack) smulas sönder efter några skott
+    for (const o of objekt)
+      if (o.sten && !o.borta && --o.stenKvar <= 0) {
+        o.borta = true
+        handelser.push({ typ: 'fast', id: o.id })
+      }
     const kvarAllt = objekt.filter((o) => !o.borta).length
     handelser.push({ typ: 'skottSlut', lista, poang: sp, traffar: spel.skottTraffar, slant })
+    if (fornyade) handelser.push({ typ: 'forny', antal: fornyade })
     spel.narSista = null
+    // Kulkaos: Slösaren får tillbaka hälften av kulorna efter skottet
+    if (spel.slosaN > 0) {
+      const tillbaka = Math.floor(spel.slosaN / 2)
+      spel.kulorKvar += tillbaka
+      handelser.push({ typ: 'slosa', n: tillbaka })
+      spel.slosaN = 0
+    }
     // Kulkaos: bossen tar skada av allt skottet tände och av varje träff
     if (bana.boss && !spel.feber) {
       const vikt = { bla: 1, orange: 2, gron: 3, lila: 5 }
-      let skada = spel.bossTraffar * 4
-      for (const o of spel.lista) skada += vikt[o.farg] || 1
-      skada = Math.round(skada * (1 + 0.2 * (perk.jagare || 0)) * (perk.kronan ? 2 : 1))
+      let bas = spel.bossTraffar * 4
+      for (const o of spel.lista) bas += vikt[o.farg] || 1
+      const skold = spel.bossSkold
+      const skada = bossSkada(bas)
       spel.bossHp = Math.max(0, spel.bossHp - skada)
-      handelser.push({ typ: 'bossSkada', skada, hp: spel.bossHp, max: spel.bossMax })
+      handelser.push({ typ: 'bossSkada', skada, hp: spel.bossHp, max: spel.bossMax, skold: skold - spel.bossSkold })
       if (spel.bossHp <= 0) {
         spel.lage = 'klar'
         handelser.push({ typ: 'bossDod' })
@@ -1055,9 +1434,12 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
         spel.antalOrange = antalOrange
         handelser.push({ typ: 'aterstall' })
       }
+      // bossen slår tillbaka varannat skott
+      const attacker = bana.boss.attacker || []
+      if (attacker.length && spel.skott % 2 === 0) bossAttack(attacker[(spel.skott / 2 - 1) % attacker.length], handelser)
     }
     // Kulkaos: Spelautomaten — ibland kostar skottet ingen kula
-    if (perk.spelautomat && !spel.feber && rnd() < 0.12) {
+    if (perk.spelautomat && !spel.feber && rnd() < 0.12 * perk.spelautomat) {
       spel.kulorKvar++
       handelser.push({ typ: 'gratisKula' })
     }
@@ -1082,6 +1464,57 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     spel.lage = 'siktar'
     valjLila()
     handelser.push({ typ: 'redo' })
+  }
+
+  // Kulkaos: bossattackerna mellan skotten.
+  //   stenar  tre stenar som inte går att tända dyker upp (de smulas efter fyra skott)
+  //   skold   bossen får en sköld som tar upp skada i nästa skott
+  //   flytta  tre orange byter plats med tre blå
+  //   slem    fem pinnar blir slempinnar
+  //   hela    bossen får tillbaka lite liv
+  function bossAttack(typ, handelser) {
+    const boss = objekt.find((o) => o.boss)
+    const fria = () => objekt.filter((o) => !o.borta && !o.lit && !o.boss && !o.hard && o.form === 'cirkel')
+    const ut = { typ: 'bossAttack', attack: typ, pos: [] }
+    if (typ === 'stenar') {
+      for (let forsok = 0; forsok < 200 && ut.pos.length < 3; forsok++) {
+        const x = 30 + rnd() * (W - 60)
+        const y = 140 + rnd() * 360
+        if (boss && Math.hypot(x - boss.wx, y - boss.wy) < boss.r + 40) continue
+        if (objekt.some((o) => !o.borta && Math.hypot(...((q) => [q[0] - x, q[1] - y])(narmast(o, x, y))) < 22)) continue
+        const sten = { typ: 'pinne', form: 'cirkel', x, y, r: 8.5, hard: true, sten: true, stenKvar: 4, id: objekt.length, farg: 'bla', lit: false, borta: false, nr: 0 }
+        objekt.push(sten)
+        placera(sten)
+        ut.pos.push([x, y])
+      }
+    } else if (typ === 'skold') {
+      spel.bossSkold = Math.round(spel.bossMax * 0.06)
+      ut.skold = spel.bossSkold
+    } else if (typ === 'flytta') {
+      const or = fria().filter((o) => o.farg === 'orange')
+      const bla = fria().filter((o) => o.farg === 'bla' && !o.guld && !o.krit && !o.forny && !o.bomb)
+      blanda(or, rnd)
+      blanda(bla, rnd)
+      for (let i = 0; i < 3 && i < or.length && i < bla.length; i++) {
+        or[i].farg = 'bla'
+        bla[i].farg = 'orange'
+        ut.pos.push([or[i].wx, or[i].wy, bla[i].wx, bla[i].wy])
+      }
+    } else if (typ === 'slem') {
+      const lista = fria().filter((o) => !o.slem)
+      blanda(lista, rnd)
+      for (const o of lista.slice(0, 5)) {
+        o.slem = 1
+        ut.pos.push([o.wx, o.wy])
+      }
+    } else if (typ === 'hela') {
+      const fore = spel.bossHp
+      spel.bossHp = Math.min(spel.bossMax, spel.bossHp + Math.round(spel.bossMax * 0.06))
+      ut.hela = spel.bossHp - fore
+    }
+    ut.x = boss?.wx ?? W / 2
+    ut.y = boss?.wy ?? 200
+    handelser.push(ut)
   }
 
   // Siktspåret: kulans väg från kanonen till första träffen. Superspåret
@@ -1121,11 +1554,13 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   }
 
   // Ögonblicksbild (för botarna som provar vinklar). Slumpen sparas inte.
-  const FALT = ['t', 'lage', 'vinkel', 'kulorKvar', 'iKanonen', 'poang', 'orangeTraffade', 'skott', 'skottSumma', 'skottTraffar', 'skottOrange', 'skottTid', 'extraGivna', 'kraftNamn', 'sparKvar', 'eldKvar', 'spokKvar', 'trippelKvar', 'feber', 'hinkX', 'hinkVx', 'rensat', 'eldNu', 'spokNu', 'sparNu', 'grontSkott', 'feberFack', 'hinkSkott', 'guld', 'bossHp', 'bossTraffar', 'antalOrange', 'storm']
+  const FALT = ['t', 'lage', 'vinkel', 'kulorKvar', 'iKanonen', 'poang', 'orangeTraffade', 'skott', 'skottSumma', 'skottBas', 'skottTraffar', 'skottOrange', 'skottTid', 'extraGivna', 'kraftNamn', 'sparKvar', 'eldKvar', 'spokKvar', 'trippelKvar', 'feber', 'hinkX', 'hinkVx', 'rensat', 'eldNu', 'spokNu', 'sparNu', 'grontSkott', 'feberFack', 'hinkSkott', 'guld', 'bossHp', 'bossTraffar', 'antalOrange', 'storm', 'bossSkold', 'bossXNu', 'krit', 'fornyNu', 'slosaN', 'kulTyp']
   function spara() {
     const st = {}
     for (const f of FALT) st[f] = spel[f]
-    st.obj = objekt.map((o) => [o.farg, o.lit, o.borta, o.nr, o.kickKvar, o.bomb, o.guld])
+    st.n = objekt.length
+    st.obj = objekt.map((o) => [o.farg, o.lit, o.borta, o.nr, o.kickKvar, o.bomb, o.guld, o.slem, o.krit, o.forny, o.stenKvar])
+    st.hal = spel.hal.map((h) => h.redo)
     st.kulor = spel.kulor.map((k) => ({ ...k }))
     st.lista = spel.lista.map((o) => o.id)
     st.stilar = [...spel.stilar]
@@ -1138,7 +1573,9 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   }
   function ladda(st) {
     for (const f of FALT) spel[f] = st[f]
-    st.obj.forEach(([farg, lit, borta, nr, kickKvar, bomb, guld], i) => Object.assign(objekt[i], { farg, lit, borta, nr, kickKvar, bomb, guld }))
+    objekt.length = st.n // stenar som kom till under provskottet
+    st.obj.forEach(([farg, lit, borta, nr, kickKvar, bomb, guld, slem, krit, forny, stenKvar], i) => Object.assign(objekt[i], { farg, lit, borta, nr, kickKvar, bomb, guld, slem, krit, forny, stenKvar }))
+    spel.hal.forEach((h, i) => (h.redo = st.hal[i]))
     antalOrange = spel.antalOrange
     spel.kulor = st.kulor.map((k) => ({ ...k }))
     spel.lista = st.lista.map((id) => objekt[id])
@@ -1161,7 +1598,12 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     return true
   }
 
-  return Object.assign(spel, { sikta, skjut, steg, siktlinje, orangeKvar, mult, skottPoang, spara, ladda, fortsatt })
+  // Kulkaos: håll in för att slå upp flipprarna
+  const flippa = (pa) => {
+    spel.flipperUppe = Boolean(pa)
+  }
+
+  return Object.assign(spel, { sikta, skjut, steg, siktlinje, orangeKvar, mult, skottPoang, spara, ladda, fortsatt, flippa })
 }
 
 // Spelar ett helt skott med fast tidssteg och returnerar händelserna.
@@ -1171,6 +1613,38 @@ export function spelaSkott(s, vinkel, dt = 1 / 60) {
   const ut = []
   for (let i = 0; i < 60 * 45 && (s.lage === 'skjuter' || s.lage === 'feber'); i++) ut.push(...s.steg(dt))
   return ut
+}
+
+// Kulkaos: Zenskottet. Provar n vinklar runt spelarens (±bredd) och väljer
+// den som tänder mest, men byter bara om det är tydligt bättre. Provskotten
+// är högst maxTid sekunder, så att det går fort.
+export function zenVinkel(s, vinkel, { bredd = 0.04, n = 7, maxTid = 7 } = {}) {
+  const st = s.spara()
+  const varde = (v) => {
+    s.sikta(v)
+    if (!s.skjut()) return -Infinity
+    let p = 0
+    for (let i = 0; i < 60 * maxTid && (s.lage === 'skjuter' || s.lage === 'feber'); i++)
+      for (const e of s.steg(1 / 60)) {
+        if (e.typ === 'traff') p += e.farg === 'orange' ? 12 : e.farg === 'gron' ? 6 : e.farg === 'lila' ? 4 : 1
+        if (e.typ === 'feberStart' || e.typ === 'bossStorm') p += 200
+      }
+    s.ladda(st)
+    return p
+  }
+  const egen = varde(vinkel)
+  let bast = vinkel
+  let bastV = egen
+  for (let i = 0; i < n; i++) {
+    const v = vinkel - bredd + (2 * bredd * i) / (n - 1)
+    const p = varde(v)
+    if (p > bastV) {
+      bastV = p
+      bast = v
+    }
+  }
+  s.sikta(vinkel)
+  return bastV > egen * 1.15 + 2 ? bast : vinkel
 }
 
 // En bot som provar många vinklar (med ögonblicksbilder) och väljer den

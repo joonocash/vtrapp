@@ -3,11 +3,11 @@
 // spelet (bossar, guld, fler kulor, studsgolv …). Kör: node frontend/tests/kulkaos.test.mjs
 
 import assert from 'node:assert/strict'
-import { skapaSpel, spelaSkott, botSkott, H, KULA_R } from '../src/rotspel/games/pinnboll/motor.js'
+import { skapaSpel, spelaSkott, botSkott, zenVinkel, H, KULA_R } from '../src/rotspel/games/pinnboll/motor.js'
 import { genereraBana } from '../src/rotspel/games/pinnboll/generator.js'
 import * as R from '../src/rotspel/games/kulkaos/runda.js'
-import { HJALTAR, UPPGRADERINGAR, RELIKER, hjalte } from '../src/rotspel/games/kulkaos/innehall.js'
-import { BOSSAR, bossBana } from '../src/rotspel/games/kulkaos/bossar.js'
+import { HJALTAR, UPPGRADERINGAR, RELIKER, BOSSRELIKER, KULTYPER, BASKULOR, FUSIONER, ARKANOR, VASKA_MAX, hjalte } from '../src/rotspel/games/kulkaos/innehall.js'
+import { BOSSAR, bossBana, bossarIAkt } from '../src/rotspel/games/kulkaos/bossar.js'
 import { HANDELSER } from '../src/rotspel/games/kulkaos/handelser.js'
 import * as M from '../src/rotspel/games/kulkaos/meta.js'
 import { mulberry32 } from '../src/rotspel/games/delat/rng.js'
@@ -49,9 +49,15 @@ test('innehållet: hjältar, uppgraderingar, evolutioner och reliker hänger iho
 /* ---------------------------------------------------------------- rundan */
 
 test('rundan börjar: hjältens start, Hundkojan och Feber', () => {
-  const r = R.nyRunda({ fro: 1, hjalte: 'happy' })
+  const r0 = R.nyRunda({ fro: 1, hjalte: 'happy' })
+  assert.equal(r0.steg, 'arkana', 'först en arkana')
+  assert.equal(r0.arkanaVal.length, 3)
+  const r = R.valjArkana(r0, r0.arkanaVal[0])
   assert.equal(r.steg, 'spel')
+  assert.deepEqual(r.arkanor, [r0.arkanaVal[0]])
+  assert.equal(R.valjArkana(r, 'tvilling'), r, 'bara när man väljer')
   assert.equal(r.typ, 'strid')
+  assert.deepEqual(r.vaska.map((k) => k.typ), ['cell', 'vanlig', 'vanlig', 'vanlig'], 'hjältens kula i väskan')
   assert.equal(r.kulor, R.STARTKULOR)
   assert.deepEqual(r.varig, { sikte: 1, hink: 1 })
   const med = R.nyRunda({ fro: 1, hjalte: 'seg', feber: 6, meta: { kulor: 3, startkassa: 2, omslag: 1, slang: 2, andra: 1, startgava: 2 } })
@@ -103,18 +109,23 @@ test('dörrarna: boss sist i varje akt, alltid en bana att välja, nästa akt ef
   assert.deepEqual(R.dorrVal(r, 6).map((d) => d.typ), ['boss'])
   // efter bossen i akt 1: akt 2, och efter akt 3: seger
   let efter = R.valjBelo(R.rumKlart({ ...r, typ: 'boss', rum: 6 }, { poang: 1, kulorKvar: 3 }))
-  assert.equal(efter.ko[0].typ, 'relik')
+  assert.equal(efter.ko[0].typ, 'bossrelik')
+  assert.equal(efter.ko[0].id, R.bossFor(r).relik)
+  efter = R.valjBelo(efter)
+  assert.ok(efter.reliker.includes(R.bossFor(r).relik))
+  assert.equal(efter.ko[0].typ, 'kula')
   efter = R.valjBelo(efter, efter.ko[0].val[0])
-  assert.equal(efter.steg, 'dorrar')
+  assert.equal(efter.steg, 'arkana', 'ny arkana i varje akt')
   assert.equal(efter.akt, 2)
+  efter = R.valjArkana(efter, efter.arkanaVal[0])
+  assert.equal(efter.steg, 'dorrar')
   let seger = R.rumKlart({ ...r, typ: 'boss', rum: 6, akt: 3 }, { poang: 1, kulorKvar: 3 })
-  seger = R.valjBelo(seger)
-  seger = R.valjBelo(seger, seger.ko[0].val[0])
+  for (let i = 0; i < 4 && seger.steg === 'belo'; i++) seger = R.valjBelo(seger, seger.ko[0].val?.[0])
   assert.equal(seger.steg, 'seger')
   assert.ok(seger.seger)
   const vidare = R.fortsattOandligt(seger)
   assert.equal(vidare.akt, 4)
-  assert.ok(vidare.oandlig && vidare.steg === 'dorrar')
+  assert.ok(vidare.oandlig && vidare.steg === 'arkana')
 })
 
 test('belöningar: uppgradering efter bana, relik efter elit, kista och relik efter boss', () => {
@@ -126,19 +137,26 @@ test('belöningar: uppgradering efter bana, relik efter elit, kista och relik ef
   assert.equal(a.kulor, 4 + R.nyaKulor(r))
   assert.ok(a.guld >= 7 + 12)
   assert.equal(a.poang, 5000)
+  assert.equal(a.ko[1].typ, 'kula', 'första banan i akten ger en kula')
   const id = a.ko[0].val[0]
   const b = R.valjBelo(a, id)
-  assert.equal(b.steg, 'dorrar')
+  assert.equal(b.steg, 'belo')
   assert.ok(b.varig[id] > 0 || UPPGRADERINGAR[id].direkt)
+  const c = R.valjBelo(b, b.ko[0].val[0])
+  assert.equal(c.steg, 'dorrar')
+  assert.equal(R.rumKlart({ ...c, steg: 'spel', typ: 'strid' }, { poang: 1, kulorKvar: 1 }).ko.length, 1, 'bara en gång per akt')
   const e = R.rumKlart({ ...r, typ: 'elit' }, { poang: 1, kulorKvar: 1 })
   assert.equal(e.ko[0].typ, 'relik')
-  assert.ok(e.ko[0].val.every((x) => RELIKER[x]))
+  assert.ok(e.ko[0].val.every((x) => RELIKER[x] && !BOSSRELIKER[x]), 'inga bossreliker bland de vanliga')
   assert.deepEqual(R.valjBelo(e, e.ko[0].val[0]).reliker, [e.ko[0].val[0]])
+  assert.equal(e.ko[1].typ, 'kula')
+  assert.equal(e.elitKlara, 1)
   const boss = R.rumKlart({ ...r, typ: 'boss', rum: 6 }, { poang: 1, kulorKvar: 1 })
   assert.equal(boss.ko[0].typ, 'kista')
   assert.equal(boss.ko[0].fick.length, 3)
-  assert.equal(boss.ko[1].typ, 'relik')
+  assert.deepEqual(boss.ko.slice(1).map((x) => x.typ), ['bossrelik', 'kula'])
   assert.equal(boss.bossar, 1)
+  assert.deepEqual(boss.besegrade, [R.bossFor(r).id])
   // kulregn: egna kulor, banken rörs inte
   const regn = R.rumKlart({ ...r, typ: 'kulregn', kulor: 9 }, { poang: 1, kulorKvar: 0 })
   assert.equal(regn.kulor, 12)
@@ -164,7 +182,9 @@ test('omslag, släng och hoppa över', () => {
   for (let nr = 1; nr < 20; nr++) assert.ok(!R.uppgVal({ ...sl, nr }).includes(bort), 'slängd kommer aldrig tillbaka')
   const hp = R.hoppa(a)
   assert.equal(hp.guld, a.guld + 15)
-  assert.equal(hp.steg, 'dorrar')
+  assert.equal(hp.ko[0].typ, 'kula', 'nästa belöning')
+  const kom = R.slaOm({ ...hp, omslag: 1 })
+  assert.equal(kom.omslag, 0, 'omslag på kulor också')
   // Tur och Fyrklövern ger fler val, Räven och Feber 8 färre
   assert.equal(R.antalVal({ ...r, varig: { tur: 1 }, reliker: ['fyrklover'] }), 5)
   assert.equal(R.antalVal({ ...r, hjalte: 'raven' }), 2)
@@ -223,12 +243,13 @@ test('händelser och lägereld: alla val går att göra och leder vidare', () =>
 })
 
 test('en hel runda med en bot: från första banan till seger eller slut, utan fel', () => {
-  for (const hj of ['happy', 'atta', 'svea']) {
+  for (const hj of ['happy', 'atta', 'svea', 'slosa']) {
     let r = R.nyRunda({ fro: 777, hjalte: hj })
     const rnd = mulberry32(5)
     let banor = 0
     for (let steg = 0; steg < 300 && !r.slut; steg++) {
-      if (r.steg === 'spel') {
+      if (r.steg === 'arkana') r = R.valjArkana(r, r.arkanaVal[0])
+      else if (r.steg === 'spel') {
         const { s, res } = spelaRum(r, 4, rnd)
         banor++
         if (s.lage !== 'klar' && !s.bana.bonus) r = R.avsluta(r)
@@ -373,6 +394,176 @@ test('reliker i motorn: Spelautomaten, Glödkolet, Spegeln och Diamanten', () =>
   if (p) assert.equal(forsta({ diamant: 1 }), p * 2)
 })
 
+/* --------------------------------------------- kulväskan, arkanor, reliker */
+
+test('kulväskan: nivåer, plats för nya, byte när den är full, och fusioner', () => {
+  let r = R.valjArkana(R.nyRunda({ fro: 81, hjalte: 'happy' }), R.nyRunda({ fro: 81, hjalte: 'happy' }).arkanaVal[0])
+  const typer = (x) => x.vaska.map((k) => `${k.typ}${k.niva}`)
+  assert.deepEqual(typer(R.geKula(r, 'cell')), ['cell2', 'vanlig1', 'vanlig1', 'vanlig1'], 'samma kula igen: en nivå till')
+  r = R.geKula(R.geKula(R.geKula(r, 'laser'), 'jord'), 'agg')
+  assert.deepEqual(typer(r), ['cell1', 'laser1', 'jord1', 'agg1'], 'nya kulor tar de vanligas plats')
+  r = R.geKula(r, 'spoke')
+  assert.equal(r.vaska.length, VASKA_MAX)
+  assert.ok(!R.kulaRyms(r, 'jarn') && R.kulaRyms(r, 'cell'))
+  // full väska: man väljer vilken som byts ut (eller behåller väskan)
+  const val = { ...r, steg: 'belo', ko: [{ typ: 'kula', val: ['jarn', 'cell', 'laser'], klar: true }] }
+  const byt = R.valjBelo(val, 'jarn')
+  assert.equal(byt.ko[0].typ, 'byt')
+  assert.equal(R.valjBelo(byt, 2).vaska[2].typ, 'jarn')
+  assert.deepEqual(typer(R.valjBelo(byt, -1)), typer(r), 'behåll väskan')
+  // fusion: järn + jord blir en bomb, och kommer alltid först bland valen
+  const f = { ...r, vaska: [{ typ: 'jarn', niva: 2 }, { typ: 'jord', niva: 1 }, { typ: 'vanlig', niva: 1 }] }
+  assert.deepEqual(R.fusionerMojliga(f), ['bomb'])
+  for (let slag = 0; slag < 6; slag++) assert.equal(R.kulVal({ ...f, slag })[0], 'f:bomb')
+  const bomb = R.geKula(f, 'f:bomb')
+  assert.deepEqual(typer(bomb), ['vanlig1', 'bomb3'])
+  assert.equal(bomb.stats.fusioner, 1)
+  for (const id of FUSIONER) assert.ok(KULTYPER[id].fusion.every((t) => BASKULOR.includes(t)), id)
+  // Trollkulan och Kulväskans hjärta höjer nivåerna (högst 4), vanliga förblir vanliga
+  const tk = R.vaskaFor({ ...r, reliker: ['trollkula'], arkanor: ['hjarta'] })
+  assert.ok(tk.every((k) => k.niva === 3), JSON.stringify(tk))
+  const bana = R.rumBana(r)
+  assert.equal(R.spelVal(r, bana).vaska.length, r.vaska.length)
+  // butiken säljer en kula som ryms
+  const b = R.valjDorr({ ...R.nyRunda({ fro: 81, hjalte: 'happy' }), steg: 'dorrar', rum: 2, dorrar: [{ typ: 'butik' }] }, 0)
+  const i = b.butik.varor.findIndex((v) => v.typ === 'kula')
+  assert.ok(i >= 0, 'en kula i butiken')
+  const kopt = R.kop({ ...b, guld: 999 }, i)
+  assert.ok(kopt.vaska.some((k) => k.typ === b.butik.varor[i].id))
+})
+
+test('arkanor: tre att välja på i varje akt, och de ändrar spelet', () => {
+  const r = R.nyRunda({ fro: 91, hjalte: 'katten' })
+  assert.equal(new Set(r.arkanaVal).size, 3)
+  assert.ok(r.arkanaVal.every((id) => ARKANOR[id]))
+  assert.ok(!R.arkanaDrag({ ...r, arkanor: ['moln', 'eld'] }, 12).some((id) => id === 'moln' || id === 'eld'), 'aldrig samma två gånger')
+  const kalle = R.nyRunda({ fro: 91, hjalte: 'kalle' })
+  assert.equal(kalle.arkanaVal.length, 1, 'Kaos-Kalle väljer inte själv')
+  assert.equal(R.kulVal(kalle).length, 1)
+  const med = (id) => ({ ...r, steg: 'spel', arkanor: [id] })
+  const boss = { typ: 'boss', rum: 6 }
+  assert.equal(R.rumBana({ ...med('drapare'), ...boss }).boss.hp, Math.round(R.rumBana({ ...r, ...boss }).boss.hp * 0.7))
+  assert.equal(R.rumBana(med('kristall')).kritpinnar, 5)
+  assert.equal(R.rumBana(med('hal')).svartaHal.length, 1)
+  assert.equal(R.guldFaktor(med('midas')), R.guldFaktor(r) * 2)
+  const bana = R.rumBana(r)
+  assert.equal(R.spelVal(med('eld'), bana).start.eld, R.spelVal(r, bana).start.eld + 3)
+  assert.equal(R.spelVal(med('grona'), bana).extraGrona, 3)
+  assert.equal(R.spelVal(med('moln'), bana).perk.moln, 1)
+  assert.ok(R.nyaKulor({ ...med('kalla'), guld: 200 }) > R.nyaKulor({ ...r, guld: 200 }))
+})
+
+test('reliker: växande reliker, Kopiaturen och en egen relik för varje boss', () => {
+  const r = { ...R.nyRunda({ fro: 95, hjalte: 'happy' }), steg: 'spel' }
+  assert.equal(R.relikN({ ...r, reliker: ['kronan', 'kopia'] }, 'kronan'), 2, 'Kopiaturen kopierar den senaste')
+  assert.equal(R.relikN({ ...r, reliker: ['kopia', 'kronan', 'spegel'] }, 'kronan'), 1)
+  assert.equal(R.spelVal({ ...r, reliker: ['kronan', 'kopia'] }, R.rumBana(r)).perk.kronan, 2)
+  assert.ok(Math.abs(R.bossFaktor({ ...r, reliker: ['pokal'], elitKlara: 2, bossar: 1 }) - 1.45) < 1e-9)
+  assert.equal(R.nyaKulor({ ...r, reliker: ['palt'], bossar: 2 }), R.nyaKulor(r) + 2)
+  assert.equal(R.nyaKulor({ ...r, reliker: ['ost'] }), R.nyaKulor(r) + 3)
+  const sk = R.spelVal({ ...r, reliker: ['skal'] }, R.rumBana(r))
+  assert.equal(sk.perk.hinkGuld, 10)
+  assert.ok(sk.hinkBredd > R.spelVal(r, R.rumBana(r)).hinkBredd * 1.4)
+  // sex bossar, två per akt, alla med attacker och en egen relik
+  assert.equal(BOSSAR.length, 6)
+  for (const akt of [1, 2, 3]) assert.equal(bossarIAkt(akt).length, 2)
+  for (const b of BOSSAR) {
+    assert.ok(b.attacker.length >= 1, b.id)
+    assert.ok(BOSSRELIKER[b.relik], b.id)
+  }
+  const sett = new Set()
+  for (let fro = 1; fro < 30; fro++) {
+    const x = { ...r, fro }
+    assert.equal(R.bossFor(x).id, R.bossFor(x).id)
+    assert.ok(bossarIAkt(1).includes(R.bossFor(x)))
+    sett.add(R.bossFor(x).id)
+    assert.equal(R.dorrVal(x, 6)[0].boss.id, R.bossFor(x).id, 'dörren visar rätt boss')
+  }
+  assert.equal(sett.size, 2, 'båda bossarna i akten förekommer')
+  for (const id of ['spindeln', 'stormfageln', 'draken']) {
+    const b = bossBana(1, { id })
+    assert.ok(b.boss.hp > 0 && b.boss.attacker.length)
+  }
+})
+
+test('motorn: kultyperna i väskan gör det de ska', () => {
+  const bana = genereraBana(77, { niva: 6 })
+  const skott = (opt, v = 1.35) => {
+    const s = skapaSpel(bana, { fro: 4, kulor: 20, ...opt })
+    s.sikta(v)
+    s.skjut()
+    const h = []
+    let mest = 0
+    let maxR = 0
+    for (let i = 0; i < 60 * 45 && (s.lage === 'skjuter' || s.lage === 'feber'); i++) {
+      h.push(...s.steg(1 / 60))
+      mest = Math.max(mest, s.kulor.length)
+      for (const k of s.kulor) maxR = Math.max(maxR, k.r)
+    }
+    const n = (typ) => h.filter((e) => e.typ === typ).length
+    return { s, h, n, mest, maxR }
+  }
+  const vanlig = skott({ vaska: [{ typ: 'vanlig', niva: 1 }] })
+  assert.equal(vanlig.mest, 1)
+  assert.ok(skott({ vaska: [{ typ: 'cell', niva: 2 }] }).n('cell') >= 2, 'cellkulan delar sig')
+  const agg = skott({ vaska: [{ typ: 'agg', niva: 2 }] })
+  assert.equal(agg.n('agg'), 1)
+  assert.ok(agg.mest >= 3, 'äggsäcken spricker i småkulor')
+  assert.ok(skott({ vaska: [{ typ: 'laser', niva: 2 }] }).n('laser') >= 2)
+  assert.ok(skott({ vaska: [{ typ: 'jord', niva: 1 }] }).h.some((e) => e.typ === 'small' && e.orsak === 'jord'))
+  assert.ok(skott({ vaska: [{ typ: 'spoke', niva: 1 }] }).n('spok') >= 1, 'spökkulan kommer tillbaka uppifrån')
+  assert.ok(skott({ vaska: [{ typ: 'hagel', niva: 3 }] }).n('hagel') === 1)
+  assert.ok(skott({ vaska: [{ typ: 'bomb', niva: 3 }] }).h.some((e) => e.typ === 'small' && e.orsak === 'bomb'))
+  // järnkulan gör mer bosskada
+  const b = bossBana(1)
+  const d = (typ) => spelaSkott(skapaSpel(b, { fro: 2, vaska: [{ typ, niva: 1 }] }), 1.3).find((e) => e.typ === 'bossSkada')?.skada || 0
+  assert.ok(d('jarn') > d('vanlig'), `${d('jarn')} mot ${d('vanlig')}`)
+  // Slösaren skjuter allt och får tillbaka hälften
+  const sl = skott({ perk: { slosa: 1 } })
+  assert.ok(sl.mest >= 8)
+  assert.equal(sl.n('slosa'), 1)
+  // snöbollen växer för varje träff
+  assert.ok(skott({ perk: { sno: 3 } }).maxR > vanlig.maxR * 1.3)
+})
+
+test('motorn: specialpinnar, svarta hål, flipprar, pyramiden, zenskottet och bossattacker', () => {
+  const bana = { ...genereraBana(77, { niva: 6 }), kritpinnar: 3, fornyare: 1, slempinnar: 5, svartaHal: [{ x: 180, y: 330 }] }
+  const s = skapaSpel(bana, { fro: 4, kulor: 20 })
+  assert.equal(s.objekt.filter((o) => o.krit).length, 3)
+  assert.equal(s.objekt.filter((o) => o.forny).length, 1)
+  assert.equal(s.objekt.filter((o) => o.slem).length, 5)
+  const typer = new Set()
+  for (const v of [0.9, 1.35, 1.8, 1.1, 1.6]) if (s.lage === 'siktar') for (const e of spelaSkott(s, v)) typer.add(e.typ)
+  assert.ok(typer.has('svartHal') || typer.has('krit') || typer.has('slem'), [...typer].join(' '))
+  // flipprar: två hårda flipprar som går upp när man håller in
+  const f = skapaSpel(genereraBana(77, { niva: 6 }), { fro: 4, perk: { flipper: 1 } })
+  assert.ok(f.objekt.filter((o) => o.flipper).length >= 2)
+  f.sikta(1.3)
+  f.skjut()
+  f.flippa(true)
+  for (let i = 0; i < 20; i++) f.steg(1 / 60)
+  assert.ok(f.flipperUppe)
+  f.flippa(false)
+  assert.ok(!f.flipperUppe)
+  // pyramiden följer med hinken
+  const p = skapaSpel(genereraBana(77, { niva: 6 }), { fro: 4, perk: { pyramid: 1 }, hinkBredd: 112 })
+  assert.equal(p.objekt.filter((o) => o.pyramid).length, 2)
+  // zenskottet: en vinkel nära den man siktade på, och spelet står kvar och siktar
+  const z = skapaSpel(genereraBana(77, { niva: 6 }), { fro: 4 })
+  const v = zenVinkel(z, 1.3, { bredd: 0.06 })
+  assert.ok(Math.abs(v - 1.3) <= 0.06 + 1e-9)
+  assert.equal(z.lage, 'siktar')
+  // bossattacker: var annat skott gör bossen något
+  for (const att of ['stenar', 'skold', 'flytta', 'slem', 'hela']) {
+    const b = bossBana(1)
+    b.boss = { ...b.boss, attacker: [att] }
+    const x = skapaSpel(b, { fro: 3, kulor: 30 })
+    const h = []
+    for (let k = 0; k < 4 && x.lage === 'siktar'; k++) h.push(...spelaSkott(x, 1.1 + k * 0.2))
+    assert.ok(h.some((e) => e.typ === 'bossAttack' && e.attack === att), att)
+  }
+})
+
 /* ------------------------------------------------------------------- metan */
 
 test('Hundkojan: priset stiger, taket gäller, och allt går att få tillbaka', () => {
@@ -410,6 +601,11 @@ test('utmaningar: ger ben och låser upp hjältar och uppgraderingar', () => {
   assert.equal(M.kopHjalte({ ...m, ben: 1000 }, 'taggis').hjaltar.includes('taggis'), true)
   assert.equal(M.kopHjalte({ ...m, ben: 10 }, 'taggis').hjaltar.includes('taggis'), false)
   for (const h of HJALTAR) if (h.las) assert.ok(M.lasText('hjalte', h.id))
+  // nya utmaningar: fusion, full väska, Kaosdraken och Slösaren
+  const r2 = { ...r, stats: { ...r.stats, fusioner: 1 }, vaska: ['cell', 'agg', 'laser', 'jord', 'jarn'].map((typ) => ({ typ, niva: 1 })), besegrade: ['draken'] }
+  const k2 = M.kollaUtmaningar({ ...m, stats: { ...m.stats, kopt: 20 } }, r2)
+  for (const id of ['fusion', 'vaska5', 'kaosdraken', 'kop20']) assert.ok(k2.nya.includes(id), id)
+  assert.ok(k2.m.hjaltar.includes('slosa'))
 })
 
 test('en runda slut: ben, statistik, samling och nästa Feber', () => {
@@ -423,10 +619,18 @@ test('en runda slut: ben, statistik, samling och nästa Feber', () => {
   assert.equal(m.feber, 1, 'Feber 1 öppnas')
   assert.equal(m.samling.uppg.delning, 2)
   assert.equal(m.samling.reliker.kronan, 1)
+  assert.equal(m.samling.kulor.agg, 1, 'kulorna i väskan hamnar i samlingen')
   assert.ok(nya.includes('seger') && nya.includes('forsta'))
   assert.ok(m.hjaltar.includes('kalle'))
   assert.ok(R.benFor({ ...r, feber: 5 }) > R.benFor(r), 'mer ben på högre Feber')
   assert.ok(R.benFor({ ...r, reliker: ['benbit'] }) > R.benFor(r))
+  // en sparad runda från förra versionen går att spela vidare
+  const gammal = { ...r, v: 1, steg: 'spel', slut: false }
+  for (const f of ['arkanor', 'arkanaVal', 'vaska', 'elitKlara', 'besegrade']) delete gammal[f]
+  const lagad = R.laga(gammal)
+  assert.equal(lagad.v, 2)
+  assert.ok(lagad.vaska.length >= 2 && Array.isArray(lagad.arkanor))
+  assert.ok(R.spelVal(lagad, R.rumBana(lagad)).perk)
 })
 
 test('dagens runda: samma för alla samma dag, egen topplista', () => {

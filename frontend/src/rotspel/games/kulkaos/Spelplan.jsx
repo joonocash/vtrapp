@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { W, H, KANON, KRAFTER, multiplikator, mitt, ANTAL_ORANGE, botSkott } from '../pinnboll/motor.js'
+import { W, H, KANON, KRAFTER, HAL_R, multiplikator, mitt, ANTAL_ORANGE, botSkott, zenVinkel } from '../pinnboll/motor.js'
 import { useSpelyta } from '../delat/useSpelyta.js'
 import { easeOut, easeOutBack, rundRekt } from '../delat/fx.js'
 import { Notis, useNotis } from '../delat/Ui.jsx'
 import * as R from '../pinnboll/rita.js'
 import '../pinnboll/pinnboll.css'
+import { KULTYPER } from './innehall.js'
 
 // Kulkaos — spelplanen för en bana: canvasen, siktet, effekterna och
 // reglagen. Byggd på Pinnbollens spelyta (samma motor och samma ritning),
 // med det Kulkaos behöver ovanpå: bossen med livmätare, guld och
-// guldpinnar, blixtar, studsgolv och hjälten i kanonen.
+// guldpinnar, blixtar, studsgolv och hjälten i kanonen — och kulväskan:
+// kultyperna i färg, nästa kulor vid kanonen, lasrar, svarta hål,
+// specialpinnarna, flipprarna, zenskottet och bossens attacker.
 //
 // Föräldern skapar spelet (skapaSpel) och får veta när banan är slut via
 // onKlar('vinst' | 'slut'). statsRef fylls med det utmaningarna vill veta.
@@ -65,10 +68,23 @@ function nyttLage(spel) {
     stormSkada: null,
     golvT: -10,
     skottStart: 0,
+    lasrar: [],
+    attack: null,
   }
 }
 
-export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rubrik, underrubrik, guldFore = 0, introRader, overlagg, statsRef, ljud, fx, onKlar, onRedo, onMeny }) {
+// Kultypens färg (småkulorna har sin förälders färg).
+const BABY = { baby: 'agg', spokbaby: 'spokagg', jarnbaby: 'jarn' }
+const kulFarg = (typ) => KULTYPER[BABY[typ] || typ]?.farg
+const ATTACK = {
+  stenar: '🪨 Bossen kastar stenar!',
+  skold: '🛡️ Bossen tar fram en sköld!',
+  flytta: '🔀 Bossen flyttar de orange!',
+  slem: '🫧 Bossen slemmar ner pinnarna!',
+  hela: '💚 Bossen läker sig!',
+}
+
+export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rubrik, underrubrik, guldFore = 0, introRader, overlagg, statsRef, ljud, fx, onKlar, onRedo, onMeny, zen = 0 }) {
   const [, rendera] = useReducer((x) => x + 1, 0)
   const [intro, setIntro] = useState(true)
   const [mastare, setMastare] = useState(null)
@@ -77,6 +93,7 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
   if (!a.current || a.current.spel !== spel) a.current = nyttLage(spel)
   const klarRef = useRef(onKlar)
   klarRef.current = onKlar
+  const harFlipper = useMemo(() => spel.objekt.some((o) => o.flipper), [spel])
 
   useEffect(() => {
     fx.tom()
@@ -164,7 +181,18 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
           fx.ring(e.x, e.y, '#ffffff', 26, 0.25, 3)
           break
         case 'small': {
-          const f = e.orsak === 'bomb' ? ['#ffd43b', '#ff7a1a', '#ffffff'] : e.orsak === 'meteor' ? ['#ffb020', '#ff5a1f', '#fff7d6'] : e.orsak === 'guld' ? ['#fde047', '#f59e0b', '#ffffff'] : ['#c8ffd8', '#4dff8a', '#ffffff']
+          const f =
+            e.orsak === 'bomb'
+              ? ['#ffd43b', '#ff7a1a', '#ffffff']
+              : e.orsak === 'meteor'
+                ? ['#ffb020', '#ff5a1f', '#fff7d6']
+                : e.orsak === 'guld'
+                  ? ['#fde047', '#f59e0b', '#ffffff']
+                  : e.orsak === 'jord'
+                    ? ['#f5d0a9', '#b45309', '#ffffff']
+                    : e.orsak === 'hal'
+                      ? ['#e9d5ff', '#7c3aed', '#ffffff']
+                      : ['#c8ffd8', '#4dff8a', '#ffffff']
           ljud.small()
           fx.skaka(e.orsak === 'bomb' ? 7 : 5)
           fx.ring(e.x, e.y, f[1], e.radie, 0.45, 5)
@@ -287,6 +315,77 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
           s.pop.set(e.id, s.t)
           s.popKo.push({ id: e.id, tid: s.t, i: 0 })
           break
+        case 'krit':
+          ljud.multi(5)
+          fx.ring(e.x, e.y, '#fde047', 36, 0.4, 4)
+          fx.sprut(e.x, e.y, ['#fef08a', '#facc15', '#ffffff'], 14, { fart: 180, liv: 0.5, form: 'gnista', storlek: 2.2 })
+          fx.text(e.x, e.y - 16, '⚡ KRIT ×2', { storlek: 16, farg: '#fde047', liv: 1, stig: 30, studs: true })
+          s.smutsig = true
+          break
+        case 'fornyTraff':
+          ljud.kraft()
+          fx.ring(e.x, e.y, '#5eead4', 34, 0.45, 4)
+          fx.text(e.x, e.y - 16, '♻️ Förnyas!', { storlek: 14, farg: '#99f6e4', liv: 1, stig: 26 })
+          break
+        case 'forny':
+          visaNotis(`♻️ ${e.antal} pinnar kom tillbaka!`, 1500)
+          for (const o of spel.objekt) s.pop.delete(o.id)
+          s.smutsig = true
+          break
+        case 'laser':
+          s.lasrar.push({ x: e.x, y: e.y, horisontell: e.horisontell, t: s.t })
+          ljud.blixt?.()
+          fx.skaka(3)
+          break
+        case 'agg':
+          ljud.nyKula()
+          fx.sprut(e.x, e.y, e.spoke ? ['#ede9fe', '#c4b5fd', '#ffffff'] : ['#fef3c7', '#fde68a', '#ffffff'], 14, { fart: 160, liv: 0.45, storlek: 2.4 })
+          fx.text(e.x, e.y - 14, `🥚 ×${e.n}`, { storlek: 15, farg: '#fef3c7', liv: 0.8, stig: 22, studs: true })
+          break
+        case 'cell':
+          ljud.nyKula()
+          fx.ring(e.x, e.y, '#4ade80', 22, 0.3, 2.5)
+          break
+        case 'hagel':
+          ljud.small()
+          fx.skaka(4)
+          fx.sprut(e.x, e.y, ['#e2e8f0', '#94a3b8', '#ffffff'], 12, { fart: 240, liv: 0.3, form: 'gnista', storlek: 2 })
+          break
+        case 'svartHal':
+          ljud.small()
+          fx.skaka(7)
+          fx.ring(e.x, e.y, '#a855f7', 70, 0.6, 6)
+          fx.sprut(e.x, e.y, ['#c084fc', '#7c3aed', '#ffffff'], 30, { fart: 240, liv: 0.6, form: 'gnista' })
+          fx.text(e.x, e.y - 24, '🌀 SVART HÅL!', { storlek: 17, farg: '#e9d5ff', liv: 1.1, stig: 30 })
+          break
+        case 'slem':
+          ljud.studs(4)
+          fx.sprut(e.x, e.y, ['#bef264', '#84cc16', '#ecfccb'], 9, { fart: 120, liv: 0.4, form: 'cirkel', storlek: 2.2 })
+          break
+        case 'slosa':
+          s.kulPuls = s.t
+          fx.text(W / 2, 470, `🦚 ${e.n} kulor tillbaka`, { storlek: 17, farg: '#a5f3fc', liv: 1.3, stig: 30 })
+          break
+        case 'moln':
+          ljud.nyKula()
+          fx.text(W / 2, 96, '☁️ Molnet!', { storlek: 18, farg: '#e0f2fe', liv: 1.1, stig: 20 })
+          fx.sprut(W / 2, 72, ['#ffffff', '#e0f2fe', '#bae6fd'], 20, { fart: 120, liv: 0.6, form: 'cirkel' })
+          break
+        case 'bossAttack': {
+          const b = spel.objekt.find((o) => o.boss)
+          const [bx, by] = b ? [b.wx, b.wy] : [W / 2, 200]
+          s.attack = { typ: e.attack, t: s.t }
+          ljud.small()
+          fx.skaka(6)
+          fx.ring(bx, by, e.attack === 'hela' ? '#4ade80' : e.attack === 'skold' ? '#67e8f9' : '#f87171', 60, 0.5, 5)
+          for (const [x, y] of e.pos || []) {
+            fx.ring(x, y, '#fca5a5', 20, 0.4, 3)
+            fx.sprut(x, y, ['#fecaca', '#ffffff'], 6, { fart: 100, liv: 0.35, storlek: 2 })
+          }
+          setMastare({ text: ATTACK[e.attack] || 'Bossen slår tillbaka!', key: s.t, ms: 1500, ikon: bana.boss?.ikon, namn: bana.boss?.namn })
+          s.smutsig = true
+          break
+        }
         case 'skottSlut':
           skottSlut(e)
           break
@@ -376,6 +475,15 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
   function skjut() {
     const s = a.current
     if (!kanSkjuta()) return
+    // Zenskottet: kanonen hittar en lite bättre vinkel alldeles intill
+    if (zen > 0) {
+      const fore = spel.vinkel
+      const v = zenVinkel(spel, fore, { bredd: zen, n: 5 })
+      if (Math.abs(v - fore) > 0.002) {
+        spel.sikta(v)
+        fx.text(KANON.x, KANON.y + 46, '🧘', { storlek: 16, farg: '#ffffff', liv: 0.7, stig: 16 })
+      }
+    }
     if (spel.skjut()) {
       ljud.skott()
       s.senastMult = spel.mult()
@@ -404,6 +512,9 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
     if (spel.lage === 'siktar') {
       s.tryck = { id: e.pointerId, typ: 'sikta', x0: p.x, y0: p.y, v0: spel.vinkel, x: p.x, y: p.y, mus, fin: false }
       if (mus) sikta(Math.atan2(p.y - KANON.y, p.x - KANON.x))
+    } else if (harFlipper) {
+      s.tryck = { id: e.pointerId, typ: 'flipper', mus }
+      spel.flippa(true)
     } else {
       s.tryck = { id: e.pointerId, typ: 'snabb', mus }
       s.snabb = true
@@ -435,6 +546,7 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
     if (!t || p.e.pointerId !== t.id) return
     s.tryck = null
     s.snabb = false
+    if (t.typ === 'flipper') spel.flippa(false)
     if (t.typ !== 'sikta') return
     if (p.y < s.zonY && !t.mus) return // släppt uppe vid kanonen: avbryt
     skjut()
@@ -443,30 +555,46 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
   function avbryt(p) {
     const s = a.current
     if (s.tryck && p.e.pointerId === s.tryck.id) {
+      if (s.tryck.typ === 'flipper') spel.flippa(false)
       s.tryck = null
       s.snabb = false
     }
   }
 
   const tangent = useRef(null)
-  tangent.current = (e) => {
+  tangent.current = (e, upp) => {
     if (overlagg) return
+    // flipprarna: håll in mellanslag (eller pil ner) medan kulorna är ute
+    const flipKnapp = e.key === ' ' || e.key === 'ArrowDown'
+    if (harFlipper && flipKnapp && (upp || spel.lage !== 'siktar')) {
+      spel.flippa(!upp)
+      e.preventDefault()
+      return
+    }
+    if (upp) return
     const steg = e.shiftKey ? 0.0035 : 0.017
     if (e.key === 'ArrowLeft') sikta(spel.vinkel + steg)
     else if (e.key === 'ArrowRight') sikta(spel.vinkel - steg)
-    else if (e.key === ' ' || e.key === 'Enter') skjut()
-    else return
+    else if (e.key === ' ' || e.key === 'Enter') {
+      if (!e.repeat) skjut()
+    } else return
     e.preventDefault()
   }
   useEffect(() => {
-    const f = (e) => {
+    const f = (upp) => (e) => {
       const tag = e.target?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return
       if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return
-      tangent.current(e)
+      tangent.current(e, upp)
     }
-    window.addEventListener('keydown', f)
-    return () => window.removeEventListener('keydown', f)
+    const ner = f(false)
+    const upp = f(true)
+    window.addEventListener('keydown', ner)
+    window.addEventListener('keyup', upp)
+    return () => {
+      window.removeEventListener('keydown', ner)
+      window.removeEventListener('keyup', upp)
+    }
   }, [])
 
   /* ---------------------------------------------------------------- loopen */
@@ -548,6 +676,8 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
       ljud.poppa(p.i)
     }
     s.blixtar = s.blixtar.filter((b) => s.t - b.t < 0.35)
+    s.lasrar = s.lasrar.filter((l) => s.t - l.t < 0.4)
+    if (spel.lage === 'siktar' && spel.flipperUppe && s.tryck?.typ !== 'flipper') spel.flippa(false)
     // raketerna i Orangestormen slår ner i bossen en efter en
     for (const r of s.raketer) {
       if (r.klar || s.t < r.t0 + r.dur) continue
@@ -595,8 +725,13 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
     ctx.drawImage(R.bakgrund(varld), 0, 0, W, H)
     if (spel.feber && s.feberT != null) ritaRegnbage(ctx, t - s.feberT)
 
+    ritaHal(ctx, t)
     for (const o of spel.objekt) {
       if (o.boss) continue
+      if (o.flipper || o.pyramid) {
+        ritaFlipper(ctx, o)
+        continue
+      }
       let lit = o.lit
       let skal = 1
       let alfa = 1
@@ -621,9 +756,11 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
       if (o.kick && !o.hard && !o.borta) R.ritaStudsare(ctx, o, studsK, o.kickKvar / (o.kickAntal || 10))
       if (o.bomb && !o.lit && !o.borta) R.ritaBomb(ctx, o, t)
       if (o.guld && !o.lit && !o.borta) ritaGuldpinne(ctx, o, t)
+      if (!o.borta) ritaSpecial(ctx, o, t)
     }
     for (const o of spel.objekt) if (o.boss) ritaBoss(ctx, o, t)
     ritaBlixtar(ctx, t)
+    ritaLasrar(ctx, t)
     ritaRaketer(ctx, t)
 
     const visaSikte = !overlagg && spel.lage === 'siktar' && spel.iKanonen && t >= s.blockTill
@@ -638,11 +775,206 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
     }
     R.ritaFack(ctx, s.fackUpp, spel.rensat, t, s.fackTraff)
     const typ = spel.eldNu ? 'eld' : spel.spokNu ? 'spok' : 'vanlig'
-    for (const k of spel.kulor) R.ritaKula(ctx, k, s.spar.get(k.id) || [], typ)
+    for (const k of spel.kulor) {
+      R.ritaKula(ctx, k, s.spar.get(k.id) || [], typ)
+      if (k.typ && typ === 'vanlig') ritaKulTyp(ctx, k)
+    }
     R.ritaKanon(ctx, spel.vinkel, visaSikte, kanonIkon, t, spel.eldKvar > 0)
     fx.rita(ctx)
     ctx.restore()
     ritaHud(ctx, t)
+  }
+
+  // Kultypens färg ovanpå kulan, med en ring.
+  function ritaKulTyp(ctx, k) {
+    const f = kulFarg(k.typ)
+    if (!f) return
+    ctx.save()
+    ctx.globalAlpha = k.genom ? 0.55 : 0.6
+    ctx.fillStyle = f
+    ctx.beginPath()
+    ctx.arc(k.x, k.y, k.r * 0.92, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = 0.9
+    ctx.strokeStyle = f
+    ctx.lineWidth = 1.6
+    ctx.beginPath()
+    ctx.arc(k.x, k.y, k.r + 1.4, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.globalAlpha = 0.85
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    ctx.arc(k.x - k.r * 0.35, k.y - k.r * 0.4, k.r * 0.25, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
+  // Kritpinnar, förnyare, slempinnar och bossens stenar.
+  function ritaSpecial(ctx, o, t) {
+    const [x, y] = o.form === 'cirkel' ? [o.wx, o.wy] : mitt(o)
+    const r = o.form === 'cirkel' ? o.r : 7
+    if (o.krit && !o.lit) {
+      const g = 0.5 + 0.5 * Math.sin(t * 7 + o.id)
+      ctx.save()
+      ctx.strokeStyle = `rgba(250,204,21,${0.6 + 0.4 * g})`
+      ctx.shadowColor = '#facc15'
+      ctx.shadowBlur = 6 + 6 * g
+      ctx.lineWidth = 2.2
+      ctx.beginPath()
+      ctx.arc(x, y, r + 3, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.restore()
+      emoji(ctx, '⚡', x, y + 0.5, r * 1.3)
+    }
+    if (o.forny && !o.lit) {
+      ctx.save()
+      ctx.strokeStyle = '#5eead4'
+      ctx.lineWidth = 2.2
+      ctx.setLineDash([3, 3])
+      ctx.lineDashOffset = -t * 12
+      ctx.beginPath()
+      ctx.arc(x, y, r + 3.5, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.restore()
+      emoji(ctx, '♻️', x, y + 0.5, r * 1.15)
+    }
+    if (o.slem > 0) {
+      const w = Math.sin(t * 4 + o.id) * 0.12
+      ctx.save()
+      ctx.globalAlpha = 0.55
+      ctx.fillStyle = '#84cc16'
+      ctx.beginPath()
+      ctx.ellipse(x, y, r * (1.35 + w), r * (1.35 - w), 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = 0.9
+      ctx.strokeStyle = '#d9f99d'
+      ctx.lineWidth = 1.4
+      ctx.stroke()
+      ctx.restore()
+    }
+    if (o.sten) {
+      ctx.save()
+      const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, 1, x, y, r + 1)
+      g.addColorStop(0, '#d6d3d1')
+      g.addColorStop(1, '#57534e')
+      ctx.fillStyle = g
+      ctx.beginPath()
+      for (let i = 0; i < 7; i++) {
+        const v = (i / 7) * Math.PI * 2
+        const rr = (r + 1.5) * (0.85 + 0.15 * Math.sin(i * 2.7 + o.id))
+        ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(v) * rr, y + Math.sin(v) * rr)
+      }
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = '#292524'
+      ctx.lineWidth = 1
+      ctx.stroke()
+      ctx.restore()
+      text(ctx, `${o.stenKvar}`, x, y + 0.5, 8, '#fafaf9', 'center', 'rgba(0,0,0,0.6)')
+    }
+  }
+
+  function emoji(ctx, tecken, x, y, storlek) {
+    ctx.font = `${storlek}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(tecken, x, y)
+  }
+
+  // Flipprarna och pyramidens väggar.
+  function ritaFlipper(ctx, o) {
+    const upp = o.flipper && spel.flipperUppe
+    ctx.save()
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)'
+    ctx.lineWidth = o.tj * 2 + 3
+    ctx.beginPath()
+    ctx.moveTo(o.wx1 + 2, o.wy1 + 3)
+    ctx.lineTo(o.wx2 + 2, o.wy2 + 3)
+    ctx.stroke()
+    const g = ctx.createLinearGradient(o.wx1, o.wy1 - o.tj, o.wx1, o.wy1 + o.tj)
+    if (o.flipper) {
+      g.addColorStop(0, upp ? '#fff7ed' : '#ffffff')
+      g.addColorStop(1, upp ? '#fb923c' : '#ef4444')
+    } else {
+      g.addColorStop(0, '#fde68a')
+      g.addColorStop(1, '#d97706')
+    }
+    ctx.strokeStyle = g
+    ctx.lineWidth = o.tj * 2
+    ctx.beginPath()
+    ctx.moveTo(o.wx1, o.wy1)
+    ctx.lineTo(o.wx2, o.wy2)
+    ctx.stroke()
+    if (o.flipper) {
+      ctx.fillStyle = '#facc15'
+      ctx.beginPath()
+      ctx.arc(o.wx1, o.wy1, 4, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.restore()
+  }
+
+  // Svarta hål: en virvel som drar till sig kulorna.
+  function ritaHal(ctx, t) {
+    for (const h of spel.hal || []) {
+      ctx.save()
+      const dragZon = ctx.createRadialGradient(h.x, h.y, 10, h.x, h.y, HAL_R)
+      dragZon.addColorStop(0, h.redo ? 'rgba(124,58,237,0.28)' : 'rgba(124,58,237,0.1)')
+      dragZon.addColorStop(1, 'rgba(124,58,237,0)')
+      ctx.fillStyle = dragZon
+      ctx.beginPath()
+      ctx.arc(h.x, h.y, HAL_R, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.translate(h.x, h.y)
+      ctx.rotate(t * (h.redo ? 2.4 : 0.8))
+      ctx.globalAlpha = h.redo ? 0.9 : 0.4
+      for (let i = 0; i < 4; i++) {
+        ctx.rotate(Math.PI / 2)
+        ctx.strokeStyle = i % 2 ? '#c084fc' : '#7c3aed'
+        ctx.lineWidth = 2.2
+        ctx.beginPath()
+        ctx.arc(6, 0, 10, Math.PI * 0.9, Math.PI * 1.9)
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 1
+      ctx.fillStyle = '#05010d'
+      ctx.beginPath()
+      ctx.arc(0, 0, 7, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = h.redo ? '#e9d5ff' : '#6b21a8'
+      ctx.lineWidth = 1.2
+      ctx.stroke()
+      ctx.restore()
+    }
+  }
+
+  // Laserstrålar längs en rad eller en kolumn.
+  function ritaLasrar(ctx, t) {
+    for (const l of a.current.lasrar) {
+      const k = 1 - (t - l.t) / 0.4
+      ctx.save()
+      ctx.globalAlpha = Math.max(0, k)
+      ctx.shadowColor = '#f87171'
+      ctx.shadowBlur = 14
+      for (const [bredd, farg] of [
+        [12 * k + 2, 'rgba(248,113,113,0.5)'],
+        [3, '#fff1f2'],
+      ]) {
+        ctx.strokeStyle = farg
+        ctx.lineWidth = bredd
+        ctx.beginPath()
+        if (l.horisontell) {
+          ctx.moveTo(0, l.y)
+          ctx.lineTo(W, l.y)
+        } else {
+          ctx.moveTo(l.x, 0)
+          ctx.lineTo(l.x, H)
+        }
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
   }
 
   function ritaGuldpinne(ctx, o, t) {
@@ -698,6 +1030,25 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
     ctx.rotate(Math.sin(t * 3) * 0.08 + traff * 0.3 * Math.sin(t * 40))
     ctx.fillText(bana.boss?.ikon || '👹', 0, 0)
     ctx.restore()
+    if (spel.bossSkold > 0) {
+      // skölden: en blå sexhörning runt bossen
+      ctx.save()
+      ctx.translate(o.wx, o.wy)
+      ctx.rotate(t * 0.6)
+      ctx.strokeStyle = `rgba(103,232,249,${0.7 + 0.25 * Math.sin(t * 6)})`
+      ctx.fillStyle = 'rgba(103,232,249,0.12)'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      for (let i = 0; i < 6; i++) {
+        const v = (i / 6) * Math.PI * 2
+        ctx[i ? 'lineTo' : 'moveTo'](Math.cos(v) * (r + 14), Math.sin(v) * (r + 14))
+      }
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+      ctx.restore()
+      text(ctx, `🛡️ ${spel.bossSkold}`, o.wx, o.wy + r + 24, 11, '#a5f3fc')
+    }
   }
 
   // Livet som visas: Orangestormens skada syns först när raketerna slår ner.
@@ -820,6 +1171,24 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
     text(ctx, `${kvar}`, 4, 0, 18, kvar <= 1 ? '#fca5a5' : '#ffffff', 'center')
     ctx.restore()
     text(ctx, 'KULOR', W - 32, 34, 8.5, 'rgba(255,255,255,0.65)', 'center', 'rgba(0,0,0,0.4)')
+    // kulväskan: de nästa kulorna bredvid kanonen
+    const vaska = spel.vaska
+    if (vaska?.length && vaska.some((k) => k.typ !== 'vanlig')) {
+      // spel.skott är antalet skott hittills: nästa kula är vaska[skott % längd]
+      for (let i = 0; i < Math.min(3, vaska.length); i++) {
+        const kt = vaska[(spel.skott + i) % vaska.length]
+        const x = 232 + i * 21
+        const r = i === 0 ? 8 : 6.5
+        ctx.globalAlpha = i === 0 ? 1 : 0.75
+        R.ritaKula(ctx, { x, y: 17, r }, [], 'vanlig')
+        if (kt.typ !== 'vanlig') {
+          ritaKulTyp(ctx, { x, y: 17, r, typ: kt.typ })
+          if (kt.niva > 1) text(ctx, `${kt.niva}`, x + r * 0.8, 17 + r * 0.8, 8, '#ffffff', 'center')
+        }
+        ctx.globalAlpha = 1
+      }
+      text(ctx, 'NÄSTA', 253, 34, 7.5, 'rgba(255,255,255,0.6)', 'center', 'rgba(0,0,0,0.4)')
+    }
     // aktiva krafter
     let ky = 70
     const chip = (txt, farg) => {
@@ -830,6 +1199,11 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
     else if (spel.sparKvar > 0) chip(`🔮 Superspår ×${spel.sparKvar}`, '#bbf7d0')
     if (spel.eldKvar > 0 || spel.eldNu) chip('🔥 Eldboll', '#fdba74')
     if (spel.spokKvar > 0 || spel.spokNu) chip('👻 Spöksboll', '#ddd6fe')
+    if (spel.krit && spel.lage !== 'siktar') chip('⚡ Krit ×2', '#fde047')
+    if (spel.kulTyp && spel.kulTyp.typ !== 'vanlig' && spel.lage !== 'siktar') {
+      const kt = KULTYPER[spel.kulTyp.typ]
+      if (kt) chip(`${kt.ikon} ${kt.namn}${spel.kulTyp.niva > 1 ? ` ${spel.kulTyp.niva}` : ''}`, kt.farg)
+    }
     // kulräknaren och rutorna vid 10, 20, 30 … kulor
     const n = spel.kulor.length
     if (n >= 3 && (spel.lage === 'skjuter' || spel.lage === 'feber')) {
@@ -938,6 +1312,7 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
       if (avbryter) text(ctx, 'Släpp här = avbryt', W / 2, s.zonY + 12, 11, '#fecaca')
     }
     if (s.snabb && s.skala > 1.5) text(ctx, '⏩', W - 18, H - 46, 16, '#ffffff')
+    if (harFlipper && spel.lage === 'skjuter' && t - s.skottStart < 2.5) text(ctx, 'Håll in för flipprarna', W / 2, H - 70, 11, 'rgba(255,255,255,0.8)')
     // skada på bossen: en stor siffra en stund
     if (s.bossSkada && t - s.bossSkada.t > 2) s.bossSkada = null
   }
@@ -989,7 +1364,10 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
           <div>
             <i style={{ width: `${(100 * bossHpVisat()) / Math.max(1, spel.bossMax)}%` }} />
           </div>
-          <span>{fmt(bossHpVisat())}</span>
+          <span>
+            {spel.bossSkold > 0 && <em className="kk-skold">🛡️{fmt(spel.bossSkold)}</em>}
+            {fmt(bossHpVisat())}
+          </span>
         </div>
       ) : (
         <div className="pb-mater" aria-label={`${kvarOrange} orange kvar, multiplikator ${mult}x`}>
@@ -1017,6 +1395,7 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
             <div className="pb-intro-varld">{introRader.topp}</div>
             <div className="pb-intro-namn">{introRader.namn}</div>
             <div className="pb-intro-mal">{introRader.mal}</div>
+            {harFlipper && <div className="pb-intro-mal">🕹️ Håll in på planen (eller mellanslag) för flipprarna</div>}
             {!bana.bonus && (
               <div className="pb-intro-kraft">
                 <i aria-hidden="true" /> Grön pinne ger <b>{kraft.namn}</b>
@@ -1028,11 +1407,11 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
         {mastare && (
           <div className={`pb-mastare${mastare.text === 'EXTREME FEVER!' ? ' feber' : ''}`} key={mastare.key}>
             <span className="pb-portratt emoji" aria-hidden="true">
-              {kanonIkon}
+              {mastare.ikon || kanonIkon}
             </span>
             <div>
               <b>{mastare.text}</b>
-              <small>{hjalteNamn}</small>
+              <small>{mastare.namn || hjalteNamn}</small>
             </div>
           </div>
         )}
@@ -1041,9 +1420,26 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
 
       <div className="pb-reglage">
         <FinKnapp tecken="◀" etikett="Sikta åt vänster" onSteg={(k) => sikta(spel.vinkel + k)} />
-        <button className="pb-skjut" onClick={skjut} disabled={!siktlage} aria-label="Skjut">
-          Skjut
-        </button>
+        {harFlipper && !siktlage && !overlagg ? (
+          <button
+            className="pb-skjut kk-flippknapp"
+            aria-label="Flippa"
+            onPointerDown={(e) => {
+              e.preventDefault()
+              spel.flippa(true)
+            }}
+            onPointerUp={() => spel.flippa(false)}
+            onPointerLeave={() => spel.flippa(false)}
+            onPointerCancel={() => spel.flippa(false)}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            🕹️ Flippa
+          </button>
+        ) : (
+          <button className="pb-skjut" onClick={skjut} disabled={!siktlage} aria-label="Skjut">
+            Skjut
+          </button>
+        )}
         <FinKnapp tecken="▶" etikett="Sikta åt höger" onSteg={(k) => sikta(spel.vinkel - k)} />
       </div>
     </div>
