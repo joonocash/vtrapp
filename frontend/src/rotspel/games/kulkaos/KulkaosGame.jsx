@@ -8,14 +8,15 @@ import { Notis, useNotis } from '../delat/Ui.jsx'
 import Spelplan from './Spelplan.jsx'
 import * as R from './runda.js'
 import * as M from './meta.js'
-import { HJALTAR, hjalte, UPPGRADERINGAR, RELIKER, GRADER, ingarI, HJALTE_PRIS } from './innehall.js'
+import { HJALTAR, hjalte, UPPGRADERINGAR, BOSSRELIKER, allaReliker, KULTYPER, FUSIONER, ARKANOR, VASKA_MAX, GRADER, ingarI, HJALTE_PRIS } from './innehall.js'
 import { HANDELSER } from './handelser.js'
 import happyGlad from '../revir/img/happy-glad.webp'
 import './kulkaos.css'
 
 // Kulkaos — ett roguelike byggt på Pinnbollens motor. Välj hjälte, spela dig
 // genom tre akter med dörrval, butiker, händelser och bossar, och bli
-// starkare och starkare med uppgraderingar, evolutioner och reliker. Mellan
+// starkare och starkare med uppgraderingar, evolutioner, reliker, en
+// kulväska med kultyper och fusioner, och en arkana i varje akt. Mellan
 // rundorna: ben i Hundkojan, utmaningar som låser upp hjältar, samlingen,
 // Feber 1–10 och dagens runda. Logiken finns i runda.js och meta.js; den här
 // filen är skärmarna. Spelplanen för en bana är Spelplan.jsx.
@@ -40,7 +41,10 @@ function Portratt({ id, stor }) {
 }
 
 export default function KulkaosGame() {
-  const [meta, setMeta, metaRef] = useSpar('kulkaos-v1', M.START_META)
+  const [meta0, setMeta, metaRef] = useSpar('kulkaos-v1', M.START_META)
+  // en sparad runda från förra versionen får kulväska och arkanor
+  if (meta0.runda && meta0.runda.v !== 2) setMeta({ ...meta0, runda: R.laga(meta0.runda) })
+  const meta = metaRef.current
   const ljud = useMemo(() => skapaPinnLjud(), [])
   useEffect(() => () => ljud.stang(), [ljud])
   const fx = useMemo(() => skapaFx(), [])
@@ -238,6 +242,7 @@ export default function KulkaosGame() {
             if (r && r.steg === 'spel' && !plan.bana.bonus && r.kulor !== n) sparaRunda({ ...r, kulor: n })
           }}
           onMeny={() => setKort({ typ: 'paus' })}
+          zen={R.zenBredd(runda)}
         />
       ) : (
         <div className="kk-scen">
@@ -255,6 +260,7 @@ export default function KulkaosGame() {
         </div>
       )}
 
+      {!kort && runda.steg === 'arkana' && <Arkana runda={runda} gor={gorRunda} />}
       {!kort && runda.steg === 'belo' && <Belo runda={runda} gor={gorRunda} />}
       {!kort && runda.steg === 'dorrar' && <Dorrar runda={runda} gor={gorRunda} onBuild={() => setKort({ typ: 'build' })} />}
       {!kort && runda.steg === 'butik' && <Butik runda={runda} gor={gorRunda} ljud={ljud} />}
@@ -378,15 +384,74 @@ function UppgKort({ id, runda, disabled, onClick, pris, sald, kanInte, onSlang }
 }
 
 function RelikKort({ id, disabled, onClick, pris, sald }) {
-  const r = RELIKER[id]
+  const r = allaReliker[id]
+  const boss = BOSSRELIKER[id]
   return (
-    <button className={`pb-uppg grad-${r.grad} kk-relik${sald ? ' sald' : ''}`} disabled={disabled || sald} onClick={onClick}>
-      <em>Relik · {GRADER[r.grad]}</em>
+    <button className={`pb-uppg grad-${r.grad} kk-relik${boss ? ' kk-bossrelik' : ''}${sald ? ' sald' : ''}`} disabled={disabled || sald} onClick={onClick}>
+      <em>{boss ? 'Bossrelik · unik' : r.vaxer ? `Växande relik · ${GRADER[r.grad]}` : `Relik · ${GRADER[r.grad]}`}</em>
       <span aria-hidden="true">{r.ikon}</span>
       <b>{r.namn}</b>
       <small>{r.text}</small>
       {pris != null && <strong className="kk-pris">{sald ? 'Såld' : `🪙 ${pris}`}</strong>}
     </button>
+  )
+}
+
+// En kula till kulväskan: ny, en nivå till, eller en fusion av två.
+function KulKort({ id, runda, disabled, onClick, pris, sald }) {
+  const fusion = id.startsWith('f:')
+  const typ = fusion ? id.slice(2) : id
+  const k = KULTYPER[typ]
+  const finns = runda.vaska.find((x) => x.typ === typ)
+  const niva = fusion ? 3 : finns ? finns.niva + 1 : 1
+  const full = !fusion && !R.kulaRyms(runda, id)
+  const blir = fusion ? [] : FUSIONER.filter((f) => KULTYPER[f].fusion.includes(typ))
+  return (
+    <button className={`pb-uppg kk-kulkort${fusion ? ' fusion' : ''}${sald ? ' sald' : ''}`} style={{ '--kf': k.farg }} disabled={disabled || sald} onClick={onClick}>
+      <em>{fusion ? '🧪 Fusion' : finns ? `Nivå ${finns.niva} → ${niva}` : 'Ny kula'}</em>
+      <span aria-hidden="true" className="kk-kulikon">
+        {k.ikon}
+      </span>
+      <b>{k.namn}</b>
+      <small>{k.text(Math.min(3, niva))}</small>
+      {fusion && (
+        <i className="pb-uppg-evo">
+          {KULTYPER[k.fusion[0]].ikon} + {KULTYPER[k.fusion[1]].ikon} smälter ihop
+        </i>
+      )}
+      {!fusion && blir.length > 0 && <i className="pb-uppg-evo kk-kulfusion">Fusion: {blir.map((f) => `${KULTYPER[f].ikon} med ${KULTYPER[KULTYPER[f].fusion.find((x) => x !== typ)].ikon}`).join(' · ')}</i>}
+      {full && <i className="pb-uppg-evo">Väskan är full: byt ut en</i>}
+      {pris != null && <strong className="kk-pris">{sald ? 'Såld' : `🪙 ${pris}`}</strong>}
+    </button>
+  )
+}
+
+// Kulväskan: kulorna som skotten tar i tur och ordning.
+function Vaska({ runda, onValj, valbar }) {
+  const tomma = Math.max(0, VASKA_MAX - runda.vaska.length)
+  return (
+    <div className="kk-vaska" aria-label="Kulväskan">
+      {runda.vaska.map((k, i) => {
+        const t = KULTYPER[k.typ]
+        const inne = (
+          <>
+            <span aria-hidden="true">{t.ikon}</span>
+            {k.typ !== 'vanlig' && <b>{k.niva}</b>}
+          </>
+        )
+        return valbar ? (
+          <button key={i} className="kk-kula" style={{ '--kf': t.farg }} onClick={() => onValj(i)} title={`${t.namn}: byt ut`}>
+            {inne}
+            <small>{t.namn}</small>
+          </button>
+        ) : (
+          <span key={i} className="kk-kula" style={{ '--kf': t.farg }} title={`${t.namn}${k.typ !== 'vanlig' ? ` nivå ${k.niva}` : ''}: ${t.text(k.niva)}`}>
+            {inne}
+          </span>
+        )
+      })}
+      {!valbar && Array.from({ length: tomma }, (_, i) => <span key={`t${i}`} className="kk-kula tom" aria-hidden="true" />)}
+    </div>
   )
 }
 
@@ -408,11 +473,17 @@ function Build({ runda, rubrik, detalj }) {
           </span>
         ))}
         {runda.reliker.map((id) => (
-          <span key={id} className="kk-relikchip" title={RELIKER[id].namn}>
-            {RELIKER[id].ikon}
+          <span key={id} className="kk-relikchip" title={allaReliker[id].namn}>
+            {allaReliker[id].ikon}
+          </span>
+        ))}
+        {runda.arkanor.map((id) => (
+          <span key={id} className="kk-arkanachip" title={ARKANOR[id].namn}>
+            {ARKANOR[id].ikon}
           </span>
         ))}
       </div>
+      <Vaska runda={runda} />
       {detalj && (
         <ul className="kk-build-lista">
           {lista.map((u) => (
@@ -424,13 +495,41 @@ function Build({ runda, rubrik, detalj }) {
               <small>{u.text(u.n)}</small>
             </li>
           ))}
-          {runda.reliker.map((id) => (
-            <li key={id}>
-              <span>{RELIKER[id].ikon}</span>
-              <b>{RELIKER[id].namn}</b>
-              <small>{RELIKER[id].text}</small>
+          {runda.vaska
+            .filter((k) => k.typ !== 'vanlig')
+            .map((k, i) => (
+              <li key={`k${i}`}>
+                <span>{KULTYPER[k.typ].ikon}</span>
+                <b>
+                  {KULTYPER[k.typ].namn} {k.niva}
+                </b>
+                <small>{KULTYPER[k.typ].text(k.niva)}</small>
+              </li>
+            ))}
+          {runda.arkanor.map((id) => (
+            <li key={id} className="kk-arkanarad">
+              <span>{ARKANOR[id].ikon}</span>
+              <b>{ARKANOR[id].namn}</b>
+              <small>{ARKANOR[id].text}</small>
             </li>
           ))}
+          {runda.reliker.map((id) => {
+            const r = allaReliker[id]
+            const n = R.relikN(runda, id)
+            return (
+              <li key={id}>
+                <span>{r.ikon}</span>
+                <b>
+                  {r.namn}
+                  {n > 1 ? ' ×2' : ''}
+                </b>
+                <small>
+                  {r.text}
+                  {r.varde ? ` (nu ${r.varde(runda)})` : ''}
+                </small>
+              </li>
+            )
+          })}
           {!lista.length && !runda.reliker.length && <li className="kk-tom">Inget än — välj dina första uppgraderingar efter banan.</li>}
         </ul>
       )}
@@ -473,6 +572,52 @@ function Belo({ runda, gor }) {
       </Kort>
     )
   }
+  if (f.typ === 'bossrelik') {
+    const b = R.bossFor(runda)
+    return (
+      <Kort titel={`${b.ikon} Bossens skatt`} sub={`${b.namn} tappade sin unika relik`} klass="kk-bossskatt">
+        <div className="pb-val">
+          <RelikKort id={f.id} disabled={!klar} onClick={() => gor((r) => R.valjBelo(r))} />
+        </div>
+        <button className="ds-knapp ds-knapp-stor" disabled={!klar} onClick={() => gor((r) => R.valjBelo(r))}>
+          Ta den
+        </button>
+      </Kort>
+    )
+  }
+  if (f.typ === 'kula') {
+    return (
+      <Kort titel="🎒 En ny kula" sub={hjalte(runda.hjalte).auto ? '🃏 Kaos-Kalle väljer åt dig' : 'Kulväskan: varje skott tar nästa kula i tur och ordning'}>
+        <Vaska runda={runda} />
+        <div className="pb-val">
+          {f.val.map((id) => (
+            <KulKort key={`${runda.slag}-${id}`} id={id} runda={runda} disabled={!klar} onClick={() => gor((r) => R.valjBelo(r, id))} />
+          ))}
+        </div>
+        <div className="pb-tavla-knappar">
+          <button className="pb-litenknapp" disabled={!klar || !(runda.omslag > 0)} onClick={() => gor(R.slaOm)}>
+            🎲 Slå om <b>{runda.omslag}</b>
+          </button>
+          {runda.hoppa > 0 && (
+            <button className="pb-litenknapp" disabled={!klar} onClick={() => gor(R.hoppa)}>
+              ⏭️ Hoppa över (+15 🪙) <b>{runda.hoppa}</b>
+            </button>
+          )}
+        </div>
+      </Kort>
+    )
+  }
+  if (f.typ === 'byt') {
+    const k = KULTYPER[f.ny]
+    return (
+      <Kort titel="Väskan är full" sub={`Vilken kula ska bytas ut mot ${k.ikon} ${k.namn}?`}>
+        <Vaska runda={runda} valbar onValj={(i) => klar && gor((r) => R.valjBelo(r, i))} />
+        <button className="pb-litenknapp" disabled={!klar} onClick={() => gor((r) => R.valjBelo(r, -1))}>
+          Behåll väskan som den är
+        </button>
+      </Kort>
+    )
+  }
   if (f.typ === 'relik') {
     return (
       <Kort titel="Välj en relik" sub="Reliker gäller resten av rundan">
@@ -504,6 +649,34 @@ function Belo({ runda, gor }) {
         )}
       </div>
       {runda.slang > 0 && <small className="kk-tips">🗑️ Släng tar bort en uppgradering resten av rundan ({runda.slang} kvar)</small>}
+    </Kort>
+  )
+}
+
+function Arkana({ runda, gor }) {
+  const klar = useKlar(500, `${runda.akt}-${runda.nr}`)
+  const forsta = runda.akt === 1 && runda.klara === 0
+  return (
+    <Kort titel={forsta ? '✨ Välj en arkana' : `✨ Akt ${runda.akt}: en ny arkana`} sub={hjalte(runda.hjalte).auto ? '🃏 Kaos-Kalle väljer åt dig' : 'En regelbrytande kraft för resten av rundan'} klass="kk-arkanakort">
+      {runda.arkanor.length > 0 && (
+        <div className="kk-mina-arkanor">
+          {runda.arkanor.map((id) => (
+            <span key={id} title={ARKANOR[id].namn}>
+              {ARKANOR[id].ikon} {ARKANOR[id].namn}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="kk-arkanor">
+        {(runda.arkanaVal || []).map((id) => (
+          <button key={id} className="kk-arkana" disabled={!klar} onClick={() => gor((r) => R.valjArkana(r, id))}>
+            <span aria-hidden="true">{ARKANOR[id].ikon}</span>
+            <b>{ARKANOR[id].namn}</b>
+            <small>{ARKANOR[id].text}</small>
+          </button>
+        ))}
+      </div>
+      {forsta && <Vaska runda={runda} />}
     </Kort>
   )
 }
@@ -560,6 +733,7 @@ function Butik({ runda, gor, ljud }) {
           const fattig = runda.guld < v.pris
           if (v.typ === 'uppg') return <UppgKort key={i} id={v.id} runda={runda} disabled={!klar || fattig} pris={v.pris} sald={v.sald} kanInte={!R.mojlig(runda, v.id)} onClick={() => kop(i)} />
           if (v.typ === 'relik') return <RelikKort key={i} id={v.id} disabled={!klar || fattig} pris={v.pris} sald={v.sald} onClick={() => kop(i)} />
+          if (v.typ === 'kula') return <KulKort key={i} id={v.id} runda={runda} disabled={!klar || fattig || !R.kulaRyms(runda, v.id)} pris={v.pris} sald={v.sald} onClick={() => kop(i)} />
           return (
             <button key={i} className={`pb-uppg grad-1 kk-vara${v.sald ? ' sald' : ''}`} disabled={!klar || fattig || v.sald} onClick={() => kop(i)}>
               <em>{v.typ === 'kulor' ? 'Kulor' : 'Omslag'}</em>
@@ -879,14 +1053,41 @@ function Utmaningar({ meta }) {
 }
 
 function Samling({ meta }) {
-  const sett = meta.samling
+  const sett = { kulor: {}, arkanor: {}, bossar: {}, ...meta.samling }
   const uppg = Object.entries(UPPGRADERINGAR)
-  const rel = Object.entries(RELIKER)
+  const rel = Object.entries(allaReliker)
+  const kulor = Object.entries(KULTYPER).filter(([id]) => id !== 'vanlig')
+  const ark = Object.entries(ARKANOR)
   return (
     <div className="kk-lista">
       <div className="pb-flik-info">
-        Uppgraderingar {Object.keys(sett.uppg).length}/{uppg.length} · reliker {Object.keys(sett.reliker).length}/{rel.length} · rundor {meta.stats.rundor} · vinster {meta.stats.vinster} · bossar {meta.stats.bossar}
+        Uppgraderingar {Object.keys(sett.uppg).length}/{uppg.length} · reliker {Object.keys(sett.reliker).length}/{rel.length} · kulor {Object.keys(sett.kulor).length}/{kulor.length} · arkanor {Object.keys(sett.arkanor).length}/{ark.length} · rundor {meta.stats.rundor} · vinster {meta.stats.vinster} · bossar {meta.stats.bossar}
       </div>
+      <b className="kk-samlingrubrik">🎒 Kulor</b>
+      <div className="kk-samling">
+        {kulor.map(([id, k]) => {
+          const har = sett.kulor[id] != null
+          return (
+            <div key={id} className={`kk-samlad kk-samlad-kula${har ? '' : ' osedd'}`} style={{ '--kf': k.farg }} title={har ? `${k.namn}: ${k.text(1)}` : k.fusion ? `Fusion av två kulor` : 'Inte hittad än'}>
+              <span>{har ? k.ikon : k.fusion ? '🧪' : '❔'}</span>
+              <small>{har ? k.namn : k.fusion ? 'Fusion' : '???'}</small>
+            </div>
+          )
+        })}
+      </div>
+      <b className="kk-samlingrubrik">✨ Arkanor</b>
+      <div className="kk-samling">
+        {ark.map(([id, x]) => {
+          const har = sett.arkanor[id] != null
+          return (
+            <div key={id} className={`kk-samlad grad-3${har ? '' : ' osedd'}`} title={har ? `${x.namn}: ${x.text}` : 'Inte vald än'}>
+              <span>{har ? x.ikon : '❔'}</span>
+              <small>{har ? x.namn : 'Arkana'}</small>
+            </div>
+          )
+        })}
+      </div>
+      <b className="kk-samlingrubrik">⬆️ Uppgraderingar</b>
       <div className="kk-samling">
         {uppg.map(([id, u]) => {
           const har = sett.uppg[id] != null
@@ -899,13 +1100,15 @@ function Samling({ meta }) {
           )
         })}
       </div>
+      <b className="kk-samlingrubrik">🏺 Reliker</b>
       <div className="kk-samling">
         {rel.map(([id, r]) => {
           const har = sett.reliker[id] != null
+          const boss = BOSSRELIKER[id]
           return (
-            <div key={id} className={`kk-samlad grad-${r.grad}${har ? '' : ' osedd'}`} title={har ? `${r.namn}: ${r.text}` : 'Inte hittad än'}>
+            <div key={id} className={`kk-samlad grad-${r.grad}${har ? '' : ' osedd'}`} title={har ? `${r.namn}: ${r.text}` : boss ? 'Bossrelik: besegra rätt boss' : 'Inte hittad än'}>
               <span>{har ? r.ikon : '❔'}</span>
-              <small>{har ? r.namn : 'Relik'}</small>
+              <small>{har ? r.namn : boss ? 'Bossrelik' : 'Relik'}</small>
             </div>
           )
         })}

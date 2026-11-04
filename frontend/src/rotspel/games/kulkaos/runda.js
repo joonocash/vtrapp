@@ -12,14 +12,19 @@
 // orange (eller en boss) kvar. Allt slumpat är seedat på rundans frö och
 // rummets nummer, så att samma runda alltid ger samma val.
 //
-// rundan.steg: spel | belo | dorrar | butik | handelse | vila | seger | slut
+// Kulväskan (r.vaska): kultyperna som skotten tar i tur och ordning. Nya
+// kultyper får man efter elitbanor, bossar och första banan i varje akt;
+// samma typ igen ger en nivå till, och två som passar ihop blir en fusion.
+// Arkanorna (r.arkanor) väljer man i början av varje akt.
+//
+// rundan.steg: arkana | spel | belo | dorrar | butik | handelse | vila | seger | slut
 
 import { genereraBana } from '../pinnboll/generator.js'
 import { BONUS, hamtaBonus } from '../pinnboll/bonus.js'
 import { HINK, KRAFTER } from '../pinnboll/motor.js'
 import { mulberry32 } from '../delat/rng.js'
-import { hjalte, UPPGRADERINGAR, RELIKER, NYA_KULOR } from './innehall.js'
-import { bossBana, BOSSAR } from './bossar.js'
+import { hjalte, UPPGRADERINGAR, RELIKER, allaReliker, NYA_KULOR, KULTYPER, BASKULOR, FUSIONER, VASKA_MAX, ARKANOR } from './innehall.js'
+import { bossBana, bossarIAkt } from './bossar.js'
 import { HANDELSER } from './handelser.js'
 
 export const AKTER = 3
@@ -42,6 +47,7 @@ export const ELIT_MOD = {
   fler: { ikon: '🟠', namn: 'Fler orange', text: 'Sex orange pinnar till' },
   tung: { ikon: '🪨', namn: 'Tunga kulor', text: 'Starkare tyngdkraft' },
   ingenHink: { ikon: '🚫', namn: 'Ingen hink', text: 'Hinken är borta' },
+  slem: { ikon: '🫧', namn: 'Slemmigt', text: 'Åtta slempinnar som tål två träffar' },
 }
 
 // Svårigheten (som Ascension i Slay the Spire): Feber n gäller allt till och
@@ -87,7 +93,7 @@ const valjVikt = (s, lista, vikt) => {
 export function nyRunda({ fro = (Date.now() & 0x7fffffff) >>> 0, hjalte: hid = 'happy', feber = 0, dag = null, meta = {} } = {}) {
   const h = hjalte(hid)
   let r = {
-    v: 1,
+    v: 2,
     fro,
     hjalte: h.id,
     feber,
@@ -97,7 +103,12 @@ export function nyRunda({ fro = (Date.now() & 0x7fffffff) >>> 0, hjalte: hid = '
     nr: 1,
     typ: 'strid',
     mod: null,
-    steg: 'spel',
+    steg: 'arkana',
+    arkanor: [],
+    arkanaVal: null,
+    vaska: [],
+    elitKlara: 0,
+    besegrade: [],
     kulor: (h.startKulor ?? STARTKULOR) + (meta.kulor || 0) - (feber >= 6 ? 2 : 0),
     guld: 15 * (meta.startkassa || 0),
     poang: 0,
@@ -125,8 +136,12 @@ export function nyRunda({ fro = (Date.now() & 0x7fffffff) >>> 0, hjalte: hid = '
     oandlig: false,
     slut: false,
   }
-  // Startgåvan i Hundkojan: slumpade vanliga uppgraderingar från början
+  // kulväskan: hjältens kultyp och tre vanliga (Kaos-Kalle: en slumpad)
   const s = slump(r, 'start')
+  const forsta = h.auto ? BASKULOR[Math.floor(s() * BASKULOR.length)] : h.kula
+  r.vaska = [{ typ: forsta || 'vanlig', niva: 1 }, { typ: 'vanlig', niva: 1 }, { typ: 'vanlig', niva: 1 }, { typ: 'vanlig', niva: 1 }]
+  r.arkanaVal = arkanaDrag(r)
+  // Startgåvan i Hundkojan: slumpade vanliga uppgraderingar från början
   for (let i = 0; i < (meta.startgava || 0); i++) {
     const id = slumpUppg(r, s, 1)
     if (id) r = geUppg(r, id)
@@ -134,10 +149,32 @@ export function nyRunda({ fro = (Date.now() & 0x7fffffff) >>> 0, hjalte: hid = '
   return r
 }
 
+// En sparad runda från en äldre version får det som saknas (kulväskan,
+// arkanorna …), så att den går att spela vidare.
+export function laga(r) {
+  if (!r || r.v >= 2) return r
+  const h = hjalte(r.hjalte)
+  return {
+    ...r,
+    v: 2,
+    arkanor: r.arkanor || [],
+    arkanaVal: null,
+    vaska: r.vaska || [{ typ: h.kula || 'vanlig', niva: 1 }, { typ: 'vanlig', niva: 1 }, { typ: 'vanlig', niva: 1 }, { typ: 'vanlig', niva: 1 }],
+    elitKlara: r.elitKlara || 0,
+    besegrade: r.besegrade || [],
+  }
+}
+
 /* ----------------------------------------------------------- uppgraderingar */
 
 const UPP = UPPGRADERINGAR
-export const tak = (r, id) => (UPP[id].max ? UPP[id].max + (r.reliker.includes('trolldryck') && UPP[id].grad < 4 ? 1 : 0) : Infinity)
+// Hur många gånger en relik räknas: Kopiaturen kopierar den senaste reliken.
+export function relikN(r, id) {
+  if (!r.reliker.includes(id)) return 0
+  const senaste = [...r.reliker].reverse().find((x) => x !== 'kopia')
+  return 1 + (id === senaste && r.reliker.includes('kopia') ? 1 : 0)
+}
+export const tak = (r, id) => (UPP[id].max ? UPP[id].max + (UPP[id].grad < 4 ? relikN(r, 'trolldryck') : 0) : Infinity)
 
 export function mojlig(r, id) {
   const u = UPP[id]
@@ -176,7 +213,7 @@ export function slumpUppg(r, s, grad = 0) {
 
 export function antalVal(r) {
   const h = hjalte(r.hjalte)
-  return Math.max(2, 3 + (turNiva(r) >= 1 ? 1 : 0) + (r.reliker.includes('fyrklover') ? 1 : 0) - (h.valFarre || 0) - (har(r, 8) ? 1 : 0))
+  return Math.max(2, 3 + (turNiva(r) >= 1 ? 1 : 0) + relikN(r, 'fyrklover') - (h.valFarre || 0) - (har(r, 8) ? 1 : 0))
 }
 export function uppgVal(r) {
   return dra(r, slump(r, 'val', r.slag || 0), antalVal(r), { evolution: true })
@@ -203,10 +240,90 @@ export function relikVal(r, s = slump(r, 'relik'), antal = 3) {
 }
 export const slumpRelik = (r, s) => relikVal(r, s, 1)[0] || null
 export function geRelik(r, id) {
-  if (!RELIKER[id] || r.reliker.includes(id)) return r
+  if (!allaReliker[id] || r.reliker.includes(id)) return r
   const ny = { ...r, reliker: [...r.reliker, id] }
   if (id === 'tarning') ny.omslag += 3
   return ny
+}
+
+/* ---------------------------------------------------------------- kulväskan */
+
+const vaskaIndex = (r, typ) => r.vaska.findIndex((k) => k.typ === typ)
+export const fusionerMojliga = (r) => FUSIONER.filter((f) => KULTYPER[f].fusion.every((t) => vaskaIndex(r, t) >= 0))
+
+// Tre kulor att välja mellan ('cell' … eller 'f:bomb' för en fusion). En
+// fusion som går att göra kommer alltid med först.
+export function kulVal(r, s = slump(r, 'kula', r.slag || 0), antal = hjalte(r.hjalte).auto ? 1 : 3) {
+  const ut = []
+  const fus = fusionerMojliga(r)
+  if (fus.length) ut.push('f:' + fus[Math.floor(s() * fus.length)])
+  const pool = BASKULOR.filter((t) => {
+    const i = vaskaIndex(r, t)
+    return i < 0 || r.vaska[i].niva < 3
+  })
+  while (ut.length < antal && pool.length) ut.push(pool.splice(Math.floor(s() * pool.length), 1)[0])
+  return ut.slice(0, antal)
+}
+
+// Ryms kulan i väskan utan att byta ut något?
+export const kulaRyms = (r, id) => id.startsWith('f:') || vaskaIndex(r, id) >= 0 || vaskaIndex(r, 'vanlig') >= 0 || r.vaska.length < VASKA_MAX
+
+// Lägger kulan i väskan: en nivå till om den redan finns, annars i stället
+// för en vanlig kula eller i en tom plats. byt = platsen att byta ut när
+// väskan är full.
+export function geKula(r, id, byt = -1) {
+  const vaska = r.vaska.map((k) => ({ ...k }))
+  if (id.startsWith('f:')) {
+    const f = id.slice(2)
+    const [a, b] = KULTYPER[f].fusion
+    const ia = vaska.findIndex((k) => k.typ === a)
+    const ib = vaska.findIndex((k) => k.typ === b)
+    if (ia < 0 || ib < 0) return r
+    const kvar = vaska.filter((_, i) => i !== ia && i !== ib)
+    return { ...r, vaska: [...kvar, { typ: f, niva: 3 }], stats: { ...r.stats, fusioner: (r.stats.fusioner || 0) + 1 } }
+  }
+  const i = vaskaIndex(r, id)
+  if (i >= 0) {
+    vaska[i].niva = Math.min(3, vaska[i].niva + 1)
+    return { ...r, vaska }
+  }
+  const v = vaska.findIndex((k) => k.typ === 'vanlig')
+  if (v >= 0) vaska[v] = { typ: id, niva: 1 }
+  else if (vaska.length < VASKA_MAX) vaska.push({ typ: id, niva: 1 })
+  else if (byt >= 0 && byt < vaska.length) vaska[byt] = { typ: id, niva: 1 }
+  else return r
+  return { ...r, vaska }
+}
+
+// Väskan så som motorn får den: nivåer med Trollkulan och Kulväskans
+// hjärta (högst 4), blandad för varje bana.
+export function vaskaFor(r) {
+  const plus = relikN(r, 'trollkula') + (r.arkanor.includes('hjarta') ? 1 : 0)
+  const lista = r.vaska.map((k) => ({ typ: k.typ, niva: k.typ === 'vanlig' ? 1 : Math.min(4, k.niva + plus) }))
+  const s = slump(r, 'vaska')
+  for (let i = lista.length - 1; i > 0; i--) {
+    const j = Math.floor(s() * (i + 1))
+    ;[lista[i], lista[j]] = [lista[j], lista[i]]
+  }
+  return lista
+}
+
+/* ------------------------------------------------------------------ arkanor */
+
+export function arkanaDrag(r, antal = hjalte(r.hjalte).auto ? 1 : 3) {
+  const s = slump(r, 'arkana', r.akt)
+  const pool = Object.keys(ARKANOR).filter((id) => !r.arkanor.includes(id))
+  const ut = []
+  while (ut.length < antal && pool.length) ut.push(pool.splice(Math.floor(s() * pool.length), 1)[0])
+  return ut
+}
+
+export function valjArkana(r, id) {
+  if (r.steg !== 'arkana' || !r.arkanaVal?.includes(id)) return r
+  const ny = { ...r, arkanor: [...r.arkanor, id], arkanaVal: null }
+  // första arkanan: rundans första bana; sedan: aktens första dörrar
+  if (r.akt === 1 && r.klara === 0) return { ...ny, steg: 'spel' }
+  return { ...ny, steg: 'dorrar', dorrar: dorrVal(ny, 1) }
 }
 
 /* ----------------------------------------------------------------- banorna */
@@ -222,11 +339,19 @@ export function kraftFor(r) {
   return KRAFTNAMN[Math.floor(s() * KRAFTNAMN.length)]
 }
 
+// Aktens boss: en av två, bestämd av rundans frö.
+export function bossFor(r, akt = r.akt) {
+  const pool = bossarIAkt(akt)
+  return pool[mulberry32((r.fro ^ Math.imul(akt, 2654435761)) >>> 0)() * pool.length | 0]
+}
+
 // Banan i rundans nuvarande rum.
 export function rumBana(r) {
   if (r.typ === 'boss') {
-    const hp = (har(r, 1) ? 1.25 : 1) * (har(r, 7) ? 1.25 : 1)
-    return { ...bossBana(r.akt, { hpFaktor: hp, orange: 10 + (har(r, 5) ? 3 : 0) }), kraft: kraftFor(r) }
+    // kulväskan och arkanorna gör en starkare: bossarna har 20 % mer liv än förr
+    const hp = 1.2 * (har(r, 1) ? 1.25 : 1) * (har(r, 7) ? 1.25 : 1) * (r.arkanor.includes('drapare') ? 0.7 : 1)
+    const b = bossBana(r.akt, { hpFaktor: hp, orange: 10 + (har(r, 5) ? 3 : 0), id: bossFor(r).id })
+    return { ...b, kraft: kraftFor(r), kritpinnar: 2 + (r.arkanor.includes('kristall') ? 3 : 0) }
   }
   if (r.typ === 'kulregn') {
     const s = slump(r, 'kulregn')
@@ -237,18 +362,53 @@ export function rumBana(r) {
   const elit = r.typ === 'elit'
   const b = genereraBana((r.fro ^ Math.imul(r.nr, 7919)) >>> 0, { niva: svarighet(r) + (elit ? 3 : 0) })
   const kand = b.objekt.filter((o) => !o.ejOrange).length
-  const extra = (har(r, 5) ? 3 : 0) + (elit ? 4 + (har(r, 3) ? 2 : 0) + (r.mod === 'fler' ? 6 : 0) : 0)
+  const extra = (har(r, 5) ? 3 : 0) + (elit ? 4 + (har(r, 3) ? 2 : 0) + (r.mod === 'fler' ? 6 : 0) : 0) + (r.akt >= 2 ? 2 : 0)
   // akt 1 börjar snällt: färre orange de första banorna
-  const bas = r.akt === 1 ? Math.min(b.orange, 7 + 2 * r.rum) : b.orange
-  return { ...b, orange: Math.max(bas, Math.min(bas + extra, kand - 4)), kraft: kraftFor(r), guldpinnar: 2, elit: elit ? r.mod : null }
+  const bas = r.akt === 1 ? Math.min(b.orange, 8 + 2 * r.rum) : b.orange
+  // specialpinnar: kritpinnar och en förnyare alltid, slempinnar från akt 2,
+  // och ibland ett svart hål (alltid med arkanan Svarta hålet)
+  const s = slump(r, 'pinnar')
+  const hal = r.arkanor.includes('hal') || (r.akt >= 2 && s() < 0.35)
+  let objekt = b.objekt
+  let svartaHal = []
+  if (hal) {
+    const h = { x: 90 + s() * 180, y: 270 + s() * 150 }
+    const pos = (o) => (o.x != null ? [o.x, o.y] : o.x1 != null ? [(o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2] : [o.cx ?? -999, o.cy ?? -999])
+    objekt = objekt.filter((o) => {
+      const [x, y] = pos(o)
+      return o.grupp != null || Math.hypot(x - h.x, y - h.y) > 34
+    })
+    svartaHal = [h]
+  }
+  return {
+    ...b,
+    objekt,
+    svartaHal,
+    orange: Math.max(bas, Math.min(bas + extra, kand - 4)),
+    kraft: kraftFor(r),
+    guldpinnar: 2,
+    kritpinnar: 2 + (r.arkanor.includes('kristall') ? 3 : 0),
+    fornyare: 1,
+    slempinnar: (r.akt >= 2 ? 3 : 0) + (r.mod === 'slem' ? 8 : 0),
+    elit: elit ? r.mod : null,
+  }
 }
 
 export function guldFaktor(r) {
   const h = hjalte(r.hjalte)
-  return (1 + 0.25 * (r.varig.guldnos || 0) + 0.1 * (r.bonus?.girighet || 0)) * (r.reliker.includes('guldtand') ? 1.5 : 1) * (h.guldX || 1)
+  return (1 + 0.25 * (r.varig.guldnos || 0) + 0.1 * (r.bonus?.girighet || 0)) * Math.pow(1.5, relikN(r, 'guldtand')) * (h.guldX || 1) * (1 + 0.1 * r.elitKlara * relikN(r, 'kalv')) * (r.arkanor.includes('midas') ? 2 : 1)
 }
 
-const PERKAR = ['jatte', 'magnet', 'bomber', 'lila', 'smalla', 'poang', 'hinkmagnet', 'meteor', 'kulregn', 'guldhink', 'fyrverkeri', 'golv', 'lyckoslant', 'blixt', 'blixtstorm', 'kulfabrik', 'genom', 'guldpinnar', 'midas']
+// Poäng- och skadefaktorerna från Räntan och de växande relikerna.
+export function poangFaktor(r) {
+  const n = r.varig.ranta || 0
+  const ranta = 1 + Math.min(0.5 * n, 0.02 * n * Math.floor(r.guld / 10))
+  const parm = 1 + 0.04 * Object.values(r.varig).reduce((a, b) => a + b, 0) * relikN(r, 'parm')
+  return ranta * parm
+}
+export const bossFaktor = (r) => 1 + 0.15 * (r.elitKlara + r.bossar) * relikN(r, 'pokal')
+
+const PERKAR = ['jatte', 'magnet', 'bomber', 'lila', 'smalla', 'poang', 'hinkmagnet', 'meteor', 'kulregn', 'guldhink', 'fyrverkeri', 'golv', 'lyckoslant', 'blixt', 'blixtstorm', 'kulfabrik', 'genom', 'guldpinnar', 'midas', 'flipper', 'pyramid', 'zen', 'sno']
 const RELIKPERKAR = ['spelautomat', 'karamell', 'spegel', 'diamant', 'stjarnfall', 'kronan', 'snigel', 'glodkol']
 
 // Hur motorn ska startas för rummets bana (skapaSpel(bana, { fro, ...spelVal })).
@@ -263,30 +423,53 @@ export function spelVal(r, bana) {
   const fler = (p.flerskott || 0) + (hp.flerskott || 0) + (p.kulkanon ? 2 : 0)
   if (fler) perk.flerskott = fler
   if (p.delning) perk.delning = p.delning * (p.kulkanon ? 2 : 1)
-  for (const id of ['tvilling', 'eldstor', 'honung']) if (hp[id]) perk[id] = 1
-  let grav = (hp.grav || 1) * (1 - 0.12 * (p.fjader || 0))
+  for (const id of ['tvilling', 'eldstor', 'honung', 'slosa']) if (hp[id]) perk[id] = 1
+  let grav = (hp.grav || 1) * (1 - 0.12 * (p.fjader || 0)) * Math.pow(0.8, relikN(r, 'fjader'))
   if (bana.elit === 'tung') grav *= 1.25
   if (grav !== 1) perk.grav = grav
   perk.guldFaktor = guldFaktor(r)
   const jagare = (p.jagare || 0) + 0.5 * (r.bonus?.bosskraft || 0)
   if (jagare) perk.jagare = jagare
-  for (const id of RELIKPERKAR) if (r.reliker.includes(id)) perk[id] = 1
+  for (const id of RELIKPERKAR) if (relikN(r, id)) perk[id] = relikN(r, id)
+  // Snöstormen: snöbollen växer dubbelt så fort
+  if (p.snostorm && perk.sno) perk.sno *= 2
+  if (p.kritfler) perk.krit = p.kritfler
+  perk.poangX = poangFaktor(r)
+  perk.bossX = bossFaktor(r)
+  // bossrelikerna
+  if (relikN(r, 'nat')) perk.golv = (perk.golv || 0) + relikN(r, 'nat')
+  if (relikN(r, 'skal')) perk.hinkGuld = 10 * relikN(r, 'skal')
+  if (relikN(r, 'drakhjarta')) perk.drakhjarta = 1
+  // arkanorna
+  const ark = (id) => r.arkanor.includes(id)
+  if (ark('tvilling')) perk.tvilling = 1
+  if (ark('moln')) perk.moln = 1
+  if (ark('aska')) perk.blixt = (perk.blixt || 0) + 2
+  if (ark('magnet')) {
+    perk.magnet = Math.max(perk.magnet || 0, 4)
+    perk.hinkmagnet = Math.max(perk.hinkmagnet || 0, 3)
+  }
   const start = {
     spar: p.sikte ? 999 : r.nasta.spar || 0,
-    eld: (p.eldkula || 0) + (bana.start?.eld || 0),
+    eld: (p.eldkula || 0) + (bana.start?.eld || 0) + (ark('eld') ? 3 : 0),
     spok: h.spokAlltid ? 999 : p.spoke || 0,
     trippel: r.nasta.trippel || 0,
   }
-  let hinkBredd = Math.round((HINK.bredd + 14 * (p.hink || 0) + 6 * (r.bonus?.hink || 0)) * (r.reliker.includes('hinkskydd') ? 1.4 : 1))
+  let hinkBredd = Math.round((HINK.bredd + 14 * (p.hink || 0) + 6 * (r.bonus?.hink || 0)) * Math.pow(1.4, relikN(r, 'hinkskydd')) * Math.pow(1.5, relikN(r, 'skal')) * (p.pyramid ? 2 : 1))
   if (h.ingenHink || bana.elit === 'ingenHink') hinkBredd = 0
-  if (bana.bonus) return { kulor: bana.kulor || 3, kulBonus: false, hinkBredd, start, perk }
-  return { kulor: r.kulor, kulBonus: false, hinkBredd, extraGrona: p.gron || 0, start, perk }
+  const vaska = vaskaFor(r)
+  if (bana.bonus) return { kulor: bana.kulor || 3, kulBonus: false, hinkBredd, start, perk, vaska }
+  return { kulor: r.kulor, kulBonus: false, hinkBredd, extraGrona: (p.gron || 0) + (ark('grona') ? 3 : 0), start, perk, vaska }
 }
+
+// Hur långt Zenskottet letar (radianer), 0 = inget zenskott.
+export const zenBredd = (r) => (r.varig.zen ? 0.035 * r.varig.zen * (r.varig.snostorm ? 2 : 1) : 0)
 
 // Nya kulor efter en vanlig bana.
 export function nyaKulor(r) {
   const h = hjalte(r.hjalte)
-  return Math.max(0, (h.nya ?? NYA_KULOR) + (r.varig.bank || 0) + (r.reliker.includes('kottben') ? 2 : 0) - (har(r, 2) ? 1 : 0))
+  const kalla = r.arkanor.includes('kalla') ? Math.min(3, Math.floor(r.guld / 75)) : 0
+  return Math.max(0, (h.nya ?? NYA_KULOR) + (r.varig.bank || 0) + 2 * relikN(r, 'kottben') + 3 * relikN(r, 'ost') + r.bossar * relikN(r, 'palt') + kalla - (har(r, 2) ? 1 : 0))
 }
 
 /* ----------------------------------------------------------- efter en bana */
@@ -307,19 +490,27 @@ export function rumKlart(r, res) {
   // guld för banan, och Spargrisens ränta
   const bas = { strid: 12, elit: 30, boss: 60, kulregn: 25 }[r.typ] + 3 * (r.akt - 1)
   ny.guld += Math.round(bas * guldFaktor(r))
-  if (r.reliker.includes('spargris')) ny.guld += Math.min(15, Math.floor(ny.guld * 0.1))
+  if (relikN(r, 'spargris')) ny.guld += Math.min(15 * relikN(r, 'spargris'), Math.floor(ny.guld * 0.1 * relikN(r, 'spargris')))
   ny.stats.maxGuld = Math.max(ny.stats.maxGuld, ny.guld)
   // kulorna: kulregnsbanorna har egna kulor, bossen ger fem extra
   if (r.typ === 'kulregn') ny.kulor = r.kulor + 3
   else ny.kulor = Math.max(0, res.kulorKvar || 0) + nyaKulor(r) + (r.typ === 'boss' ? 5 : 0)
-  if (res.feber && r.reliker.includes('klockan')) ny.kulor += 4
-  if (r.typ === 'boss') ny.bossar = r.bossar + 1
-  // belöningarna
+  if (res.feber && relikN(r, 'klockan')) ny.kulor += 4 * relikN(r, 'klockan')
+  if (r.typ === 'elit') ny.elitKlara = r.elitKlara + 1
+  const boss = r.typ === 'boss' ? bossFor(r) : null
+  if (boss) {
+    ny.bossar = r.bossar + 1
+    ny.besegrade = [...(r.besegrade || []), boss.id]
+  }
+  // belöningarna: uppgraderingar, reliker, kistor och nya kulor till väskan
   const ko = []
+  const forstaIAkt = r.typ === 'strid' && !r.aktLog.kula
+  if (forstaIAkt) ny.aktLog = { ...ny.aktLog, kula: 1 }
   if (r.typ === 'strid') ko.push(h.auto ? { typ: 'kista', antal: 2, auto: true } : { typ: 'uppg' })
-  if (r.typ === 'elit') ko.push({ typ: 'relik' }, ...(h.auto ? [{ typ: 'kista', antal: 2, auto: true }] : []))
+  if (forstaIAkt) ko.push({ typ: 'kula' })
+  if (r.typ === 'elit') ko.push({ typ: 'relik' }, { typ: 'kula' }, ...(h.auto ? [{ typ: 'kista', antal: 2, auto: true }] : []))
   if (r.typ === 'kulregn') ko.push({ typ: 'kista', antal: kistaAntal(ny) })
-  if (r.typ === 'boss') ko.push({ typ: 'kista', antal: har(r, 10) ? 1 : 3 }, { typ: 'relik' })
+  if (boss) ko.push({ typ: 'kista', antal: har(r, 10) ? 1 : 3 }, ...(boss.relik && !r.reliker.includes(boss.relik) ? [{ typ: 'bossrelik', id: boss.relik }] : [{ typ: 'relik' }]), { typ: 'kula' })
   return forberedKo({ ...ny, ko, steg: 'belo' })
 }
 
@@ -328,7 +519,7 @@ export function kistaAntal(r) {
   const s = slump(r, 'kistantal')
   const tur = turNiva(r)
   let n = 1 + (s() < 0.35 + 0.08 * tur ? 1 : 0) + (s() < 0.1 + 0.04 * tur ? 1 : 0)
-  if (r.reliker.includes('present')) n = Math.max(2, n)
+  if (relikN(r, 'present')) n = Math.max(1 + relikN(r, 'present'), n)
   return n
 }
 
@@ -360,6 +551,12 @@ function forberedKo(r) {
     if (!val.length) return forberedKo({ ...r, guld: r.guld + 30, ko: rest })
     return { ...r, ko: [{ ...f, val, klar: true }, ...rest], steg: 'belo' }
   }
+  if (f.typ === 'kula') {
+    const val = kulVal(r)
+    if (!val.length) return forberedKo({ ...r, guld: r.guld + 30, ko: rest })
+    return { ...r, ko: [{ ...f, val, klar: true }, ...rest], steg: 'belo' }
+  }
+  if (f.typ === 'bossrelik') return { ...r, ko: [{ ...f, klar: true }, ...rest], steg: 'belo' }
   const val = relikVal(r)
   if (!val.length) return forberedKo({ ...r, guld: r.guld + 50, ko: rest })
   return { ...r, ko: [{ ...f, val, klar: true }, ...rest], steg: 'belo' }
@@ -373,6 +570,19 @@ export function valjBelo(r, id) {
   if (!f) return r
   if (f.typ === 'kista') return nastaIKo(r)
   if (f.typ === 'relik') return f.val.includes(id) ? nastaIKo(geRelik(r, id)) : r
+  if (f.typ === 'bossrelik') return nastaIKo(geRelik(r, f.id))
+  if (f.typ === 'kula') {
+    if (!f.val.includes(id)) return r
+    // full väska: välj vilken kula som ska bytas ut (eller behåll väskan)
+    if (!kulaRyms(r, id)) {
+      // Kaos-Kalle väljer inte själv: en slumpad plats byts ut
+      if (hjalte(r.hjalte).auto) return nastaIKo(geKula(r, id, Math.floor(slump(r, 'byt')() * r.vaska.length)))
+      return { ...r, ko: [{ typ: 'byt', ny: id, klar: true }, ...r.ko.slice(1)] }
+    }
+    return nastaIKo(geKula(r, id))
+  }
+  // byt: id = platsen i väskan, -1 = behåll väskan som den är
+  if (f.typ === 'byt') return nastaIKo(id >= 0 ? geKula(r, f.ny, id) : r)
   if (!f.val.includes(id) || !mojlig(r, id)) return r
   return nastaIKo(geUppg(r, id))
 }
@@ -381,9 +591,9 @@ export function valjBelo(r, id) {
 // släng), eller hoppa över och ta 15 guld (en hoppa).
 export function slaOm(r) {
   const f = r.ko[0]
-  if (!f || f.typ !== 'uppg' || !(r.omslag > 0)) return r
+  if (!f || (f.typ !== 'uppg' && f.typ !== 'kula') || !(r.omslag > 0)) return r
   const ny = { ...r, omslag: r.omslag - 1, slag: (r.slag || 0) + 1 }
-  return { ...ny, ko: [{ ...f, val: uppgVal(ny) }, ...r.ko.slice(1)] }
+  return { ...ny, ko: [{ ...f, val: f.typ === 'kula' ? kulVal(ny) : uppgVal(ny) }, ...r.ko.slice(1)] }
 }
 export function sling(r, id) {
   const f = r.ko[0]
@@ -409,14 +619,17 @@ function efterRum(r) {
 
 function nyAkt(r) {
   const ny = { ...r, akt: r.akt + 1, rum: 0, aktLog: { butik: 0, kulregn: 0 }, ko: [] }
-  if (r.reliker.includes('tarning')) ny.omslag += 1
+  ny.omslag += relikN(r, 'tarning')
+  // en ny arkana i början av varje akt
+  const val = arkanaDrag(ny)
+  if (val.length) return { ...ny, steg: 'arkana', arkanaVal: val }
   return { ...ny, steg: 'dorrar', dorrar: dorrVal(ny, 1) }
 }
 
 export function dorrVal(r, rumNy) {
   if (rumNy >= RUM) {
-    const b = BOSSAR[(r.akt - 1) % BOSSAR.length]
-    return [{ typ: 'boss', boss: { namn: b.namn, ikon: b.ikon, text: b.text } }]
+    const b = bossFor(r)
+    return [{ typ: 'boss', boss: { id: b.id, namn: b.namn, ikon: b.ikon, text: b.text } }]
   }
   const s = slump(r, 'dorr', rumNy)
   const vikter = {
@@ -473,6 +686,9 @@ export function nyButik(r, omslag = 0) {
   const varor = dra(r, s, 2, { direkt: false }).map((id) => ({ typ: 'uppg', id, pris: pris(r, [0, 30, 50, 80, 120][UPP[id].grad]) }))
   const rel = relikVal(r, s, 1)[0]
   if (rel) varor.push({ typ: 'relik', id: rel, pris: pris(r, 90 + 30 * RELIKER[rel].grad) })
+  // en kula till väskan (bara en som ryms)
+  const kula = kulVal(r, s, 3).filter((id) => !id.startsWith('f:') && kulaRyms(r, id))[0]
+  if (kula) varor.push({ typ: 'kula', id: kula, pris: pris(r, 65) })
   varor.push({ typ: 'kulor', n: 5, pris: pris(r, 25) }, { typ: 'omslag', n: 2, pris: pris(r, 20) })
   return { varor, omslag, omslagPris: 10 + 10 * omslag }
 }
@@ -481,9 +697,11 @@ export function kop(r, i) {
   const v = r.butik?.varor[i]
   if (!v || v.sald || r.guld < v.pris) return r
   if (v.typ === 'uppg' && !mojlig(r, v.id)) return r
+  if (v.typ === 'kula' && !kulaRyms(r, v.id)) return r
   let ny = { ...r, guld: r.guld - v.pris, stats: { ...r.stats, kopt: (r.stats.kopt || 0) + 1 } }
   if (v.typ === 'uppg') ny = geUppg(ny, v.id)
   else if (v.typ === 'relik') ny = geRelik(ny, v.id)
+  else if (v.typ === 'kula') ny = geKula(ny, v.id)
   else if (v.typ === 'kulor') ny = { ...ny, kulor: ny.kulor + v.n }
   else if (v.typ === 'omslag') ny = { ...ny, omslag: ny.omslag + v.n }
   return { ...ny, butik: { ...r.butik, varor: r.butik.varor.map((x, j) => (j === i ? { ...x, sald: true } : x)) } }
@@ -506,7 +724,7 @@ export const VERKTYG = {
   geRelik,
   kanHoja,
   namn: (id) => UPP[id]?.namn || id,
-  relikNamn: (id) => RELIKER[id]?.namn || id,
+  relikNamn: (id) => allaReliker[id]?.namn || id,
   grad: (id) => UPP[id]?.grad || 1,
 }
 
@@ -539,7 +757,7 @@ export const avsluta = (r) => ({ ...r, steg: 'slut', slut: true, ko: [] })
 // Ben (metavalutan) för en runda.
 export function benFor(r) {
   const bas = 3 * r.klara + 30 * r.bossar + Math.floor(r.poang / 250000) + (r.seger ? 100 : 0)
-  const f = (1 + 0.2 * (r.feber || 0)) * (1 + 0.1 * (r.bonus?.benjakt || 0)) * (r.reliker.includes('benbit') ? 1.5 : 1)
+  const f = (1 + 0.2 * (r.feber || 0)) * (1 + 0.1 * (r.bonus?.benjakt || 0)) * Math.pow(1.5, relikN(r, 'benbit'))
   return Math.round(bas * f)
 }
 
