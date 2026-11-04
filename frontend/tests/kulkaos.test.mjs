@@ -535,6 +535,23 @@ test('motorn: specialpinnar, svarta hål, flipprar, pyramiden, zenskottet och bo
   const typer = new Set()
   for (const v of [0.9, 1.35, 1.8, 1.1, 1.6]) if (s.lage === 'siktar') for (const e of spelaSkott(s, v)) typer.add(e.typ)
   assert.ok(typer.has('svartHal') || typer.has('krit') || typer.has('slem'), [...typer].join(' '))
+  // svarta hålet håller aldrig kvar kulorna: skottet tar slut, och efter
+  // tre smällar stängs hålet
+  const ring = Array.from({ length: 10 }, (_, i) => ({ typ: 'pinne', form: 'cirkel', x: 180 + Math.cos(i * 0.628) * 44, y: 260 + Math.sin(i * 0.628) * 44, r: 7.5, farg0: 'bla' }))
+  const halBana = { namn: 'Hål', fasta: true, grupper: [], svartaHal: [{ x: 180, y: 260 }], objekt: [{ typ: 'pinne', form: 'cirkel', x: 30, y: 420, r: 7.5, farg0: 'orange' }, { typ: 'pinne', form: 'cirkel', x: 330, y: 420, r: 7.5, farg0: 'orange' }, ...ring] }
+  const hs = skapaSpel(halBana, { fro: 1, kulor: 10, hinkBredd: 0, perk: { flerskott: 2 } })
+  let stangt = false
+  for (let k = 0; k < 4; k++) {
+    hs.sikta(Math.PI / 2 + (k - 1.5) * 0.04)
+    hs.skjut()
+    let t = 0
+    while ((hs.lage === 'skjuter' || hs.lage === 'feber') && t < 20) {
+      for (const e of hs.steg(1 / 60)) if (e.typ === 'halBorta') stangt = true
+      t += 1 / 60
+    }
+    assert.ok(t < 12, `skott ${k + 1} tog ${t.toFixed(1)} s`)
+  }
+  assert.ok(stangt && hs.hal[0].borta, 'hålet stängs efter tre smällar')
   // flipprar: två hårda flipprar som går upp när man håller in
   const f = skapaSpel(genereraBana(77, { niva: 6 }), { fro: 4, perk: { flipper: 1 } })
   assert.ok(f.objekt.filter((o) => o.flipper).length >= 2)
