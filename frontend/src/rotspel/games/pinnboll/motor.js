@@ -46,8 +46,11 @@ const LANG_TID = 14 // efter så här länge i ett skott försvinner tända sake
 export const HINK = { bredd: 56, hojd: 20, y: H - 22, fart: (2 * Math.PI) / 6.5 }
 // Kulkaos: Flipperbenen. Vänster led; den högra är spegelvänd.
 export const FLIPPER = { x: 8, y: 534, L: 92, vila: 0.27, lyft: 0.85, fart: 16 }
-// Kulkaos: hur långt ett svart hål drar
+// Kulkaos: hur långt ett svart hål drar, hur många gånger det smäller
+// innan det stängs, och hur länge en kula får snurra i det
 export const HAL_R = 95
+export const HAL_LADDNINGAR = 3
+const HAL_MAXTID = 1.6
 export const FACK_POANG = [10000, 50000, 100000, 50000, 10000]
 export const FACK_TOPP = H - 48
 
@@ -335,7 +338,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     flipperUppe: false,
     vaska, // kulväskan: kultypen i varje skott, i tur och ordning
     kulTyp: null, // skottets kultyp
-    hal: (bana.svartaHal || []).map((h) => ({ ...h, redo: true })),
+    hal: (bana.svartaHal || []).map((h) => ({ ...h, redo: true, kvar: HAL_LADDNINGAR, borta: false })),
   }
 
   function blanda(a, r) {
@@ -1009,8 +1012,11 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     // Kulkaos: Fjäderlätt och Ugglan Klok ger lägre gravitation, järnkulan högre
     k.vy += FYSIK.G * (perk.grav || 1) * (k.tung || 1) * dt
     // Kulkaos: svarta hål drar kulorna till sig, tänder allt runt sig och
-    // spottar ut kulan igen (en gång per skott och hål)
+    // spottar ut kulan igen. Ett hål smäller en gång per skott och drar
+    // inte alls efter det (eller under Extreme Fever), och efter tre
+    // smällar stängs det. En kula som snurrar för länge spottas ut ändå.
     for (const h of spel.hal) {
+      if (!h.redo || h.borta || spel.feber) continue
       const dx = h.x - k.x
       const dy = h.y - k.y
       const d = Math.hypot(dx, dy)
@@ -1018,15 +1024,22 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
       const a = 1300 * (1 - d / HAL_R) * dt
       k.vx += (dx / d) * a
       k.vy += (dy / d) * a
-      if (!simulera && d < 12 && h.redo) {
+      if (!simulera) k.halT = (k.halT || 0) + dt
+      if (!simulera && (d < 12 || k.halT > HAL_MAXTID)) {
         h.redo = false
+        h.kvar--
+        k.halT = 0
         small({ form: 'cirkel', wx: h.x, wy: h.y, r: 1 }, 66, handelser, 'hal')
         const v = -Math.PI / 2 + (rnd() - 0.5) * 1.6
         k.x = h.x + Math.cos(v) * 16
         k.y = h.y + Math.sin(v) * 16
         k.vx = Math.cos(v) * 430
         k.vy = Math.sin(v) * 430
-        handelser.push({ typ: 'svartHal', x: h.x, y: h.y })
+        handelser.push({ typ: 'svartHal', x: h.x, y: h.y, kvar: h.kvar })
+        if (h.kvar <= 0) {
+          h.borta = true
+          handelser.push({ typ: 'halBorta', x: h.x, y: h.y })
+        }
       }
     }
     k.x += k.vx * dt
@@ -1370,6 +1383,8 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
   }
 
   function avsluta(handelser) {
+    // svarta hålen laddas om till nästa skott (siktlinjen räknar med dem)
+    for (const h of spel.hal) h.redo = true
     const sp = skottPoang()
     spel.poang += sp
     if (spel.trippelKvar > 0) spel.trippelKvar--
@@ -1560,7 +1575,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     for (const f of FALT) st[f] = spel[f]
     st.n = objekt.length
     st.obj = objekt.map((o) => [o.farg, o.lit, o.borta, o.nr, o.kickKvar, o.bomb, o.guld, o.slem, o.krit, o.forny, o.stenKvar])
-    st.hal = spel.hal.map((h) => h.redo)
+    st.hal = spel.hal.map((h) => [h.redo, h.kvar, h.borta])
     st.kulor = spel.kulor.map((k) => ({ ...k }))
     st.lista = spel.lista.map((o) => o.id)
     st.stilar = [...spel.stilar]
@@ -1575,7 +1590,7 @@ export function skapaSpel(bana, { fro = 1, kulor = STARTKULOR, kulBonus = true, 
     for (const f of FALT) spel[f] = st[f]
     objekt.length = st.n // stenar som kom till under provskottet
     st.obj.forEach(([farg, lit, borta, nr, kickKvar, bomb, guld, slem, krit, forny, stenKvar], i) => Object.assign(objekt[i], { farg, lit, borta, nr, kickKvar, bomb, guld, slem, krit, forny, stenKvar }))
-    spel.hal.forEach((h, i) => (h.redo = st.hal[i]))
+    spel.hal.forEach((h, i) => ([h.redo, h.kvar, h.borta] = st.hal[i]))
     antalOrange = spel.antalOrange
     spel.kulor = st.kulor.map((k) => ({ ...k }))
     spel.lista = st.lista.map((id) => objekt[id])

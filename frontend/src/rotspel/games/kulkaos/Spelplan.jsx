@@ -358,6 +358,13 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
           fx.sprut(e.x, e.y, ['#c084fc', '#7c3aed', '#ffffff'], 30, { fart: 240, liv: 0.6, form: 'gnista' })
           fx.text(e.x, e.y - 24, '🌀 SVART HÅL!', { storlek: 17, farg: '#e9d5ff', liv: 1.1, stig: 30 })
           break
+        case 'halBorta':
+          ljud.poppa?.(6)
+          fx.ring(e.x, e.y, '#e9d5ff', 40, 0.5, 4)
+          fx.sprut(e.x, e.y, ['#e9d5ff', '#a855f7', '#ffffff'], 24, { fart: 160, liv: 0.6, form: 'stjarna' })
+          fx.text(e.x, e.y + 22, 'Hålet stängs', { storlek: 13, farg: '#e9d5ff', liv: 1.2, stig: 20 })
+          s.smutsig = true
+          break
         case 'slem':
           ljud.studs(4)
           fx.sprut(e.x, e.y, ['#bef264', '#84cc16', '#ecfccb'], 9, { fart: 120, liv: 0.4, form: 'cirkel', storlek: 2.2 })
@@ -918,17 +925,19 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
   // Svarta hål: en virvel som drar till sig kulorna.
   function ritaHal(ctx, t) {
     for (const h of spel.hal || []) {
+      if (h.borta) continue
+      const aktiv = h.redo && !spel.feber
       ctx.save()
       const dragZon = ctx.createRadialGradient(h.x, h.y, 10, h.x, h.y, HAL_R)
-      dragZon.addColorStop(0, h.redo ? 'rgba(124,58,237,0.28)' : 'rgba(124,58,237,0.1)')
+      dragZon.addColorStop(0, aktiv ? 'rgba(124,58,237,0.28)' : 'rgba(124,58,237,0.08)')
       dragZon.addColorStop(1, 'rgba(124,58,237,0)')
       ctx.fillStyle = dragZon
       ctx.beginPath()
       ctx.arc(h.x, h.y, HAL_R, 0, Math.PI * 2)
       ctx.fill()
       ctx.translate(h.x, h.y)
-      ctx.rotate(t * (h.redo ? 2.4 : 0.8))
-      ctx.globalAlpha = h.redo ? 0.9 : 0.4
+      ctx.rotate(t * (aktiv ? 2.4 : 0.8))
+      ctx.globalAlpha = aktiv ? 0.9 : 0.4
       for (let i = 0; i < 4; i++) {
         ctx.rotate(Math.PI / 2)
         ctx.strokeStyle = i % 2 ? '#c084fc' : '#7c3aed'
@@ -942,10 +951,17 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
       ctx.beginPath()
       ctx.arc(0, 0, 7, 0, Math.PI * 2)
       ctx.fill()
-      ctx.strokeStyle = h.redo ? '#e9d5ff' : '#6b21a8'
+      ctx.strokeStyle = aktiv ? '#e9d5ff' : '#6b21a8'
       ctx.lineWidth = 1.2
       ctx.stroke()
       ctx.restore()
+      // laddningarna som är kvar: små prickar under hålet
+      for (let i = 0; i < h.kvar; i++) {
+        ctx.fillStyle = aktiv ? '#e9d5ff' : 'rgba(233,213,255,0.45)'
+        ctx.beginPath()
+        ctx.arc(h.x + (i - (h.kvar - 1) / 2) * 7, h.y + 19, 2.2, 0, Math.PI * 2)
+        ctx.fill()
+      }
     }
   }
 
