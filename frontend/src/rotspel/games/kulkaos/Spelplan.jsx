@@ -61,6 +61,8 @@ function nyttLage(spel) {
     bossT: -10,
     bossSkada: null,
     blixtar: [],
+    raketer: [], // Orangestormen: orange pinnar och kulor som flyger in i bossen
+    stormSkada: null,
     golvT: -10,
     skottStart: 0,
   }
@@ -214,9 +216,27 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
           s.smutsig = true
           break
         }
+        case 'bossStorm': {
+          // Orangestormen: allt orange (och kulorna) flyger in i bossen
+          const [bx, by] = e.till
+          const lista = [...e.fran.map((p) => ({ p, kula: false })), ...e.kulor.map((p) => ({ p, kula: true }))]
+          lista.forEach(({ p, kula }, i) => s.raketer.push({ x0: p[0], y0: p[1], x1: bx, y1: by, t0: s.t + 0.15 + i * 0.045, dur: 0.42 + Math.random() * 0.12, kula, sida: Math.random() < 0.5 ? -1 : 1, klar: false }))
+          s.stormSkada = { skada: e.skada, t: s.t + 0.6 + lista.length * 0.045, x: bx, y: by }
+          s.fokus = null
+          s.slowTill = 0
+          s.storm = true
+          ljud.stil()
+          fx.hitstop(90)
+          fx.skaka(6)
+          for (const [x, y] of e.fran) fx.ring(x, y, '#ff9a3c', 20, 0.3, 2.5)
+          setMastare({ text: 'ORANGESTORMEN!', key: s.t, ms: 1800 })
+          s.smutsig = true
+          break
+        }
         case 'aterstall':
           ljud.extraKula()
-          visaNotis('✨ Planen fylls på!', 1500)
+          visaNotis(s.storm ? '🌊 Ny våg!' : '✨ Planen fylls på!', 1500)
+          s.storm = false
           for (const o of spel.objekt) s.pop.delete(o.id)
           s.smutsig = true
           break
@@ -528,6 +548,27 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
       ljud.poppa(p.i)
     }
     s.blixtar = s.blixtar.filter((b) => s.t - b.t < 0.35)
+    // raketerna i Orangestormen slår ner i bossen en efter en
+    for (const r of s.raketer) {
+      if (r.klar || s.t < r.t0 + r.dur) continue
+      r.klar = true
+      s.bossT = s.t
+      ljud.traff(8 + (r.kula ? 4 : 0), 'orange', false)
+      fx.sprut(r.x1, r.y1, ['#ffd43b', '#ff7a1a', '#ffffff'], 7, { fart: 200, liv: 0.4, form: 'gnista', storlek: 2.2 })
+      fx.skaka(2.5)
+    }
+    s.raketer = s.raketer.filter((r) => !r.klar)
+    if (s.stormSkada && s.t >= s.stormSkada.t) {
+      const d = s.stormSkada
+      s.stormSkada = null
+      ljud.small()
+      fx.skaka(11)
+      fx.ring(d.x, d.y, '#ff9a3c', 90, 0.55, 6)
+      fx.ring(d.x, d.y, '#ffffff', 55, 0.35, 3)
+      fx.konfetti(d.x, d.y, 60)
+      fx.text(d.x, d.y - 50, `−${d.skada}`, { storlek: Math.min(46, 22 + d.skada / 4), farg: '#ffb366', liv: 1.5, stig: 44, studs: true })
+      s.smutsig = true
+    }
     if (s.vantarKort && s.t >= s.vantarKort.vid && !s.popKo.length) {
       const v = s.vantarKort
       s.vantarKort = null
@@ -583,6 +624,7 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
     }
     for (const o of spel.objekt) if (o.boss) ritaBoss(ctx, o, t)
     ritaBlixtar(ctx, t)
+    ritaRaketer(ctx, t)
 
     const visaSikte = !overlagg && spel.lage === 'siktar' && spel.iKanonen && t >= s.blockTill
     if (visaSikte) {
@@ -621,7 +663,7 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
 
   function ritaBoss(ctx, o, t) {
     const traff = Math.max(0, 1 - (t - a.current.bossT) / 0.25)
-    const andel = spel.bossMax ? spel.bossHp / spel.bossMax : 1
+    const andel = spel.bossMax ? bossHpVisat() / spel.bossMax : 1
     const r = o.r * (1 + 0.12 * traff)
     ctx.save()
     // skugga och kropp
@@ -656,6 +698,52 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
     ctx.rotate(Math.sin(t * 3) * 0.08 + traff * 0.3 * Math.sin(t * 40))
     ctx.fillText(bana.boss?.ikon || '👹', 0, 0)
     ctx.restore()
+  }
+
+  // Livet som visas: Orangestormens skada syns först när raketerna slår ner.
+  function bossHpVisat() {
+    return Math.min(spel.bossMax, spel.bossHp + (a.current.stormSkada?.skada || 0))
+  }
+
+  function ritaRaketer(ctx, t) {
+    const s = a.current
+    for (const r of s.raketer) {
+      if (t < r.t0) {
+        // väntar på sin tur: pinnen glöder
+        ctx.fillStyle = 'rgba(255,170,60,0.55)'
+        ctx.beginPath()
+        ctx.arc(r.x0, r.y0, 9 + Math.sin(t * 30) * 2, 0, Math.PI * 2)
+        ctx.fill()
+        continue
+      }
+      const k = Math.min(1, (t - r.t0) / r.dur)
+      const p = k * k
+      // en båge åt sidan, så att raketerna sveper in från olika håll
+      const cx = (r.x0 + r.x1) / 2 + r.sida * 90
+      const cy = Math.min(r.y0, r.y1) - 60
+      const pos = (q) => [(1 - q) * (1 - q) * r.x0 + 2 * (1 - q) * q * cx + q * q * r.x1, (1 - q) * (1 - q) * r.y0 + 2 * (1 - q) * q * cy + q * q * r.y1]
+      ctx.save()
+      ctx.lineCap = 'round'
+      for (let i = 6; i >= 1; i--) {
+        const [x, y] = pos(Math.max(0, p - i * 0.035))
+        ctx.globalAlpha = 0.12 * (7 - i)
+        ctx.fillStyle = r.kula ? '#e0f2fe' : i % 2 ? '#ffb020' : '#ff5a1f'
+        ctx.beginPath()
+        ctx.arc(x, y, 3 + (6 - i) * 0.7, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      const [x, y] = pos(p)
+      ctx.globalAlpha = 1
+      const g = ctx.createRadialGradient(x, y, 1, x, y, 10)
+      g.addColorStop(0, '#ffffff')
+      g.addColorStop(0.4, r.kula ? '#bae6fd' : '#ffd43b')
+      g.addColorStop(1, r.kula ? 'rgba(125,211,252,0)' : 'rgba(255,122,26,0)')
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(x, y, 10, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
   }
 
   function ritaBlixtar(ctx, t) {
@@ -894,14 +982,14 @@ export default function Spelplan({ spel, bana, varld, kanonIkon, hjalteNamn, rub
       </header>
 
       {boss ? (
-        <div className="kk-bossbar" aria-label={`${boss.namn}: ${spel.bossHp} av ${spel.bossMax} liv`}>
+        <div className="kk-bossbar" aria-label={`${boss.namn}: ${bossHpVisat()} av ${spel.bossMax} liv`}>
           <b>
             {boss.ikon} {boss.namn}
           </b>
           <div>
-            <i style={{ width: `${(100 * spel.bossHp) / Math.max(1, spel.bossMax)}%` }} />
+            <i style={{ width: `${(100 * bossHpVisat()) / Math.max(1, spel.bossMax)}%` }} />
           </div>
-          <span>{fmt(spel.bossHp)}</span>
+          <span>{fmt(bossHpVisat())}</span>
         </div>
       ) : (
         <div className="pb-mater" aria-label={`${kvarOrange} orange kvar, multiplikator ${mult}x`}>

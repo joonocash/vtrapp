@@ -279,6 +279,28 @@ test('bossen: tar skada efter varje skott, fylls på, och dör', () => {
   assert.equal(d2, d1 * 2)
 })
 
+test('Orangestormen: sista orange på en bossbana skickar allt in i bossen, utan feber och slow motion', () => {
+  const s = skapaSpel(bossBana(1), { fro: 4, kulor: 40 })
+  const orange = s.objekt.filter((o) => o.farg === 'orange')
+  for (const o of orange.slice(1)) o.lit = true // bara en orange kvar
+  let storm = null
+  let ater = false
+  const fel = []
+  for (let k = 0; k < 40 && s.lage === 'siktar' && !storm; k++)
+    for (const e of spelaSkott(s, botSkott(s, { vinklar: 12, rnd: mulberry32(k + 1) }))) {
+      if (e.typ === 'bossStorm') storm = e
+      if (e.typ === 'aterstall') ater = true
+      if (e.typ === 'narSista' || e.typ === 'feberStart') fel.push(e.typ)
+    }
+  assert.ok(storm, 'stormen kom')
+  assert.equal(storm.fran.length, orange.length, 'alla orange blir raketer')
+  assert.ok(storm.skada >= 3 * orange.length)
+  assert.ok(ater, 'planen fylls på direkt efter skottet')
+  assert.ok(s.orangeKvar() > 0, 'en ny våg med orange')
+  assert.equal(s.kulor.length, 0, 'inga kulor att vänta på')
+  assert.deepEqual(fel, [], 'ingen feber och ingen zoom')
+})
+
 test('guld, fler kulor per skott, spegelkula, genomborr, studsgolv och lägre tyngdkraft', () => {
   const bana = { ...genereraBana(31, { niva: 4 }), guldpinnar: 4 }
   const s = skapaSpel(bana, { fro: 1, perk: { guldFaktor: 2 } })
