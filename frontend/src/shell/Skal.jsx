@@ -87,7 +87,10 @@ function Bottenmeny({ aktiv }) {
       aria-label="Appar"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-line bg-ink/95 pb-[var(--safe-bottom)] backdrop-blur-xl md:hidden"
     >
-      <ul className="mx-auto grid h-[var(--bottomnav-h)] max-w-lg grid-cols-5">
+      <ul
+        className="mx-auto grid h-[var(--bottomnav-h)] max-w-lg"
+        style={{ gridTemplateColumns: `repeat(${APPAR.length}, minmax(0, 1fr))` }}
+      >
         {APPAR.map((app) => {
           const Ikon = app.ikon;
           const ar = app.id === aktiv?.id;
@@ -97,16 +100,16 @@ function Bottenmeny({ aktiv }) {
                 href={`#/${app.id}`}
                 data-tab-mobil={app.namn}
                 aria-current={ar ? 'page' : undefined}
-                className="flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium"
+                className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium"
               >
                 <span
-                  className={`grid h-8 w-14 place-items-center rounded-full transition-colors ${
+                  className={`grid h-8 w-12 place-items-center rounded-full transition-colors ${
                     ar ? 'bg-accent-soft text-white' : 'text-gray-500'
                   }`}
                 >
                   <Ikon className={`h-[21px] w-[21px] ${ar ? 'text-accent' : ''}`} strokeWidth={ar ? 2.3 : 2} aria-hidden="true" />
                 </span>
-                <span className={ar ? 'text-white' : 'text-gray-500'}>{app.namn}</span>
+                <span className={`max-w-full truncate px-0.5 ${ar ? 'text-white' : 'text-gray-500'}`}>{app.namn}</span>
               </a>
             </li>
           );

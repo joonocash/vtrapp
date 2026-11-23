@@ -1,5 +1,5 @@
 import { lazy } from 'react';
-import { TramFront, Grid3x3, VenetianMask, Gamepad2, Truck } from 'lucide-react';
+import { TramFront, Grid3x3, VenetianMask, Gamepad2, Truck, Swords } from 'lucide-react';
 import DeparturesPage from '../components/DeparturesPage.jsx';
 
 export const SAJTNAMN = 'vtrapp';
@@ -52,6 +52,13 @@ export const APPAR = [
     ikon: Truck,
     bredd: 'full',
     Komponent: lazy(() => import('../cassie/CassiePage.jsx')),
+  },
+  {
+    id: 'wow',
+    namn: 'WoW',
+    ikon: Swords,
+    bredd: 'normal',
+    Komponent: lazy(() => import('../wow/WowPage.jsx')),
   },
 ];
 

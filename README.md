@@ -1,6 +1,6 @@
 # vtrapp
 
-En självhostad sajt med avgångar i realtid för hållplatser i Göteborg (data från Trafiklab), två partyspel, en samling rötspel och kartverktyget Cassie.
+En självhostad sajt med avgångar i realtid för hållplatser i Göteborg (data från Trafiklab), två partyspel, en samling rötspel, kartverktyget Cassie och en WoW-flik.
 
 ![Västtrafik](https://img.shields.io/badge/V%C3%A4sttrafik-API-0071BC)
 ![React](https://img.shields.io/badge/React-18.2.0-61DAFB?logo=react)
@@ -15,11 +15,18 @@ En självhostad sajt med avgångar i realtid för hållplatser i Göteborg (data
 | `#/imposter` | Imposter Who? – bluffspel runt bordet | `frontend/src/components/ImpostorGame.jsx` |
 | `#/rotspel` | Rötspel – småspel med topplistor (`#/rotspel/<spel-id>`) | `frontend/src/rotspel/` |
 | `#/cassie` | Cassie – 3D-lastbil längs en riktig rutt, b-roll | `frontend/src/cassie/` |
+| `#/wow` | WoW – gubben, guldet, AH-fynd, prisgrafer, uppgraderingar och yrkesväg från WoW-assistenten (`#/wow/marknad`, `#/wow/gubben`, `#/wow/ah`) | `frontend/src/wow/`, `backend/src/routes/wow.js` |
 
 Vilken app som visas ligger i adressens hash, så omladdning, bakåtknapp och
 delade länkar landar rätt. Menyn (toppbar på dator, bottenmeny på mobil)
 byggs från listan i `frontend/src/shell/appar.js` – ny app = ny rad där.
 Nytt rötspel: se [LAGG-TILL-SPEL.md](LAGG-TILL-SPEL.md).
+
+**WoW-fliken** hämtar allt från WoW-assistenten (repot `wow-assistent`) som kör på samma
+server. Backend skickar `/api/wow/*` vidare till `http://127.0.0.1:8080/api/wow/*` och läser
+token och port från `~/wow-assistent/.env`, så inget behöver ställas in. Token når aldrig
+webbläsaren. Ligger assistenten någon annanstans: sätt `WOW_ENV_FILE`, eller `WOW_API_URL` och
+`WOW_API_TOKEN`, i `backend/.env`.
 
 ## Design
 

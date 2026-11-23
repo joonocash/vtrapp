@@ -6,6 +6,7 @@ import agentsRoutes from './routes/agents.js';
 import scoresRoutes from '../scores.js';
 import cassieRoutes from './routes/cassie.js';
 import krossenRoutes from './routes/krossen.js';
+import wowRoutes from './routes/wow.js';
 import errorHandler from './middleware/errorHandler.js';
 
 dotenv.config();
@@ -27,6 +28,7 @@ app.use('/api/agents', agentsRoutes);
 app.use('/api/scores', scoresRoutes);
 app.use('/api/cassie', cassieRoutes);
 app.use('/api/krossen', krossenRoutes);
+app.use('/api/wow', wowRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
