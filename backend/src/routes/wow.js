@@ -25,6 +25,8 @@ const VAGAR = [
   ['GET', /^arbitrage$/],
   ['GET', /^gear$/],
   ['GET', /^craft$/],
+  ['GET', /^affarer$/],
+  ['GET', /^farm$/],
   ['GET', /^watch$/],
   ['POST', /^watch$/],
   ['DELETE', /^watch\/\d+$/],

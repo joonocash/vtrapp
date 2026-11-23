@@ -15,7 +15,7 @@ En självhostad sajt med avgångar i realtid för hållplatser i Göteborg (data
 | `#/imposter` | Imposter Who? – bluffspel runt bordet | `frontend/src/components/ImpostorGame.jsx` |
 | `#/rotspel` | Rötspel – småspel med topplistor (`#/rotspel/<spel-id>`) | `frontend/src/rotspel/` |
 | `#/cassie` | Cassie – 3D-lastbil längs en riktig rutt, b-roll | `frontend/src/cassie/` |
-| `#/wow` | WoW – gubben, guldet, AH-fynd, prisgrafer, uppgraderingar och yrkesväg från WoW-assistenten (`#/wow/marknad`, `#/wow/gubben`, `#/wow/ah`) | `frontend/src/wow/`, `backend/src/routes/wow.js` |
+| `#/wow` | WoW – gubben, guldet, AH-fynd, prisgrafer, affärer, farmtips, uppgraderingar och yrkesväg från WoW-assistenten (`#/wow/marknad`, `#/wow/affarer`, `#/wow/farm`, `#/wow/gubben`, `#/wow/ah`) | `frontend/src/wow/`, `backend/src/routes/wow.js` |
 
 Vilken app som visas ligger i adressens hash, så omladdning, bakåtknapp och
 delade länkar landar rätt. Menyn (toppbar på dator, bottenmeny på mobil)
