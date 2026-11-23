@@ -1,6 +1,8 @@
 // WoW-fliken: data från WoW-assistenten (Discord-boten) som kör på samma server.
 //   #/wow            översikt
 //   #/wow/marknad    marknad, #/wow/marknad/4306 öppnar ett item
+//   #/wow/affarer    köpt och sålt på AH (fakturorna i brevlådan)
+//   #/wow/farm       guld per timme per zon och vad som är värt att farma
 //   #/wow/gubben     utrustning och yrken
 //   #/wow/ah         inköpslistan att ha på mobilen vid AH
 import { lazy, Suspense } from 'react';
@@ -10,12 +12,16 @@ import { HUS, sedan } from './format.js';
 import Oversikt from './Oversikt.jsx';
 
 const Marknad = lazy(() => import('./Marknad.jsx'));
+const Affarer = lazy(() => import('./Affarer.jsx'));
+const Farm = lazy(() => import('./Farm.jsx'));
 const Gubben = lazy(() => import('./Gubben.jsx'));
 const VidAH = lazy(() => import('./VidAH.jsx'));
 
 const DELAR = [
   { id: '', namn: 'Översikt' },
   { id: 'marknad', namn: 'Marknad' },
+  { id: 'affarer', namn: 'Affärer' },
+  { id: 'farm', namn: 'Farm' },
   { id: 'gubben', namn: 'Gubben och yrken', kort: 'Gubben' },
   { id: 'ah', namn: 'Vid AH' },
 ];
@@ -48,9 +54,9 @@ export default function WowPage({ sub = '', ga }) {
           <Statusrad data={oversikt.data} />
         </div>
         <nav aria-label="Delar av WoW-fliken" className="w-full sm:w-auto">
-          <ul className="flex gap-1 rounded-xl bg-white/[0.03] p-1 ring-1 ring-ink-line">
+          <ul className="grid grid-cols-3 gap-1 rounded-xl bg-white/[0.03] p-1 ring-1 ring-ink-line sm:flex">
             {DELAR.map((d) => (
-              <li key={d.id} className="flex flex-1 sm:flex-none">
+              <li key={d.id} className="flex sm:flex-none">
                 <a
                   href={`#/wow${d.id ? `/${d.id}` : ''}`}
                   aria-current={d.id === aktiv ? 'page' : undefined}
@@ -89,6 +95,8 @@ export default function WowPage({ sub = '', ga }) {
             navigera={navigera}
           />
         )}
+        {aktiv === 'affarer' && <Affarer />}
+        {aktiv === 'farm' && <Farm />}
         {aktiv === 'gubben' && <Gubben navigera={navigera} />}
         {aktiv === 'ah' && <VidAH navigera={navigera} />}
       </Suspense>

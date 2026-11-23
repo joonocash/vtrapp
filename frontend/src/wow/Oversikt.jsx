@@ -324,8 +324,15 @@ function Salj({ salj }) {
         <ul className="flex flex-col">
           {salj.items.slice(0, 6).map((it) => (
             <li key={`${it.id}-${it.where}`} className="flex justify-between gap-3 border-t border-ink-line py-2.5 first:border-0">
-              <span className="min-w-0 truncate">
-                <ItemNamn item={it} /> <span className="text-gray-400">×{it.count}</span>
+              <span className="min-w-0">
+                <span className="block truncate">
+                  <ItemNamn item={it} /> <span className="text-gray-400">×{it.count}</span>
+                </span>
+                {it.best_time && (
+                  <span className="block text-xs text-[#86efac]">
+                    {it.best_time.day} runt {String(it.best_time.hour).padStart(2, '0')} brukar ge ~+{it.best_time.gain} %
+                  </span>
+                )}
               </span>
               <span className="whitespace-nowrap text-gray-300">
                 {it.where === 'ah' ? 'AH' : 'vendor'} · <span className="tabular text-white">{pengar(it.value)}</span>
