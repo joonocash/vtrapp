@@ -70,11 +70,11 @@ export function timmarSedan(iso, nu = Date.now()) {
 const MANADER = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
 const DAGAR = ['sön', 'mån', 'tis', 'ons', 'tor', 'fre', 'lör'];
 
-// "2027-01-14" -> "14 jan"
-export function datumKort(iso) {
+// "2027-01-14" -> "14 jan", med år om det inte är i år ("14 jan 2028")
+export function datumKort(iso, nu = new Date()) {
   if (!iso) return '–';
-  const [, m, d] = String(iso).slice(0, 10).split('-').map(Number);
-  return `${d} ${MANADER[m - 1]}`;
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  return y === nu.getFullYear() ? `${d} ${MANADER[m - 1]}` : `${d} ${MANADER[m - 1]} ${y}`;
 }
 
 // ISO-tid -> "sön 22 nov 19:02" i webbläsarens tidszon

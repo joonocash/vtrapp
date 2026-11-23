@@ -35,7 +35,8 @@ test('tider', () => {
   assert.equal(sedan('2026-11-23T11:59:30Z', nu), 'nyss')
   assert.equal(sedan('2026-11-23T11:48:00Z', nu), '12 min sedan')
   assert.equal(sedan('2026-11-21T12:00:00Z', nu), '2 dagar sedan')
-  assert.equal(datumKort('2027-01-14'), '14 jan')
+  assert.equal(datumKort('2027-01-14', new Date('2027-01-01T12:00:00Z')), '14 jan')
+  assert.equal(datumKort('2027-11-02', new Date('2026-11-23T12:00:00Z')), '2 nov 2027')
 })
 
 test('säljtakt', () => {

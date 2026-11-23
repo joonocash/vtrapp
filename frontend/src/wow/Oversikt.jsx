@@ -35,7 +35,7 @@ function Gubbe({ data }) {
           : { varde: '–', under: 'räknas när XP-datan finns' };
 
   return (
-    <Panel className="flex-[2_1_640px] justify-between">
+    <Panel className="flex-[2_1_640px]">
       <div className="flex flex-wrap items-center gap-4">
         <span className="grid h-14 w-14 place-items-center rounded-2xl bg-ink-high font-display text-2xl font-semibold text-white ring-2 ring-inset ring-white/80">
           {(char.name || '?').slice(0, 1)}
