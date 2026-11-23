@@ -85,12 +85,19 @@ router.all('/*', async (req, res) => {
     if (typeof varde === 'string') fraga.set(nyckel, varde);
   }
   const qs = fraga.toString();
+  // Avbryt anropet till boten om webbläsaren gett upp (t.ex. bytt flik) eller efter TIMEOUT_MS.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  res.on('close', () => {
+    clearTimeout(timer);
+    if (!res.writableEnded) ctrl.abort();
+  });
   try {
     const svar = await fetch(`${url}/api/wow/${sokvag}${qs ? `?${qs}` : ''}`, {
       method: req.method,
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: req.method === 'POST' ? JSON.stringify(req.body || {}) : undefined,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: ctrl.signal,
     });
     const text = await svar.text();
     if (svar.status === 401) {
@@ -101,7 +108,10 @@ router.all('/*', async (req, res) => {
     }
     res.status(svar.status).type('application/json').send(text);
   } catch (err) {
+    if (res.writableEnded || res.destroyed) return; // webbläsaren har redan gått vidare
     res.status(502).json({ error: 'WoW-assistenten svarar inte', detalj: err.message });
+  } finally {
+    clearTimeout(timer);
   }
 });
 

@@ -1,7 +1,8 @@
 // Översikten: gubben, guldet, målet, passen, fynden och vad som är på gång.
 import { useState } from 'react';
 import { ArrowUpRight } from 'lucide-react';
-import { GULD, ItemNamn, MINUS, PLUS, Panel, Ring, Ruta, Sparkline, Stapel, Tom, Val } from './ui.jsx';
+import { GULD, ItemNamn, Laddar, MINUS, PLUS, Panel, Ring, Ruta, Sparkline, Stapel, Tom, Val } from './ui.jsx';
+import { useWow } from './api.js';
 import { HUS, datumKort, lokalTid, pengar, saljtakt, sedan, tal, timmar, timmarSedan } from './format.js';
 
 const plusMinus = (v) => (v == null ? '#ffffff' : v > 0 ? PLUS : v < 0 ? MINUS : '#ffffff');
@@ -138,7 +139,9 @@ function Guldmal({ mal }) {
 
 function Fynd({ fynd, egetHus }) {
   const [hus, setHus] = useState(egetHus || 'alliance');
-  const d = fynd?.[hus];
+  // Översikten har bara ditt eget hus. De andra hämtas när du byter.
+  const andra = useWow(fynd?.[hus] ? null : `deals?house=${hus}`);
+  const d = fynd?.[hus] || andra.data;
   return (
     <Panel
       titel="Fynd just nu"
@@ -153,7 +156,9 @@ function Fynd({ fynd, egetHus }) {
         />
       }
     >
-      {!d || d.hours_of_data < d.needed_hours ? (
+      {!d && andra.laddar ? (
+        <Laddar rader={3} />
+      ) : !d || d.hours_of_data < d.needed_hours ? (
         <Tom>
           Samlar fortfarande data ({d?.hours_of_data ?? 0} av {d?.needed_hours ?? 24} timmar). Fynd visas när det finns ett
           normalpris att jämföra med.
